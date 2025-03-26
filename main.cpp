@@ -36,11 +36,11 @@ bool fetchUrl(const std::string& url, std::string& response) {
     // Get API key from environment
     const char* api_key = std::getenv("GROQ_API_KEY");
     if (!api_key) {
-        std::cerr << "ERROR: GROQ_API_KEY environment variable not set!\n";
-        return false;
+        throw std::runtime_error("GROQ_API_KEY environment variable not set!");
     }
-    std::string auth_header = "Authorization: Bearer " + std::string(api_key);
+    std::string auth_header = "Authorization: Bearer " + std::string(api_key ? api_key : "");
     struct curl_slist* headers = curl_slist_append(nullptr, auth_header.c_str());
+    if (!headers) return false;
     headers = curl_slist_append(headers, "Content-Type: application/json");
 
     // Build JSON payload
@@ -132,21 +132,21 @@ Component ChatInterface() {
                 chat_history.push_back({"user", input});
                 
                 // Get AI response
-                std::string response;
-                if (fetchUrl("https://api.groq.com/openai/v1/chat/completions", response)) {
-                    try {
-                        auto json = nlohmann::json::parse(response);
-                        std::string ai_response = json["choices"][0]["message"]["content"];
-                        // Limit chat history to prevent memory issues
-                        if (chat_history.size() > 50)
-                            chat_history.erase(chat_history.begin());
-                        chat_history.push_back({"assistant", ai_response});
-                    } catch (const std::exception& e) {
-                        chat_history.push_back({"system", "Parse error: " + std::string(e.what())});
-                        if (chat_history.size() > 50) chat_history.erase(chat_history.begin());
+                try {
+                    std::string response;
+                    if (!fetchUrl("https://api.groq.com/openai/v1/chat/completions", response)) {
+                        throw std::runtime_error("API request failed");
                     }
-                } else {
-                    chat_history.push_back({"system", "API request failed"});
+                    
+                    auto json = nlohmann::json::parse(response);
+                    std::string ai_response = json["choices"][0]["message"]["content"];
+                    // Limit chat history to prevent memory issues
+                    if (chat_history.size() > 50)
+                        chat_history.erase(chat_history.begin());
+                    chat_history.push_back({"assistant", ai_response});
+                } catch (const std::exception& e) {
+                    chat_history.push_back({"system", "Error: " + std::string(e.what())});
+                    if (chat_history.size() > 50) chat_history.erase(chat_history.begin());
                 }
                 input.clear();
             }
