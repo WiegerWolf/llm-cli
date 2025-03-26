@@ -107,9 +107,9 @@ Component ChatInterface() {
     auto chat_log = Renderer([&] {
         Elements elements;
         for (const auto& msg : chat_history) {
-            auto text = text(msg.content) | 
+            auto text_element = text(msg.content) | 
                 (msg.role == "user" ? color(Color::Green) : color(Color::White));
-            elements.push_back(text);
+            elements.push_back(text_element);
         }
         return vbox(elements) | yframe | flex;
     });
