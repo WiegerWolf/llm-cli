@@ -5,13 +5,14 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
+#include <cstdlib> // For getenv()
 
 using namespace ftxui;
 
 struct Config {
     std::string provider;
     std::string model;
-    std::string api_base = "https://api.groq.com/openai/v1"; // Groq base URL
+    std::string api_base = "https://api.groq.com/openai/v1/chat/completions";
 };
 
 // Callback to handle HTTP response
@@ -25,13 +26,27 @@ bool fetchUrl(const std::string& url, std::string& response) {
     CURL* curl = curl_easy_init();
     if (!curl) return false;
 
+    // Get API key from environment
+    const char* api_key = std::getenv("GROQ_API_KEY");
+    if (!api_key) {
+        std::cerr << "ERROR: GROQ_API_KEY environment variable not set!\n";
+        return false;
+    }
+    std::string auth_header = "Authorization: Bearer " + std::string(api_key);
+    struct curl_slist* headers = curl_slist_append(nullptr, auth_header.c_str());
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "llm-cli/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "{\"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}], \"model\": \"llama-3.3-70b-versatile\"}");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, -1L); // Auto calculate length
 
     CURLcode res = curl_easy_perform(curl);
+    curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     
     return res == CURLE_OK;
@@ -71,8 +86,8 @@ int main(int argc, char* argv[]) {
     auto config = show_selection_menu();
     std::string response;
     
-    // Construct API endpoint
-    std::string url = config.api_base + "/chat/completions";
+    // Use API endpoint
+    std::string url = config.api_base;
     
     std::cout << "\nSelected: " << config.provider << " - " << config.model << std::endl;
     std::cout << "Calling: " << url << std::endl;
