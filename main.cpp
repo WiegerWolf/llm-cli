@@ -102,16 +102,19 @@ Config show_selection_menu() {
 
 Component ChatInterface() {
     std::string input;
-    auto input_field = Input(&input, "Type your message...");
+    auto input_field = Input(&input, "Type your message...") 
+        | CatchEvent([&](Event event) {
+            return event.is_mouse();
+          }); // Disable mouse in input field
     
     auto chat_log = Renderer([&] {
         Elements elements;
         for (const auto& msg : chat_history) {
             auto text_element = text(msg.content) | 
                 (msg.role == "user" ? color(Color::Green) : color(Color::White));
-            elements.push_back(text_element);
+            elements.push_back(text_element | vscroll_indicator | frame);
         }
-        return vbox(elements) | yframe | flex;
+        return vbox(elements) | yframe | flex | border;
     });
 
     auto container = Container::Vertical({
@@ -120,6 +123,9 @@ Component ChatInterface() {
     });
 
     return container | CatchEvent([&](Event event) {
+        // Filter out mouse events
+        if (event.is_mouse()) return false;
+        
         if (event == Event::Return) {
             if (!input.empty()) {
                 // Add user message
@@ -131,9 +137,13 @@ Component ChatInterface() {
                     try {
                         auto json = nlohmann::json::parse(response);
                         std::string ai_response = json["choices"][0]["message"]["content"];
+                        // Limit chat history to prevent memory issues
+                        if (chat_history.size() > 50)
+                            chat_history.erase(chat_history.begin());
                         chat_history.push_back({"assistant", ai_response});
-                    } catch (...) {
-                        chat_history.push_back({"system", "Failed to parse response"});
+                    } catch (const std::exception& e) {
+                        chat_history.push_back({"system", "Parse error: " + std::string(e.what())});
+                        if (chat_history.size() > 50) chat_history.erase(chat_history.begin());
                     }
                 } else {
                     chat_history.push_back({"system", "API request failed"});
