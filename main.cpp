@@ -56,28 +56,26 @@ Config show_selection_menu() {
     Config config;
     auto screen = ScreenInteractive::Fullscreen();
     
-    // Provider selection
+    // Provider selection (auto-select on enter)
     std::vector<std::string> providers = {"Groq"};
     int selected_provider = 0;
-    
-    auto provider_menu = Menu(&providers, &selected_provider);
-    screen.Loop(Container::Vertical({
-        provider_menu,
-        Button("Select", [&] { screen.Exit(); })
-    }));
-    
+    auto provider_menu = Menu(&providers, &selected_provider)
+        | CatchEvent([&](Event event) {
+            if (event == Event::Return) screen.Exit();
+            return false;
+          });
+    screen.Loop(provider_menu);
     config.provider = providers[selected_provider];
-    
-    // Model selection based on provider
-    std::vector<std::string> models = {"llama-3-70b-8192"};
+
+    // Model selection (auto-select on enter)
+    std::vector<std::string> models = {"llama-3-70b-8192"}; 
     int selected_model = 0;
-    
-    auto model_menu = Menu(&models, &selected_model);
-    screen.Loop(Container::Vertical({
-        model_menu,
-        Button("Select", [&] { screen.Exit(); })
-    }));
-    
+    auto model_menu = Menu(&models, &selected_model)
+        | CatchEvent([&](Event event) {
+            if (event == Event::Return) screen.Exit();
+            return false;
+          });
+    screen.Loop(model_menu);
     config.model = models[selected_model];
     return config;
 }
