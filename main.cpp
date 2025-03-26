@@ -74,7 +74,7 @@ bool fetchUrl(const std::string& url, std::string& response) {
 
 Component SelectionMenu(Config* config) {
     std::vector<std::string> providers = {"Groq"};
-    std::vector<std::string> models = {"llama-3-70b-8192"};
+    std::vector<std::string> models = {"llama-3.3-70b-versatile"};
     int selected_provider = 0;
     int selected_model = 0;
 
