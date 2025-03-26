@@ -6,6 +6,7 @@
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <cstdlib> // For getenv()
+#include <nlohmann/json.hpp>
 
 using namespace ftxui;
 
@@ -14,6 +15,12 @@ struct Config {
     std::string model;
     std::string api_base = "https://api.groq.com/openai/v1/chat/completions";
 };
+
+struct Message {
+    std::string role;
+    std::string content;
+};
+std::vector<Message> chat_history;
 
 // Callback to handle HTTP response
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
@@ -25,7 +32,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::stri
 bool fetchUrl(const std::string& url, std::string& response) {
     CURL* curl = curl_easy_init();
     if (!curl) return false;
-
+    
     // Get API key from environment
     const char* api_key = std::getenv("GROQ_API_KEY");
     if (!api_key) {
@@ -36,14 +43,27 @@ bool fetchUrl(const std::string& url, std::string& response) {
     struct curl_slist* headers = curl_slist_append(nullptr, auth_header.c_str());
     headers = curl_slist_append(headers, "Content-Type: application/json");
 
+    // Build JSON payload
+    nlohmann::json payload;
+    payload["model"] = "llama-3.3-70b-versatile";
+    payload["messages"] = nlohmann::json::array();
+    for (const auto& msg : chat_history) {
+        payload["messages"].push_back({
+            {"role", msg.role},
+            {"content", msg.content}
+        });
+    }
+
+    std::string json_payload = payload.dump();
+
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "llm-cli/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "{\"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}], \"model\": \"llama-3.3-70b-versatile\"}");
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, -1L); // Auto calculate length
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_payload.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, json_payload.size());
 
     CURLcode res = curl_easy_perform(curl);
     curl_slist_free_all(headers);
@@ -80,22 +100,62 @@ Config show_selection_menu() {
     return config;
 }
 
+Component ChatInterface() {
+    std::string input;
+    auto input_field = Input(&input, "Type your message...");
+    
+    auto chat_log = Renderer([&] {
+        Elements elements;
+        for (const auto& msg : chat_history) {
+            auto text = text(msg.content) | 
+                (msg.role == "user" ? color(Color::Green) : color(Color::White));
+            elements.push_back(text);
+        }
+        return vbox(elements) | yframe | flex;
+    });
+
+    auto container = Container::Vertical({
+        chat_log,
+        input_field,
+    });
+
+    return container | CatchEvent([&](Event event) {
+        if (event == Event::Return) {
+            if (!input.empty()) {
+                // Add user message
+                chat_history.push_back({"user", input});
+                
+                // Get AI response
+                std::string response;
+                if (fetchUrl("https://api.groq.com/openai/v1/chat/completions", response)) {
+                    try {
+                        auto json = nlohmann::json::parse(response);
+                        std::string ai_response = json["choices"][0]["message"]["content"];
+                        chat_history.push_back({"assistant", ai_response});
+                    } catch (...) {
+                        chat_history.push_back({"system", "Failed to parse response"});
+                    }
+                } else {
+                    chat_history.push_back({"system", "API request failed"});
+                }
+                input.clear();
+            }
+            return true;
+        }
+        return false;
+    });
+}
+
 int main(int argc, char* argv[]) {
     auto config = show_selection_menu();
-    std::string response;
+    auto screen = ScreenInteractive::Fullscreen();
+    auto chat_component = ChatInterface();
     
-    // Use API endpoint
-    std::string url = config.api_base;
+    // Initial system message
+    chat_history.push_back({
+        "system", 
+        "Selected: " + config.provider + " - " + config.model + "\n"
+    });
     
-    std::cout << "\nSelected: " << config.provider << " - " << config.model << std::endl;
-    std::cout << "Calling: " << url << std::endl;
-
-    if(fetchUrl(url, response)) {
-        std::cout << "\nResponse (" << response.length() << " bytes):\n"
-                  << response.substr(0, 500) << "\n[...truncated...]\n";
-    } else {
-        std::cerr << "Failed to fetch API response\n";
-    }
-    
-    return EXIT_SUCCESS;
+    screen.Loop(chat_component);
 }
