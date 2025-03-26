@@ -5,6 +5,15 @@ project(MyCLIApp VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Add FTXUI (Terminal UI library)
+include(FetchContent)
+FetchContent_Declare(
+    ftxui
+    GIT_REPOSITORY https://github.com/ArthurSonzogni/ftxui
+    GIT_TAG v4.1.1
+)
+FetchContent_MakeAvailable(ftxui)
+
 # Find required packages
 find_package(CURL REQUIRED)
 
@@ -12,7 +21,7 @@ find_package(CURL REQUIRED)
 add_executable(llm main.cpp)
 
 # Link libraries
-target_link_libraries(llm PRIVATE ${CURL_LIBRARIES})
+target_link_libraries(llm PRIVATE ${CURL_LIBRARIES} ftxui::ftxui)
 
 # Installation setup
 install(TARGETS llm

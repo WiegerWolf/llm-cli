@@ -1,6 +1,18 @@
 #include <iostream>
 #include <string>
 #include <curl/curl.h>
+#include <ftxui/screen/screen.hpp>
+#include <ftxui/dom/elements.hpp>
+#include <ftxui/component/component.hpp>
+#include <ftxui/component/screen_interactive.hpp>
+
+using namespace ftxui;
+
+struct Config {
+    std::string provider;
+    std::string model;
+    std::string api_base = "https://api.groq.com/openai/v1"; // Groq base URL
+};
 
 // Callback to handle HTTP response
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
@@ -25,26 +37,51 @@ bool fetchUrl(const std::string& url, std::string& response) {
     return res == CURLE_OK;
 }
 
-int main(int argc, char* argv[]) {
-    std::string name = "World";
-    std::string https_response;
+Config show_selection_menu() {
+    Config config;
+    auto screen = ScreenInteractive::Fullscreen();
     
-    if(argc > 1) {
-        name = argv[1];
-    }
+    // Provider selection
+    std::vector<std::string> providers = {"Groq"};
+    int selected_provider = 0;
     
-    std::cout << "Hello " << name << "!\n";
-    std::cout << "Arguments received: " << argc - 1 << std::endl << std::endl;
+    auto provider_menu = Menu(&providers, &selected_provider);
+    screen.Loop(Container::Vertical({
+        provider_menu,
+        Button("Select", [&] { screen.Exit(); })
+    }));
+    
+    config.provider = providers[selected_provider];
+    
+    // Model selection based on provider
+    std::vector<std::string> models = {"llama-3-70b-8192"};
+    int selected_model = 0;
+    
+    auto model_menu = Menu(&models, &selected_model);
+    screen.Loop(Container::Vertical({
+        model_menu,
+        Button("Select", [&] { screen.Exit(); })
+    }));
+    
+    config.model = models[selected_model];
+    return config;
+}
 
-    // New HTTPS functionality
-    if(argc > 2) {
-        std::cout << "Fetching URL: " << argv[2] << "\n";
-        if(fetchUrl(argv[2], https_response)) {
-            std::cout << "Response (" << https_response.length() << " bytes):\n"
-                      << https_response.substr(0, 500) << "\n[...truncated...]\n";
-        } else {
-            std::cerr << "Failed to fetch URL\n";
-        }
+int main(int argc, char* argv[]) {
+    auto config = show_selection_menu();
+    std::string response;
+    
+    // Construct API endpoint
+    std::string url = config.api_base + "/chat/completions";
+    
+    std::cout << "\nSelected: " << config.provider << " - " << config.model << std::endl;
+    std::cout << "Calling: " << url << std::endl;
+
+    if(fetchUrl(url, response)) {
+        std::cout << "\nResponse (" << response.length() << " bytes):\n"
+                  << response.substr(0, 500) << "\n[...truncated...]\n";
+    } else {
+        std::cerr << "Failed to fetch API response\n";
     }
     
     return EXIT_SUCCESS;
