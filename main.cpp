@@ -72,40 +72,37 @@ bool fetchUrl(const std::string& url, std::string& response) {
     return res == CURLE_OK;
 }
 
-Config show_selection_menu() {
-    Config config;
-    auto screen = ScreenInteractive::Fullscreen();
-    
-    // Provider selection (auto-select on enter)
+Component SelectionMenu(Config* config) {
     std::vector<std::string> providers = {"Groq"};
+    std::vector<std::string> models = {"llama-3-70b-8192"};
     int selected_provider = 0;
-    auto provider_menu = Menu(&providers, &selected_provider)
-        | CatchEvent([&](Event event) {
-            if (event == Event::Return) screen.Exit();
-            return false;
-          });
-    screen.Loop(provider_menu);
-    config.provider = providers[selected_provider];
-
-    // Model selection (auto-select on enter)
-    std::vector<std::string> models = {"llama-3-70b-8192"}; 
     int selected_model = 0;
-    auto model_menu = Menu(&models, &selected_model)
-        | CatchEvent([&](Event event) {
-            if (event == Event::Return) screen.Exit();
-            return false;
-          });
-    screen.Loop(model_menu);
-    config.model = models[selected_model];
-    return config;
+
+    auto provider_menu = Menu(&providers, &selected_provider);
+    auto model_menu = Menu(&models, &selected_model);
+
+    return Container::Vertical({
+        provider_menu,
+        model_menu,
+    }) | CatchEvent([&](Event event) {
+        if (event == Event::Return) {
+            config->provider = providers[selected_provider];
+            config->model = models[selected_model];
+            return true; // Exit the component
+        }
+        return false;
+    });
 }
 
-Component ChatInterface() {
+Component ChatInterface(const Config& config) {
     std::string input;
     auto input_field = Input(&input, "Type your message...") 
         | CatchEvent([&](Event event) {
             return event.is_mouse();
           }); // Disable mouse in input field
+    
+    // Add initial message after selection
+    chat_history.push_back({"system", "Selected: " + config.provider + " - " + config.model});
     
     auto chat_log = Renderer([&] {
         Elements elements;
@@ -157,15 +154,24 @@ Component ChatInterface() {
 }
 
 int main(int argc, char* argv[]) {
-    auto config = show_selection_menu();
     auto screen = ScreenInteractive::Fullscreen();
-    auto chat_component = ChatInterface();
+    Config config;
+    bool show_selection = true;
+
+    auto selection_component = SelectionMenu(&config);
     
-    // Initial system message
-    chat_history.push_back({
-        "system", 
-        "Selected: " + config.provider + " - " + config.model + "\n"
+    auto chat_component = ChatInterface(config);
+    
+    auto main_container = Container::Tab({
+        selection_component,
+        chat_component,
+    }, &show_selection) | CatchEvent([&](Event event) {
+        if (event == Event::Return && show_selection) {
+            show_selection = false;
+            return true;
+        }
+        return false;
     });
-    
-    screen.Loop(chat_component);
+
+    screen.Loop(main_container);
 }
