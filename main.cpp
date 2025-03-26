@@ -156,7 +156,7 @@ Component ChatInterface(const Config& config) {
 int main(int argc, char* argv[]) {
     auto screen = ScreenInteractive::Fullscreen();
     Config config;
-    bool show_selection = true;
+    int selected_tab = 0; // 0 = selection, 1 = chat
 
     auto selection_component = SelectionMenu(&config);
     
@@ -165,9 +165,9 @@ int main(int argc, char* argv[]) {
     auto main_container = Container::Tab({
         selection_component,
         chat_component,
-    }, &show_selection) | CatchEvent([&](Event event) {
-        if (event == Event::Return && show_selection) {
-            show_selection = false;
+    }, &selected_tab) | CatchEvent([&](Event event) {
+        if (event == Event::Return && selected_tab == 0) {
+            selected_tab = 1; // Switch to chat after selection
             return true;
         }
         return false;
