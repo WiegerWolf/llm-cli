@@ -12,7 +12,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/ArthurSonzogni/ftxui
     GIT_TAG v6.0.0
     CMAKE_ARGS
-      -DFTXUI_BUILD_EXAMPLES=OFF -DFTXUI_BUILD_DOCS=OFF
+      -DFTXUI_BUILD_EXAMPLES=OFF -DFTXUI_BUILD_DOCS=OFF -DFTXUI_ENABLE_INSTALL=OFF
 )
 FetchContent_MakeAvailable(ftxui)
 
