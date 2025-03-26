@@ -10,18 +10,17 @@ include(FetchContent)
 FetchContent_Declare(
     ftxui
     GIT_REPOSITORY https://github.com/ArthurSonzogni/ftxui
-    GIT_TAG v4.1.1
+    GIT_TAG v6.0.0
 )
 FetchContent_MakeAvailable(ftxui)
 
 # Find required packages
 find_package(CURL REQUIRED)
 
-# Add executable
+# Add executable and link libraries
 add_executable(llm main.cpp)
-
-# Link libraries
-target_link_libraries(llm PRIVATE ${CURL_LIBRARIES} ftxui::ftxui)
+target_link_libraries(llm PRIVATE ${CURL_LIBRARIES}
+    ftxui::component ftxui::dom ftxui::screen)
 
 # Installation setup
 install(TARGETS llm
