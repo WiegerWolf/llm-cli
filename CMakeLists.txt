@@ -11,6 +11,8 @@ FetchContent_Declare(
     ftxui
     GIT_REPOSITORY https://github.com/ArthurSonzogni/ftxui
     GIT_TAG v6.0.0
+    CMAKE_ARGS
+      -DFTXUI_BUILD_EXAMPLES=OFF -DFTXUI_BUILD_DOCS=OFF
 )
 FetchContent_MakeAvailable(ftxui)
 
@@ -20,6 +22,7 @@ FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json
     GIT_TAG v3.11.3
+    CMAKE_ARGS -DJSON_BuildTests=OFF
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
@@ -28,8 +31,8 @@ find_package(CURL REQUIRED)
 
 # Add executable and link libraries
 add_executable(llm main.cpp)
-target_link_libraries(llm PRIVATE ${CURL_LIBRARIES}
-    ftxui::component ftxui::dom ftxui::screen)
+target_link_libraries(llm PRIVATE ${CURL_LIBRARIES} 
+    ftxui::component ftxui::dom ftxui::screen nlohmann_json::nlohmann_json)
 
 # Installation setup
 install(TARGETS llm
