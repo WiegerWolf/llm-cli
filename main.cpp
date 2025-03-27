@@ -131,6 +131,13 @@ Component ChatInterface(const Config* config) { // Change to pointer
     static std::vector<Message> chat_history;  // Make history local to component
     static bool needs_init = true;  // Track initialization status
     
+    // Move initialization out of renderer to component constructor
+    if (needs_init && config && !config->provider.empty() && !config->model.empty()) {
+        std::cerr << "Initializing system message\n";
+        chat_history.push_back({"system", "Selected: " + config->provider + " - " + config->model});
+        needs_init = false;
+    }
+    
     auto input_field = Input(&input, "Type your message...") 
         | CatchEvent([&](Event event) {
             return event.is_mouse();
@@ -138,17 +145,7 @@ Component ChatInterface(const Config* config) { // Change to pointer
     
     auto chat_log = Renderer([&] {
         try {
-            std::cerr << "\nRendering chat log (needs_init: " << std::boolalpha << needs_init
-                     << ", config valid: " << (config != nullptr)
-                     << ")\n";
-            
-            // Add null check for config pointer
-            if (config && needs_init && !config->provider.empty() && !config->model.empty()) {
-                std::cerr << "Initializing system message\n";
-                chat_history.push_back({"system", "Selected: " + config->provider + " - " + config->model});
-                needs_init = false;
-            }
-            
+            std::cerr << "\nRendering chat log (config valid: " << (config != nullptr) << ")\n";
             std::cerr << "Chat history size: " << chat_history.size() << "\n";
             Elements elements;
             for (const auto& msg : chat_history) {
@@ -274,6 +271,13 @@ int main(int argc, char* argv[]) {
         std::cerr << "Main container event: " << event << "\n";
         if (event == Event::Return && selected_tab == 0) {
             std::cerr << "Switching to chat tab\n";
+            // Reset chat initialization when switching to chat tab
+            static bool first_enter = true;
+            if (first_enter) {
+                // This will trigger reinitialization in the ChatInterface
+                needs_init = true;
+                first_enter = false;
+            }
             selected_tab = 1;
             return true;
         }
