@@ -28,7 +28,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::stri
     return total_size;
 }
 
-bool fetchUrl(const std::string& url, std::string& response) {
+bool fetchUrl(const std::string& url, const std::vector<Message>& chat_history, std::string& response) {
     CURL* curl = curl_easy_init();
     if (!curl) return false;
     
@@ -47,10 +47,10 @@ bool fetchUrl(const std::string& url, std::string& response) {
     payload["model"] = "llama-3.3-70b-versatile";
     payload["messages"] = nlohmann::json::array();
     for (const auto& msg : chat_history) {
-        payload["messages"].push_back({
-            {"role", msg.role},
-            {"content", msg.content}
-        });
+        nlohmann::json message_json;
+        message_json["role"] = msg.role;
+        message_json["content"] = msg.content;
+        payload["messages"].push_back(message_json);
     }
 
     std::string json_payload = payload.dump();
@@ -136,7 +136,7 @@ Component ChatInterface(const Config& config) {
                 // Get AI response
                 try {
                     std::string response;
-                    if (!fetchUrl("https://api.groq.com/openai/v1/chat/completions", response)) {
+                    if (!fetchUrl("https://api.groq.com/openai/v1/chat/completions", chat_history, response)) {
                         throw std::runtime_error("API request failed");
                     }
                     
