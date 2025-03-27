@@ -142,13 +142,25 @@ Component ChatInterface(const Config& config) {
                     
                     auto json = nlohmann::json::parse(response);
                     std::string ai_response = json["choices"][0]["message"]["content"];
-                    // Limit chat history to prevent memory issues
-                    if (chat_history.size() > 50)
-                        chat_history.erase(chat_history.begin());
+                    // Keep last 50 messages (25 exchanges)
+                    const size_t max_history = 50;
+                    if (chat_history.size() > max_history) {
+                        chat_history.erase(
+                            chat_history.begin(),
+                            chat_history.begin() + (chat_history.size() - max_history)
+                        );
+                    }
                     chat_history.push_back({"assistant", ai_response});
                 } catch (const std::exception& e) {
                     chat_history.push_back({"system", "Error: " + std::string(e.what())});
-                    if (chat_history.size() > 50) chat_history.erase(chat_history.begin());
+                    // Keep last 50 messages (25 exchanges)
+                    const size_t max_history = 50;
+                    if (chat_history.size() > max_history) {
+                        chat_history.erase(
+                            chat_history.begin(),
+                            chat_history.begin() + (chat_history.size() - max_history)
+                        );
+                    }
                 }
                 input.clear();
             }
