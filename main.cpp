@@ -11,6 +11,22 @@
 #include <iomanip>
 #include <stdexcept>
 
+// Add this operator overload to handle Event formatting
+std::ostream& operator<<(std::ostream& os, const ftxui::Event& event) {
+  if (event.is_character()) {
+    os << "Char:" << event.character();
+  } else if (event == ftxui::Event::Return) {
+    os << "Enter";
+  } else if (event == ftxui::Event::Escape) {
+    os << "Esc";
+  } else if (event.is_mouse()) {
+    os << "Mouse";
+  } else {
+    os << "UnknownEvent";
+  }
+  return os;
+}
+
 using namespace ftxui;
 
 struct Config {
