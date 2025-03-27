@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <iomanip>
+#include <stdexcept>
 
 using namespace ftxui;
 
@@ -84,6 +85,7 @@ bool fetchUrl(const std::string& url, const std::vector<Message>& chat_history, 
 }
 
 Component SelectionMenu(Config* config) {
+    std::cerr << "\nCreating selection menu\n";
     std::vector<std::string> providers = {"Groq"};
     std::vector<std::string> models = {"llama-3.3-70b-versatile"};
     int selected_provider = 0;
@@ -96,7 +98,10 @@ Component SelectionMenu(Config* config) {
         provider_menu,
         model_menu,
     }) | CatchEvent([&](Event event) {
+        std::cerr << "Selection menu event: " << event << "\n";
         if (event == Event::Return) {
+            std::cerr << "Setting config (provider: " << providers[selected_provider]
+                     << ", model: " << models[selected_model] << ")\n";
             config->provider = providers[selected_provider];
             config->model = models[selected_model];
             return true; // Exit the component
@@ -116,19 +121,42 @@ Component ChatInterface(const Config* config) { // Change to pointer
           }); // Disable mouse in input field
     
     auto chat_log = Renderer([&] {
-        // Add initial message only when config is valid and first rendered
-        if (needs_init && !config->provider.empty() && !config->model.empty()) {
-            chat_history.push_back({"system", "Selected: " + config->provider + " - " + config->model});
-            needs_init = false;
+        try {
+            std::cerr << "\nRendering chat log (needs_init: " << std::boolalpha << needs_init
+                     << ", config valid: " << (config != nullptr)
+                     << ")\n";
+            
+            // Add null check for config pointer
+            if (config && needs_init && !config->provider.empty() && !config->model.empty()) {
+                std::cerr << "Initializing system message\n";
+                chat_history.push_back({"system", "Selected: " + config->provider + " - " + config->model});
+                needs_init = false;
+            }
+            
+            std::cerr << "Chat history size: " << chat_history.size() << "\n";
+            Elements elements;
+            for (const auto& msg : chat_history) {
+                auto text_element = text(msg.content) | 
+                    (msg.role == "user" ? color(Color::Green) : color(Color::White));
+                elements.push_back(text_element | vscroll_indicator | frame);
+            }
+            
+            // Add empty state handling
+            if (elements.empty()) {
+                std::cerr << "Rendering empty chat state\n";
+                elements.push_back(text(" ")); // Ensure non-empty container
+            }
+            
+            std::cerr << "Returning rendered elements\n";
+            // Ensure minimum container height
+            return vbox({
+                text("Chat History:") | bold,
+                vbox(elements) | yframe | flex
+            }) | border | size(HEIGHT, GREATER_THAN, 3);
+        } catch (const std::exception& e) {
+            std::cerr << "Rendering error: " << e.what() << "\n";
+            return text("Rendering error: " + std::string(e.what())) | color(Color::Red);
         }
-        
-        Elements elements;
-        for (const auto& msg : chat_history) {
-            auto text_element = text(msg.content) | 
-                (msg.role == "user" ? color(Color::Green) : color(Color::White));
-            elements.push_back(text_element | vscroll_indicator | frame);
-        }
-        return vbox(elements) | yframe | flex | border;
     });
 
     auto container = Container::Vertical({
@@ -205,24 +233,39 @@ Component ChatInterface(const Config* config) { // Change to pointer
 }
 
 int main(int argc, char* argv[]) {
+    std::cerr << "\n=== Program Start ===\n";
     auto screen = ScreenInteractive::Fullscreen();
+    std::cerr << "Screen initialized\n";
+    
     Config config;
-    int selected_tab = 0; // 0 = selection, 1 = chat
+    std::cerr << "Config created (provider: '" << config.provider 
+             << "', model: '" << config.model << "')\n";
+
+    int selected_tab = 0;
+    std::cerr << "Selected tab initialized to 0\n";
 
     auto selection_component = SelectionMenu(&config);
-    
+    std::cerr << "Selection component created\n";
+
     auto chat_component = ChatInterface(&config);
-    
+    std::cerr << "Chat component created\n";
+
+    std::cerr << "Creating main container...\n";
     auto main_container = Container::Tab({
         selection_component,
         chat_component,
     }, &selected_tab) | CatchEvent([&](Event event) {
+        std::cerr << "Main container event: " << event << "\n";
         if (event == Event::Return && selected_tab == 0) {
-            selected_tab = 1; // Switch to chat after selection
+            std::cerr << "Switching to chat tab\n";
+            selected_tab = 1;
             return true;
         }
         return false;
     });
 
+    std::cerr << "Entering screen loop...\n";
     screen.Loop(main_container);
+    std::cerr << "Exiting program\n";
+    return 0;
 }
