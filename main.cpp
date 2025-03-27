@@ -105,23 +105,23 @@ Component SelectionMenu(Config* config) {
     });
 }
 
-Component ChatInterface(const Config& config) {
+Component ChatInterface(const Config* config) { // Change to pointer
     std::string input;
     static std::vector<Message> chat_history;  // Make history local to component
-    static bool first_entry = true;  // Add initialization flag
+    static bool needs_init = true;  // Track initialization status
     
     auto input_field = Input(&input, "Type your message...") 
         | CatchEvent([&](Event event) {
             return event.is_mouse();
           }); // Disable mouse in input field
     
-    // Add initial message after selection only once
-    if (first_entry) {
-        chat_history.push_back({"system", "Selected: " + config.provider + " - " + config.model});
-        first_entry = false;
-    }
-    
     auto chat_log = Renderer([&] {
+        // Add initial message only when config is valid and first rendered
+        if (needs_init && !config->provider.empty() && !config->model.empty()) {
+            chat_history.push_back({"system", "Selected: " + config->provider + " - " + config->model});
+            needs_init = false;
+        }
+        
         Elements elements;
         for (const auto& msg : chat_history) {
             auto text_element = text(msg.content) | 
@@ -152,7 +152,7 @@ Component ChatInterface(const Config& config) {
                 // Get AI response
                 try {
                     std::string response;
-                    bool success = fetchUrl(config.api_base, chat_history, response);
+                    bool success = fetchUrl(config->api_base, chat_history, response);
                     std::cerr << "API call success: " << std::boolalpha << success << "\n";
                     
                     if (!success) {
@@ -211,7 +211,7 @@ int main(int argc, char* argv[]) {
 
     auto selection_component = SelectionMenu(&config);
     
-    auto chat_component = ChatInterface(config);
+    auto chat_component = ChatInterface(&config);
     
     auto main_container = Container::Tab({
         selection_component,
