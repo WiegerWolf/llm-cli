@@ -33,6 +33,7 @@ struct Config {
     std::string provider;
     std::string model;
     std::string api_base = "https://api.groq.com/openai/v1/chat/completions";
+    bool needs_chat_init = true;  // Add flag to control chat initialization
 };
 
 struct Message {
@@ -129,13 +130,13 @@ Component SelectionMenu(Config* config) {
 Component ChatInterface(const Config* config) { // Change to pointer
     std::string input;
     static std::vector<Message> chat_history;  // Make history local to component
-    static bool needs_init = true;  // Track initialization status
     
-    // Move initialization out of renderer to component constructor
-    if (needs_init && config && !config->provider.empty() && !config->model.empty()) {
+    // Use config's initialization flag instead of static variable
+    if (config && config->needs_chat_init && !config->provider.empty() && !config->model.empty()) {
         std::cerr << "Initializing system message\n";
+        chat_history.clear();
         chat_history.push_back({"system", "Selected: " + config->provider + " - " + config->model});
-        needs_init = false;
+        const_cast<Config*>(config)->needs_chat_init = false;
     }
     
     auto input_field = Input(&input, "Type your message...") 
@@ -271,13 +272,8 @@ int main(int argc, char* argv[]) {
         std::cerr << "Main container event: " << event << "\n";
         if (event == Event::Return && selected_tab == 0) {
             std::cerr << "Switching to chat tab\n";
-            // Reset chat initialization when switching to chat tab
-            static bool first_enter = true;
-            if (first_enter) {
-                // This will trigger reinitialization in the ChatInterface
-                needs_init = true;
-                first_enter = false;
-            }
+            // Reset chat initialization through config
+            config.needs_chat_init = true;
             selected_tab = 1;
             return true;
         }
