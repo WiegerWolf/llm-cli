@@ -20,7 +20,6 @@ struct Message {
     std::string role;
     std::string content;
 };
-std::vector<Message> chat_history;
 
 // Callback to handle HTTP response
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
@@ -96,13 +95,19 @@ Component SelectionMenu(Config* config) {
 
 Component ChatInterface(const Config& config) {
     std::string input;
+    static std::vector<Message> chat_history;  // Make history local to component
+    static bool first_entry = true;  // Add initialization flag
+    
     auto input_field = Input(&input, "Type your message...") 
         | CatchEvent([&](Event event) {
             return event.is_mouse();
           }); // Disable mouse in input field
     
-    // Add initial message after selection
-    chat_history.push_back({"system", "Selected: " + config.provider + " - " + config.model});
+    // Add initial message after selection only once
+    if (first_entry) {
+        chat_history.push_back({"system", "Selected: " + config.provider + " - " + config.model});
+        first_entry = false;
+    }
     
     auto chat_log = Renderer([&] {
         Elements elements;
