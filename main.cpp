@@ -7,6 +7,8 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <cstdlib> // For getenv()
 #include <nlohmann/json.hpp>
+#include <sstream>
+#include <iomanip>
 
 using namespace ftxui;
 
@@ -64,7 +66,17 @@ bool fetchUrl(const std::string& url, const std::vector<Message>& chat_history, 
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_payload.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, json_payload.size());
 
+    std::cerr << "Building payload with " << chat_history.size() << " messages\n";
+    std::cerr << "Payload size: " << json_payload.size() << " bytes\n";
+
     CURLcode res = curl_easy_perform(curl);
+    
+    std::cerr << "Response code: " << res << "\n";
+    std::cerr << "Response size: " << response.size() << " bytes\n";
+    if (!response.empty()) {
+        std::cerr << "First 200 chars of response:\n" << response.substr(0, 200) << "\n";
+    }
+    
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     
@@ -130,38 +142,60 @@ Component ChatInterface(const Config& config) {
         
         if (event == Event::Return) {
             if (!input.empty()) {
+                std::cerr << "--- New Message ---\n";
+                std::cerr << "Current history size: " << chat_history.size() << "\n";
+                
                 // Add user message
                 chat_history.push_back({"user", input});
+                std::cerr << "After user message: " << chat_history.size() << "\n";
                 
                 // Get AI response
                 try {
                     std::string response;
-                    if (!fetchUrl("https://api.groq.com/openai/v1/chat/completions", chat_history, response)) {
+                    bool success = fetchUrl(config.api_base, chat_history, response);
+                    std::cerr << "API call success: " << std::boolalpha << success << "\n";
+                    
+                    if (!success) {
                         throw std::runtime_error("API request failed");
                     }
                     
                     auto json = nlohmann::json::parse(response);
                     std::string ai_response = json["choices"][0]["message"]["content"];
-                    // Keep last 50 messages (25 exchanges)
-                    const size_t max_history = 50;
-                    if (chat_history.size() > max_history) {
-                        chat_history.erase(
-                            chat_history.begin(),
-                            chat_history.begin() + (chat_history.size() - max_history)
-                        );
-                    }
+                    
+                    std::cerr << "Before assistant message: " << chat_history.size() << "\n";
                     chat_history.push_back({"assistant", ai_response});
-                } catch (const std::exception& e) {
-                    chat_history.push_back({"system", "Error: " + std::string(e.what())});
+                    std::cerr << "After assistant message: " << chat_history.size() << "\n";
+                    
                     // Keep last 50 messages (25 exchanges)
                     const size_t max_history = 50;
                     if (chat_history.size() > max_history) {
+                        std::cerr << "Trimming history from " << chat_history.size() 
+                                << " to " << max_history << "\n";
+                        chat_history.erase(
+                            chat_history.begin(),
+                            chat_history.begin() + (chat_history.size() - max_history)
+                        );
+                        std::cerr << "New history size: " << chat_history.size() << "\n";
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Exception caught: " << e.what() << "\n";
+                    chat_history.push_back({"system", "Error: " + std::string(e.what())});
+                    
+                    // Keep last 50 messages (25 exchanges)
+                    const size_t max_history = 50;
+                    if (chat_history.size() > max_history) {
+                        std::cerr << "Error trimming history from " << chat_history.size() 
+                                << " to " << max_history << "\n";
                         chat_history.erase(
                             chat_history.begin(),
                             chat_history.begin() + (chat_history.size() - max_history)
                         );
                     }
+                    
+                    std::cerr << "Current history size after error: " << chat_history.size() << "\n";
                 }
+                
+                std::cerr << "Final history size: " << chat_history.size() << "\n";
                 input.clear();
             }
             return true;
