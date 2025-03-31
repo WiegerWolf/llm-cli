@@ -8,6 +8,8 @@
 #include <stdexcept>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <fstream>
+#include <filesystem>
 
 using namespace std;
 
@@ -19,7 +21,54 @@ struct Message {
 struct Config {
     string api_base = "https://api.groq.com/openai/v1/chat/completions";
     vector<Message> chat_history;
+    
+    void ensureSystemMessage() {
+        if (chat_history.empty() || chat_history[0].role != "system") {
+            chat_history.insert(chat_history.begin(), {"system", "You are a helpful assistant."});
+        }
+    }
 };
+
+string getHistoryPath() {
+    const char* home = getenv("HOME");
+    return string(home) + "/.llm-cli-history.json";
+}
+
+void saveHistory(const vector<Message>& history) {
+    nlohmann::json j;
+    for (const auto& msg : history) {
+        j.push_back({{"role", msg.role}, {"content", msg.content}});
+    }
+    
+    ofstream file(getHistoryPath());
+    if (file) {
+        file << j.dump(4);
+    }
+}
+
+vector<Message> loadHistory() {
+    vector<Message> history;
+    ifstream file(getHistoryPath());
+    
+    if (file) {
+        try {
+            nlohmann::json j;
+            file >> j;
+            for (const auto& item : j) {
+                history.push_back({item["role"], item["content"]});
+            }
+        } catch (...) {
+            // Invalid history file, start fresh
+        }
+    }
+    
+    // Add system prompt if no history found
+    if (history.empty()) {
+        history.push_back({"system", "You are a helpful assistant."});
+    }
+    
+    return history;
+}
 
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, string* output) {
     size_t total_size = size * nmemb;
@@ -70,7 +119,8 @@ bool fetchGroqResponse(const Config& config, const string& input, string& respon
 
 int main() {
     Config config;
-    config.chat_history.push_back({"system", "You are a helpful assistant."});
+    config.chat_history = loadHistory();
+    config.ensureSystemMessage();
 
     cout << "LLM CLI - Type your message (Ctrl+D to exit)\n";
 
@@ -115,5 +165,6 @@ int main() {
     }
 
     cout << "\nExiting...\n";
+    saveHistory(config.chat_history);
     return 0;
 }
