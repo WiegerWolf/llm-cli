@@ -17,7 +17,19 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 # Find required packages
 find_package(CURL REQUIRED)
-find_package(Readline REQUIRED)
+
+# Find Readline using alternative methods
+find_path(READLINE_INCLUDE_DIR readline/readline.h)
+find_library(READLINE_LIBRARY NAMES readline)
+find_library(TERMCAP_LIBRARY NAMES termcap tinfo curses ncurses)
+
+if(READLINE_INCLUDE_DIR AND READLINE_LIBRARY AND TERMCAP_LIBRARY)
+    set(Readline_FOUND TRUE)
+    set(Readline_LIBRARIES ${READLINE_LIBRARY} ${TERMCAP_LIBRARY})
+    set(Readline_INCLUDE_DIRS ${READLINE_INCLUDE_DIR})
+else()
+    message(FATAL_ERROR "Readline libraries not found - install with: sudo apt-get install libreadline-dev")
+endif()
 
 # Add executable and link libraries
 add_executable(llm main.cpp)
