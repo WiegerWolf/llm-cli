@@ -17,7 +17,6 @@ public:
     void saveUserMessage(const std::string& content);
     void saveAssistantMessage(const std::string& content);
     std::vector<Message> getContextHistory(size_t max_pairs = 10);
-    void trimDatabaseHistory(size_t keep_pairs = 20);
 
 private:
     struct Impl;

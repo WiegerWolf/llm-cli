@@ -115,19 +115,3 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
     return history;
 }
 
-void PersistenceManager::trimDatabaseHistory(size_t keep_pairs) {
-    const std::string sql = R"(
-        DELETE FROM messages WHERE id IN (
-            SELECT id FROM messages
-            WHERE role IN ('user','assistant')
-            ORDER BY id DESC
-            OFFSET ?
-        )
-    )";
-    
-    sqlite3_stmt* stmt;
-    sqlite3_prepare_v2(impl->db, sql.c_str(), -1, &stmt, nullptr);
-    sqlite3_bind_int(stmt, 1, keep_pairs * 2);
-    sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-}
