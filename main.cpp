@@ -11,23 +11,12 @@
 #include <iomanip>
 #include <stdexcept>
 
-// Add this operator overload to handle Event formatting
-std::ostream& operator<<(std::ostream& os, const ftxui::Event& event) {
-  if (event.is_character()) {
-    os << "Char:" << event.character();
-  } else if (event == ftxui::Event::Return) {
-    os << "Enter";
-  } else if (event == ftxui::Event::Escape) {
-    os << "Esc";
-  } else if (event.is_mouse()) {
-    os << "Mouse";
-  } else {
-    os << "UnknownEvent";
-  }
-  return os;
-}
-
 using namespace ftxui;
+
+struct Message {
+    std::string role;
+    std::string content;
+};
 
 struct Config {
     std::string provider;
@@ -35,11 +24,6 @@ struct Config {
     std::string api_base = "https://api.groq.com/openai/v1/chat/completions";
     bool needs_chat_init = true;  // Add flag to control chat initialization
     std::vector<Message> chat_history;  // Store chat history in config
-};
-
-struct Message {
-    std::string role;
-    std::string content;
 };
 
 // Callback to handle HTTP response
@@ -85,17 +69,7 @@ bool fetchUrl(const std::string& url, const std::vector<Message>& chat_history, 
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_payload.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, json_payload.size());
 
-    std::cerr << "Building payload with " << chat_history.size() << " messages\n";
-    std::cerr << "Payload size: " << json_payload.size() << " bytes\n";
-
     CURLcode res = curl_easy_perform(curl);
-    
-    std::cerr << "Response code: " << res << "\n";
-    std::cerr << "Response size: " << response.size() << " bytes\n";
-    if (!response.empty()) {
-        std::cerr << "First 200 chars of response:\n" << response.substr(0, 200) << "\n";
-    }
-    
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     
@@ -103,7 +77,6 @@ bool fetchUrl(const std::string& url, const std::vector<Message>& chat_history, 
 }
 
 Component SelectionMenu(Config* config) {
-    std::cerr << "\nCreating selection menu\n";
     std::vector<std::string> providers = {"Groq"};
     std::vector<std::string> models = {"llama-3.3-70b-versatile"};
     int selected_provider = 0;
@@ -116,10 +89,7 @@ Component SelectionMenu(Config* config) {
         provider_menu,
         model_menu,
     }) | CatchEvent([&](Event event) {
-        std::cerr << "Selection menu event: " << event << "\n";
         if (event == Event::Return) {
-            std::cerr << "Setting config (provider: " << providers[selected_provider]
-                     << ", model: " << models[selected_model] << ")\n";
             config->provider = providers[selected_provider];
             config->model = models[selected_model];
             return true; // Exit the component
@@ -133,7 +103,6 @@ Component ChatInterface(Config* config) { // Non-const pointer
     
     // Use config's initialization flag
     if (config && config->needs_chat_init && !config->provider.empty() && !config->model.empty()) {
-        std::cerr << "Initializing system message\n";
         config->chat_history.clear();
         config->chat_history.push_back({"system", "Selected: " + config->provider + " - " + config->model});
         config->needs_chat_init = false;
@@ -146,8 +115,6 @@ Component ChatInterface(Config* config) { // Non-const pointer
     
     auto chat_log = Renderer([&] {
         try {
-            std::cerr << "\nRendering chat log (config valid: " << (config != nullptr) << ")\n";
-            std::cerr << "Chat history size: " << config->chat_history.size() << "\n";
             Elements elements;
             for (const auto& msg : config->chat_history) {
                 auto text_element = text(msg.content) | 
@@ -157,18 +124,15 @@ Component ChatInterface(Config* config) { // Non-const pointer
             
             // Add empty state handling
             if (elements.empty()) {
-                std::cerr << "Rendering empty chat state\n";
                 elements.push_back(text(" ")); // Ensure non-empty container
             }
             
-            std::cerr << "Returning rendered elements\n";
             // Ensure minimum container height
             return vbox({
                 text("Chat History:") | bold,
                 vbox(elements) | yframe | flex
             }) | border | size(HEIGHT, GREATER_THAN, 3);
         } catch (const std::exception& e) {
-            std::cerr << "Rendering error: " << e.what() << "\n";
             return text("Rendering error: " + std::string(e.what())) | color(Color::Red);
         }
     });
@@ -181,63 +145,36 @@ Component ChatInterface(Config* config) { // Non-const pointer
     return container | CatchEvent([&](Event event) {
         // Filter out mouse events
         if (event.is_mouse()) return false;
-        
         if (event == Event::Return) {
             if (!input.empty()) {
-                std::cerr << "--- New Message ---\n";
-                std::cerr << "Current history size: " << config->chat_history.size() << "\n";
-                
-                // Add user message
                 config->chat_history.push_back({"user", input});
-                std::cerr << "After user message: " << config->chat_history.size() << "\n";
-                
-                // Get AI response
                 try {
                     std::string response;
                     bool success = fetchUrl(config->api_base, config->chat_history, response);
-                    std::cerr << "API call success: " << std::boolalpha << success << "\n";
-                    
                     if (!success) {
                         throw std::runtime_error("API request failed");
                     }
                     
                     auto json = nlohmann::json::parse(response);
                     std::string ai_response = json["choices"][0]["message"]["content"];
-                    
-                    std::cerr << "Before assistant message: " << config->chat_history.size() << "\n";
                     config->chat_history.push_back({"assistant", ai_response});
-                    std::cerr << "After assistant message: " << config->chat_history.size() << "\n";
-                    
-                    // Keep last 50 messages (25 exchanges)
                     const size_t max_history = 50;
                     if (config->chat_history.size() > max_history) {
-                        std::cerr << "Trimming history from " << config->chat_history.size() 
-                                << " to " << max_history << "\n";
                         config->chat_history.erase(
                             config->chat_history.begin(),
                             config->chat_history.begin() + (config->chat_history.size() - max_history)
                         );
-                        std::cerr << "New history size: " << config->chat_history.size() << "\n";
                     }
                 } catch (const std::exception& e) {
-                    std::cerr << "Exception caught: " << e.what() << "\n";
                     config->chat_history.push_back({"system", "Error: " + std::string(e.what())});
-                    
-                    // Keep last 50 messages (25 exchanges)
                     const size_t max_history = 50;
                     if (config->chat_history.size() > max_history) {
-                        std::cerr << "Error trimming history from " << config->chat_history.size() 
-                                << " to " << max_history << "\n";
                         config->chat_history.erase(
                             config->chat_history.begin(),
                             config->chat_history.begin() + (config->chat_history.size() - max_history)
                         );
                     }
-                    
-                    std::cerr << "Current history size after error: " << config->chat_history.size() << "\n";
                 }
-                
-                std::cerr << "Final history size: " << config->chat_history.size() << "\n";
                 input.clear();
             }
             return true;
@@ -247,40 +184,23 @@ Component ChatInterface(Config* config) { // Non-const pointer
 }
 
 int main(int argc, char* argv[]) {
-    std::cerr << "\n=== Program Start ===\n";
     auto screen = ScreenInteractive::Fullscreen();
-    std::cerr << "Screen initialized\n";
     
     Config config;
-    std::cerr << "Config created (provider: '" << config.provider 
-             << "', model: '" << config.model << "')\n";
-
     int selected_tab = 0;
-    std::cerr << "Selected tab initialized to 0\n";
-
     auto selection_component = SelectionMenu(&config);
-    std::cerr << "Selection component created\n";
-
     auto chat_component = ChatInterface(&config);
-    std::cerr << "Chat component created\n";
-
-    std::cerr << "Creating main container...\n";
-    // Create tab components
     std::vector<std::string> tab_entries = {"Selection", "Chat"};
     auto tab_toggle = Toggle(&tab_entries, &selected_tab);
-    
     auto tab_container = Container::Tab(
-        {selection_component, chat_component},
+        // {selection_component, chat_component},
+        {chat_component},
         &selected_tab
     );
-    
-    // Combine toggle and content
     auto main_container = Container::Vertical({
         tab_toggle,
         tab_container
     });
-    
-    // Create renderer that properly manages component lifecycle
     auto renderer = Renderer(main_container, [&] {
         return vbox({
             tab_toggle->Render(),
@@ -289,7 +209,6 @@ int main(int argc, char* argv[]) {
         }) | border;
     }) | CatchEvent([&](Event event) {
         if (event == Event::Return && selected_tab == 0 && !config.provider.empty()) {
-            std::cerr << "Selection complete, enabling chat initialization\n";
             config.needs_chat_init = true;
             selected_tab = 1;
             return true;
@@ -297,8 +216,6 @@ int main(int argc, char* argv[]) {
         return false;
     });
 
-    std::cerr << "Entering screen loop...\n";
     screen.Loop(renderer);
-    std::cerr << "Exiting program\n";
     return 0;
 }
