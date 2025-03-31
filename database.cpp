@@ -48,7 +48,10 @@ void saveHistoryToDatabase(const std::vector<Message>& history) {
     sqlite3* db = initDatabase();
     
     // Begin transaction
-    sqlite3_exec(db, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION", nullptr, nullptr, nullptr);
+    
+    // Add WAL journal mode for crash resilience
+    sqlite3_exec(db, "PRAGMA journal_mode=WAL", nullptr, nullptr, nullptr);
     
     // Clear existing messages
     sqlite3_exec(db, "DELETE FROM messages", nullptr, nullptr, nullptr);

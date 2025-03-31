@@ -107,20 +107,24 @@ int main() {
             auto json = nlohmann::json::parse(response);
             string ai_response = json["choices"][0]["message"]["content"];
             
-            // Add to chat history and print response
+            // Add to chat history
             config.chat_history.push_back({"user", input});
             config.chat_history.push_back({"assistant", ai_response});
+            
+            // Immediate save after successful response
+            saveHistoryToDatabase(config.chat_history);
             
             cout << "\033[1;36m"  // Start cyan color
                  << ai_response 
                  << "\033[0m\n\n"; // Reset color and add spacing
 
-            // Keep history manageable
+            // Keep history manageable and re-save
             if (config.chat_history.size() > 20) {
                 config.chat_history.erase(
                     config.chat_history.begin(),
                     config.chat_history.begin() + 2
                 );
+                saveHistoryToDatabase(config.chat_history);
             }
         } catch (const exception& e) {
             cerr << "Error: " << e.what() << "\n";
