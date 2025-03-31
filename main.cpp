@@ -4,6 +4,7 @@
 #include <ftxui/screen/screen.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/component_options.hpp> // Add MenuOption header
 #include <ftxui/component/screen_interactive.hpp>
 #include <cstdlib> // For getenv()
 #include <nlohmann/json.hpp>
@@ -82,17 +83,33 @@ Component SelectionMenu(Config* config) {
     int selected_provider = 0;
     int selected_model = 0;
 
-    auto provider_menu = Menu(&providers, &selected_provider);
-    auto model_menu = Menu(&models, &selected_model);
+    int selected_provider = 0;
+    int selected_model = 0;
 
-    return Container::Vertical({
+    // Define options for the menus. We can use on_change to update config immediately
+    // or rely on the CatchEvent below for final confirmation on Enter.
+    // Let's stick to the CatchEvent approach for confirming the final selection.
+    MenuOption provider_option; // Basic options are often sufficient
+    MenuOption model_option;
+
+    auto provider_menu = Menu(&providers, &selected_provider, provider_option);
+    auto model_menu = Menu(&models, &selected_model, model_option);
+
+    auto layout = Container::Vertical({
+        Renderer([] { return text("Select Provider:") | bold; }),
         provider_menu,
+        Renderer([] { return text("Select Model:") | bold; }),
         model_menu,
-    }) | CatchEvent([&](Event event) {
+    });
+
+    return layout | CatchEvent([&](Event event) {
         if (event == Event::Return) {
+            // Update config only when Enter is pressed within this container
             config->provider = providers[selected_provider];
             config->model = models[selected_model];
-            return true; // Exit the component
+            // Signal that the event is handled, potentially allowing the main loop
+            // CatchEvent to switch tabs.
+            return true;
         }
         return false;
     });
@@ -193,8 +210,8 @@ int main(int argc, char* argv[]) {
     std::vector<std::string> tab_entries = {"Selection", "Chat"};
     auto tab_toggle = Toggle(&tab_entries, &selected_tab);
     auto tab_container = Container::Tab(
-        // {selection_component, chat_component},
-        {chat_component},
+        {selection_component, chat_component}, // Re-enable selection_component
+        // {chat_component}, // Keep only chat component for now if selection is still broken
         &selected_tab
     );
     auto main_container = Container::Vertical({
