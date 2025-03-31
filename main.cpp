@@ -72,8 +72,6 @@ private:
 
 public:
     void run() {
-        // db.trimDatabaseHistory(20); // Keep last 20 conversations
-        
         cout << "LLM CLI - Type your message (Ctrl+D to exit)\n";
         
         while (true) {
