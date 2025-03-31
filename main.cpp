@@ -98,7 +98,9 @@ int main() {
             config.chat_history.push_back({"user", input});
             config.chat_history.push_back({"assistant", ai_response});
             
-            cout << "\nResponse:\n" << ai_response << "\n\n";
+            cout << "\033[1;36m"  // Start cyan color
+                 << ai_response 
+                 << "\033[0m\n\n"; // Reset color and add spacing
 
             // Keep history manageable
             if (config.chat_history.size() > 20) {
