@@ -102,17 +102,17 @@ Component SelectionMenu(Config* config,
         model_menu,
     });
 
-    return layout | CatchEvent([&, selected_provider, selected_model](Event event) { // Capture indices by value for the lambda
+    // Capture selected_tab pointer as well
+    return layout | CatchEvent([&, selected_provider, selected_model, selected_tab](Event event) {
         if (event == Event::Return) {
             // Update config only when Enter is pressed within this container
-            // Use the dereferenced pointers to get the current selection index
             config->provider = providers[*selected_provider];
             config->model = models[*selected_model];
-            // Signal that the event is handled, potentially allowing the main loop
-            // CatchEvent to switch tabs.
+            config->needs_chat_init = true; // Set flag to initialize chat
+            *selected_tab = 1; // Switch to the Chat tab (index 1)
             return true; // Event handled
         }
-        return false;
+        return false; // Event not handled
     });
 }
 
