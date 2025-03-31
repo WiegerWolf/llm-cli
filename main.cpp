@@ -83,9 +83,6 @@ Component SelectionMenu(Config* config) {
     int selected_provider = 0;
     int selected_model = 0;
 
-    int selected_provider = 0;
-    int selected_model = 0;
-
     // Define options for the menus. We can use on_change to update config immediately
     // or rely on the CatchEvent below for final confirmation on Enter.
     // Let's stick to the CatchEvent approach for confirming the final selection.
