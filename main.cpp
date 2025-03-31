@@ -8,8 +8,8 @@
 #include <stdexcept>
 #include <readline/readline.h>
 #include <readline/history.h>
-#include <fstream>
-#include <filesystem>
+#include <vector>
+#include <sqlite3.h>
 
 using namespace std;
 
@@ -29,46 +29,9 @@ struct Config {
     }
 };
 
-string getHistoryPath() {
-    const char* home = getenv("HOME");
-    return string(home) + "/.llm-cli-history.json";
-}
-
-void saveHistory(const vector<Message>& history) {
-    nlohmann::json j;
-    for (const auto& msg : history) {
-        j.push_back({{"role", msg.role}, {"content", msg.content}});
-    }
-    
-    ofstream file(getHistoryPath());
-    if (file) {
-        file << j.dump(4);
-    }
-}
-
-vector<Message> loadHistory() {
-    vector<Message> history;
-    ifstream file(getHistoryPath());
-    
-    if (file) {
-        try {
-            nlohmann::json j;
-            file >> j;
-            for (const auto& item : j) {
-                history.push_back({item["role"], item["content"]});
-            }
-        } catch (...) {
-            // Invalid history file, start fresh
-        }
-    }
-    
-    // Add system prompt if no history found
-    if (history.empty()) {
-        history.push_back({"system", "You are a helpful assistant."});
-    }
-    
-    return history;
-}
+// Database functions are defined in database.cpp
+extern void saveHistoryToDatabase(const vector<Message>& history);
+extern vector<Message> loadHistoryFromDatabase();
 
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, string* output) {
     size_t total_size = size * nmemb;
@@ -119,7 +82,7 @@ bool fetchGroqResponse(const Config& config, const string& input, string& respon
 
 int main() {
     Config config;
-    config.chat_history = loadHistory();
+    config.chat_history = loadHistoryFromDatabase();
     config.ensureSystemMessage();
 
     cout << "LLM CLI - Type your message (Ctrl+D to exit)\n";
@@ -165,6 +128,6 @@ int main() {
     }
 
     cout << "\nExiting...\n";
-    saveHistory(config.chat_history);
+    saveHistoryToDatabase(config.chat_history);
     return 0;
 }

@@ -17,6 +17,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 # Find required packages
 find_package(CURL REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 # Find Readline using alternative methods
 find_path(READLINE_INCLUDE_DIR readline/readline.h)
@@ -37,6 +38,7 @@ target_link_libraries(llm PRIVATE
     ${CURL_LIBRARIES} 
     nlohmann_json::nlohmann_json
     ${Readline_LIBRARIES}
+    SQLite::SQLite3
 )
 
 # Installation setup
