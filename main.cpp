@@ -77,20 +77,21 @@ bool fetchUrl(const std::string& url, const std::vector<Message>& chat_history, 
     return res == CURLE_OK;
 }
 
-Component SelectionMenu(Config* config) {
-    std::vector<std::string> providers = {"Groq"};
-    std::vector<std::string> models = {"llama-3.3-70b-versatile"};
-    int selected_provider = 0;
-    int selected_model = 0;
-
+// Modify SelectionMenu to accept references to data and pointers to state
+Component SelectionMenu(Config* config,
+                        const std::vector<std::string>& providers,
+                        const std::vector<std::string>& models,
+                        int* selected_provider,
+                        int* selected_model) {
     // Define options for the menus. We can use on_change to update config immediately
     // or rely on the CatchEvent below for final confirmation on Enter.
     // Let's stick to the CatchEvent approach for confirming the final selection.
     MenuOption provider_option; // Basic options are often sufficient
     MenuOption model_option;
 
-    auto provider_menu = Menu(&providers, &selected_provider, provider_option);
-    auto model_menu = Menu(&models, &selected_model, model_option);
+    // Use the passed-in pointers/references
+    auto provider_menu = Menu(&providers, selected_provider, provider_option);
+    auto model_menu = Menu(&models, selected_model, model_option);
 
     auto layout = Container::Vertical({
         Renderer([] { return text("Select Provider:") | bold; }),
@@ -99,14 +100,15 @@ Component SelectionMenu(Config* config) {
         model_menu,
     });
 
-    return layout | CatchEvent([&](Event event) {
+    return layout | CatchEvent([&, selected_provider, selected_model](Event event) { // Capture indices by value for the lambda
         if (event == Event::Return) {
             // Update config only when Enter is pressed within this container
-            config->provider = providers[selected_provider];
-            config->model = models[selected_model];
+            // Use the dereferenced pointers to get the current selection index
+            config->provider = providers[*selected_provider];
+            config->model = models[*selected_model];
             // Signal that the event is handled, potentially allowing the main loop
             // CatchEvent to switch tabs.
-            return true;
+            return true; // Event handled
         }
         return false;
     });
@@ -202,7 +204,15 @@ int main(int argc, char* argv[]) {
     
     Config config;
     int selected_tab = 0;
-    auto selection_component = SelectionMenu(&config);
+
+    // Declare menu data and state here in main
+    std::vector<std::string> providers = {"Groq"};
+    std::vector<std::string> models = {"llama-3.3-70b-versatile"};
+    int selected_provider = 0;
+    int selected_model = 0;
+
+    // Pass data/state to the factory function
+    auto selection_component = SelectionMenu(&config, providers, models, &selected_provider, &selected_model);
     auto chat_component = ChatInterface(&config);
     std::vector<std::string> tab_entries = {"Selection", "Chat"};
     auto tab_toggle = Toggle(&tab_entries, &selected_tab);
