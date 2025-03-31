@@ -55,6 +55,7 @@ endif()
 add_executable(llm 
     main.cpp
     database.cpp
+    database.h
 )
 target_link_libraries(llm PRIVATE 
     ${CURL_LIBRARIES} 

@@ -1,145 +1,111 @@
-#include <iostream>
-#include <string>
-#include <vector>
+#include "database.h"
 #include <sqlite3.h>
-#include <cstdlib>
+#include <memory>
 #include <stdexcept>
-#include <filesystem>
+#include <iostream>
+#include <cstdlib>
 
-struct Message {
-    std::string role;
-    std::string content;
-    int id = 0; // Default to 0 for new messages
-};
-
-// Initialize database connection and create tables if needed
-sqlite3* initDatabase() {
-    sqlite3* db = nullptr;
-    std::string dbPath = std::string(getenv("HOME")) + "/.llm-cli-chat.db";
+struct PersistenceManager::Impl {
+    sqlite3* db;
     
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
-        std::string error = sqlite3_errmsg(db);
-        sqlite3_close(db);
-        throw std::runtime_error("Cannot open database: " + error);
+    Impl() {
+        std::string path = std::string(getenv("HOME")) + "/.llm-cli-chat.db";
+        if(sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+            throw std::runtime_error("Database connection failed");
+        }
+        // Initialize tables
+        const char* schema = R"(
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                role TEXT CHECK(role IN ('system','user','assistant')),
+                content TEXT
+            );
+        )";
+        exec(schema);
+        exec("PRAGMA journal_mode=WAL");
     }
     
-    // Create table if it doesn't exist
-    const char* createTableSQL = R"(
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL
-        );
-    )";
-    
-    char* errMsg = nullptr;
-    if (sqlite3_exec(db, createTableSQL, nullptr, nullptr, &errMsg) != SQLITE_OK) {
-        std::string error = errMsg;
-        sqlite3_free(errMsg);
-        sqlite3_close(db);
-        throw std::runtime_error("SQL error: " + error);
-    }
-    
-    return db;
-}
+    ~Impl() { sqlite3_close(db); }
 
-// Save messages to database
-void saveHistoryToDatabase(const std::vector<Message>& history) {
-    sqlite3* db = initDatabase();
-    
-    // Begin transaction
-    sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION", nullptr, nullptr, nullptr);
-    
-    // Add WAL journal mode for crash resilience
-    sqlite3_exec(db, "PRAGMA journal_mode=WAL", nullptr, nullptr, nullptr);
-    
-    // Get max existing ID
-    int max_id = 0;
-    sqlite3_stmt* max_stmt;
-    sqlite3_prepare_v2(db, "SELECT MAX(id) FROM messages", -1, &max_stmt, nullptr);
-    if (sqlite3_step(max_stmt) == SQLITE_ROW) {
-        max_id = sqlite3_column_int(max_stmt, 0);
+    void exec(const char* sql) {
+        char* err;
+        if(sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
+            std::string msg = err;
+            sqlite3_free(err);
+            throw std::runtime_error(msg);
+        }
     }
-    sqlite3_finalize(max_stmt);
-    
-    // Prepare insert statement
-    sqlite3_stmt* stmt;
-    const char* insertSQL = "INSERT INTO messages (role, content) VALUES (?, ?)";
-    sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nullptr);
-    
-    // Insert only new messages (those with id=0)
-    for (const auto& msg : history) {
-        if (msg.id != 0) continue;
-        
+
+    void insertMessage(const Message& msg) {
+        const char* sql = "INSERT INTO messages (role, content) VALUES (?,?)";
+        sqlite3_stmt* stmt;
+        sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
         sqlite3_bind_text(stmt, 1, msg.role.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 2, msg.content.c_str(), -1, SQLITE_STATIC);
         
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
-            std::string error = sqlite3_errmsg(db);
+        if(sqlite3_step(stmt) != SQLITE_DONE) {
             sqlite3_finalize(stmt);
-            sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
-            sqlite3_close(db);
-            throw std::runtime_error("Failed to insert message: " + error);
+            throw std::runtime_error("Insert failed");
         }
-        
-        sqlite3_reset(stmt);
-        sqlite3_clear_bindings(stmt);
+        sqlite3_finalize(stmt);
     }
-    
-    // Commit transaction and clean up
-    sqlite3_finalize(stmt);
-    sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
-    sqlite3_close(db);
+};
+
+PersistenceManager::PersistenceManager() : impl(std::make_unique<Impl>()) {}
+PersistenceManager::~PersistenceManager() = default;
+
+void PersistenceManager::saveUserMessage(const std::string& content) {
+    impl->exec("BEGIN");
+    try {
+        impl->insertMessage({"user", content});
+        impl->exec("COMMIT");
+    } catch(...) {
+        impl->exec("ROLLBACK");
+        throw;
+    }
 }
 
-// Load messages from database
-std::vector<Message> loadHistoryFromDatabase() {
-    std::vector<Message> history;
-    sqlite3* db = nullptr;
-    
+void PersistenceManager::saveAssistantMessage(const std::string& content) {
+    impl->exec("BEGIN");
     try {
-        db = initDatabase();
-        
-        // Prepare select statement
-        sqlite3_stmt* stmt;
-        const char* selectSQL = 
-            "WITH system_msg AS ("
-            "  SELECT * FROM messages WHERE role='system' ORDER BY id DESC LIMIT 1"
-            "), "
-            "recent_msgs AS ("
-            "  SELECT * FROM messages WHERE role!='system' ORDER BY id DESC LIMIT 20"
-            ") "
-            "SELECT id, role, content FROM system_msg "
-            "UNION ALL "
-            "SELECT id, role, content FROM recent_msgs ORDER BY id ASC";
-        
-        if (sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nullptr) != SQLITE_OK) {
-            throw std::runtime_error(std::string("Failed to prepare statement: ") + sqlite3_errmsg(db));
-        }
-        
-        // Fetch rows
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            int id = sqlite3_column_int(stmt, 0);
-            const char* role = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-            const char* content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-            
-            history.push_back({
-                role ? std::string(role) : "",
-                content ? std::string(content) : "",
-                id
-            });
-        }
-        
-        sqlite3_finalize(stmt);
-    } catch (const std::exception& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
-        // Return empty history on error
+        impl->insertMessage({"assistant", content});
+        impl->exec("COMMIT");
+    } catch(...) {
+        impl->exec("ROLLBACK");
+        throw;
     }
+}
+
+std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
+    const std::string sql = R"(
+        WITH system_msg AS (
+            SELECT * FROM messages WHERE role='system' ORDER BY id DESC LIMIT 1
+        ),
+        recent_msgs AS (
+            SELECT * FROM messages 
+            WHERE role IN ('user','assistant')
+            ORDER BY id DESC 
+            LIMIT ?
+        )
+        SELECT id, role, content FROM system_msg
+        UNION ALL
+        SELECT id, role, content FROM recent_msgs ORDER BY id ASC
+    )";
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(impl->db, sql.c_str(), -1, &stmt, nullptr);
+    sqlite3_bind_int(stmt, 1, max_pairs * 2); // 2 messages per pair
     
-    if (db) {
-        sqlite3_close(db);
+    std::vector<Message> history;
+    while(sqlite3_step(stmt) == SQLITE_ROW) {
+        history.push_back({
+            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)),
+            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)),
+            sqlite3_column_int(stmt, 0)
+        });
     }
+    sqlite3_finalize(stmt);
     
     // Add default system message if history is empty
     if (history.empty()) {
@@ -147,4 +113,21 @@ std::vector<Message> loadHistoryFromDatabase() {
     }
     
     return history;
+}
+
+void PersistenceManager::trimDatabaseHistory(size_t keep_pairs) {
+    const std::string sql = R"(
+        DELETE FROM messages WHERE id IN (
+            SELECT id FROM messages
+            WHERE role IN ('user','assistant')
+            ORDER BY id DESC
+            OFFSET ?
+        )
+    )";
+    
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(impl->db, sql.c_str(), -1, &stmt, nullptr);
+    sqlite3_bind_int(stmt, 1, keep_pairs * 2);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
 }
