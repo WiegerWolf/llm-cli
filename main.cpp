@@ -78,11 +78,13 @@ bool fetchUrl(const std::string& url, const std::vector<Message>& chat_history, 
 }
 
 // Modify SelectionMenu to accept references to data and pointers to state
+// Modify SelectionMenu to accept a pointer to selected_tab
 Component SelectionMenu(Config* config,
                         const std::vector<std::string>& providers,
                         const std::vector<std::string>& models,
                         int* selected_provider,
-                        int* selected_model) {
+                        int* selected_model,
+                        int* selected_tab) { // Add selected_tab pointer
     // Define options for the menus. We can use on_change to update config immediately
     // or rely on the CatchEvent below for final confirmation on Enter.
     // Let's stick to the CatchEvent approach for confirming the final selection.
@@ -211,8 +213,8 @@ int main(int argc, char* argv[]) {
     int selected_provider = 0;
     int selected_model = 0;
 
-    // Pass data/state to the factory function
-    auto selection_component = SelectionMenu(&config, providers, models, &selected_provider, &selected_model);
+    // Pass data/state and selected_tab pointer to the factory function
+    auto selection_component = SelectionMenu(&config, providers, models, &selected_provider, &selected_model, &selected_tab);
     auto chat_component = ChatInterface(&config);
     std::vector<std::string> tab_entries = {"Selection", "Chat"};
     auto tab_toggle = Toggle(&tab_entries, &selected_tab);
@@ -231,14 +233,7 @@ int main(int argc, char* argv[]) {
             separator(),
             tab_container->Render() | flex,
         }) | border;
-    }) | CatchEvent([&](Event event) {
-        if (event == Event::Return && selected_tab == 0 && !config.provider.empty()) {
-            config.needs_chat_init = true;
-            selected_tab = 1;
-            return true;
-        }
-        return false;
-    });
+    }); // Remove the outer CatchEvent
 
     screen.Loop(renderer);
     return 0;
