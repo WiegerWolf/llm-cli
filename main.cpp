@@ -61,8 +61,6 @@ bool fetchGroqResponse(const Config& config, const string& input, string& respon
     for (const auto& msg : config.chat_history) {
         payload["messages"].push_back({{"role", msg.role}, {"content", msg.content}});
     }
-    // Add new user message
-    payload["messages"].push_back({{"role", "user"}, {"content", input}});
 
     string json_payload = payload.dump();
 
@@ -99,20 +97,24 @@ int main() {
         if (input.empty()) continue;
 
         try {
+            // Save user message immediately
+            config.chat_history.push_back({"user", input});
+            saveHistoryToDatabase(config.chat_history);
+
+            // Make API call with updated history
             string response;
             if (!fetchGroqResponse(config, input, response)) {
+                // Remove failed message from history
+                config.chat_history.pop_back();
+                saveHistoryToDatabase(config.chat_history);
                 cerr << "Error: API request failed\n";
                 continue;
             }
 
+            // Save assistant response
             auto json = nlohmann::json::parse(response);
             string ai_response = json["choices"][0]["message"]["content"];
-            
-            // Add to chat history
-            config.chat_history.push_back({"user", input});
             config.chat_history.push_back({"assistant", ai_response});
-            
-            // Immediate save after successful response
             saveHistoryToDatabase(config.chat_history);
             
             cout << "\033[1;36m"  // Start cyan color
