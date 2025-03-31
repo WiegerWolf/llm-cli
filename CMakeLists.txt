@@ -17,7 +17,26 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 # Find required packages
 find_package(CURL REQUIRED)
-find_package(SQLite3 REQUIRED)
+find_package(SQLite3 QUIET)
+
+if(NOT SQLite3_FOUND)
+    # Fallback search if standard method fails
+    find_path(SQLITE3_INCLUDE_DIR sqlite3.h
+        PATHS /usr/include /usr/local/include
+    )
+    
+    find_library(SQLITE3_LIBRARY NAMES sqlite3
+        PATHS /usr/lib /usr/local/lib
+    )
+    
+    if(SQLITE3_INCLUDE_DIR AND SQLITE3_LIBRARY)
+        set(SQLite3_FOUND TRUE)
+        set(SQLite3_INCLUDE_DIRS ${SQLITE3_INCLUDE_DIR})
+        set(SQLite3_LIBRARIES ${SQLITE3_LIBRARY})
+    else()
+        message(FATAL_ERROR "SQLite3 not found - install with: sudo apt-get install libsqlite3-dev")
+    endif()
+endif()
 
 # Find Readline using alternative methods
 find_path(READLINE_INCLUDE_DIR readline/readline.h)
@@ -38,7 +57,7 @@ target_link_libraries(llm PRIVATE
     ${CURL_LIBRARIES} 
     nlohmann_json::nlohmann_json
     ${Readline_LIBRARIES}
-    SQLite::SQLite3
+    ${SQLite3_LIBRARIES}
 )
 
 # Installation setup
