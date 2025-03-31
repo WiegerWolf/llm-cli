@@ -98,9 +98,7 @@ public:
                 db.saveAssistantMessage(ai_response);
                 
                 // Display response
-                cout << "\033[1;36m"  // Start cyan color
-                     << ai_response 
-                     << "\033[0m\n\n"; // Reset color and add spacing
+                cout << ai_response << "\n\n"; // add spacing
                 
             } catch (const exception& e) {
                 cerr << "Error: " << e.what() << "\n";
