@@ -52,7 +52,10 @@ else()
 endif()
 
 # Add executable and link libraries
-add_executable(llm main.cpp)
+add_executable(llm 
+    main.cpp
+    database.cpp
+)
 target_link_libraries(llm PRIVATE 
     ${CURL_LIBRARIES} 
     nlohmann_json::nlohmann_json
