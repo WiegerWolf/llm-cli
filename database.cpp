@@ -9,6 +9,7 @@
 struct Message {
     std::string role;
     std::string content;
+    int id = 0; // Default to 0 for new messages
 };
 
 // Initialize database connection and create tables if needed
@@ -53,16 +54,24 @@ void saveHistoryToDatabase(const std::vector<Message>& history) {
     // Add WAL journal mode for crash resilience
     sqlite3_exec(db, "PRAGMA journal_mode=WAL", nullptr, nullptr, nullptr);
     
-    // Clear existing messages
-    sqlite3_exec(db, "DELETE FROM messages", nullptr, nullptr, nullptr);
+    // Get max existing ID
+    int max_id = 0;
+    sqlite3_stmt* max_stmt;
+    sqlite3_prepare_v2(db, "SELECT MAX(id) FROM messages", -1, &max_stmt, nullptr);
+    if (sqlite3_step(max_stmt) == SQLITE_ROW) {
+        max_id = sqlite3_column_int(max_stmt, 0);
+    }
+    sqlite3_finalize(max_stmt);
     
     // Prepare insert statement
     sqlite3_stmt* stmt;
     const char* insertSQL = "INSERT INTO messages (role, content) VALUES (?, ?)";
     sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nullptr);
     
-    // Insert each message
+    // Insert only new messages (those with id=0)
     for (const auto& msg : history) {
+        if (msg.id != 0) continue;
+        
         sqlite3_bind_text(stmt, 1, msg.role.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 2, msg.content.c_str(), -1, SQLITE_STATIC);
         
@@ -94,7 +103,16 @@ std::vector<Message> loadHistoryFromDatabase() {
         
         // Prepare select statement
         sqlite3_stmt* stmt;
-        const char* selectSQL = "SELECT role, content FROM messages ORDER BY id ASC";
+        const char* selectSQL = 
+            "WITH system_msg AS ("
+            "  SELECT * FROM messages WHERE role='system' ORDER BY id DESC LIMIT 1"
+            "), "
+            "recent_msgs AS ("
+            "  SELECT * FROM messages WHERE role!='system' ORDER BY id DESC LIMIT 20"
+            ") "
+            "SELECT id, role, content FROM system_msg "
+            "UNION ALL "
+            "SELECT id, role, content FROM recent_msgs ORDER BY id ASC";
         
         if (sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nullptr) != SQLITE_OK) {
             throw std::runtime_error(std::string("Failed to prepare statement: ") + sqlite3_errmsg(db));
@@ -102,12 +120,14 @@ std::vector<Message> loadHistoryFromDatabase() {
         
         // Fetch rows
         while (sqlite3_step(stmt) == SQLITE_ROW) {
-            const char* role = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-            const char* content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            int id = sqlite3_column_int(stmt, 0);
+            const char* role = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            const char* content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
             
             history.push_back({
                 role ? std::string(role) : "",
-                content ? std::string(content) : ""
+                content ? std::string(content) : "",
+                id
             });
         }
         

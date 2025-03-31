@@ -16,6 +16,7 @@ using namespace std;
 struct Message {
     string role;
     string content;
+    int id = 0; // Default to 0 for new messages
 };
 
 struct Config {
@@ -118,13 +119,19 @@ int main() {
                  << ai_response 
                  << "\033[0m\n\n"; // Reset color and add spacing
 
-            // Keep history manageable and re-save
-            if (config.chat_history.size() > 20) {
-                config.chat_history.erase(
-                    config.chat_history.begin(),
-                    config.chat_history.begin() + 2
-                );
-                saveHistoryToDatabase(config.chat_history);
+            // Keep working memory manageable
+            constexpr size_t MAX_HISTORY_PAIRS = 10; // Keep last 10 exchanges
+            size_t total_to_keep = 1 + (MAX_HISTORY_PAIRS * 2); // System + 10 pairs
+            
+            if (config.chat_history.size() > total_to_keep) {
+                // Preserve system message and recent messages
+                auto start = config.chat_history.begin() + 1; // After system
+                auto end = config.chat_history.end();
+                auto new_start = end - (total_to_keep - 1);
+                
+                if (new_start > start) {
+                    config.chat_history.erase(start, new_start);
+                }
             }
         } catch (const exception& e) {
             cerr << "Error: " << e.what() << "\n";
