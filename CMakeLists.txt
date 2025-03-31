@@ -17,10 +17,15 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 # Find required packages
 find_package(CURL REQUIRED)
+find_package(Readline REQUIRED)
 
 # Add executable and link libraries
 add_executable(llm main.cpp)
-target_link_libraries(llm PRIVATE ${CURL_LIBRARIES} nlohmann_json::nlohmann_json)
+target_link_libraries(llm PRIVATE 
+    ${CURL_LIBRARIES} 
+    nlohmann_json::nlohmann_json
+    ${Readline_LIBRARIES}
+)
 
 # Installation setup
 install(TARGETS llm
