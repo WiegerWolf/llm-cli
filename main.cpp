@@ -192,7 +192,6 @@ private:
                             // result += "   [No snippet available]\n"; 
                         }
                         result += "   " + url_text + "\n\n";
-                        result += "   " + url_text + "\n\n";
                     } else {
                          std::cerr << "DEBUG: Skipping group starting at " << i << " due to missing title/url_text\n";
                     }
