@@ -31,10 +31,19 @@ private:
             return node->v.text.text;
         }
         
+        // Return empty string for non-element nodes (like comments, doctype, etc.)
+        if (node->type != GUMBO_NODE_ELEMENT) {
+            return "";
+        }
+
         std::string result;
         GumboVector* children = &node->v.element.children;
         for (unsigned int i = 0; i < children->length; ++i) {
-            result += gumbo_get_text(static_cast<GumboNode*>(children->data[i]));
+            GumboNode* child = static_cast<GumboNode*>(children->data[i]);
+            // Add null check for child node before recursing
+            if (child) {
+                 result += gumbo_get_text(child);
+            }
         }
         return result;
     }
