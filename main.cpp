@@ -23,6 +23,41 @@ private:
     PersistenceManager db;
     string api_base = "https://api.groq.com/openai/v1/chat/completions";
     
+    std::string search_web(const std::string& query) {
+        CURL* curl = curl_easy_init();
+        if (!curl) throw std::runtime_error("Failed to initialize CURL");
+        
+        std::string response;
+        std::string url = "https://api.duckduckgo.com/?q=" + 
+                         std::string(curl_easy_escape(curl, query.c_str(), query.length())) + 
+                         "&format=json&no_html=1&no_redirect=1";
+        
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        
+        CURLcode res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+        
+        if (res != CURLE_OK) {
+            throw std::runtime_error("Search failed: " + std::string(curl_easy_strerror(res)));
+        }
+
+        auto json = nlohmann::json::parse(response);
+        std::string result = "Web results:\n";
+        
+        if (json.contains("RelatedTopics")) {
+            for (const auto& topic : json["RelatedTopics"]) {
+                if (topic.contains("Text") && topic.contains("FirstURL")) {
+                    result += "- " + topic["Text"].get<std::string>() + "\n";
+                    result += "  " + topic["FirstURL"].get<std::string>() + "\n\n";
+                }
+            }
+        }
+        
+        return result.empty() ? "No results found" : result;
+    }
+    
     string makeApiCall(const vector<Message>& context) {
         CURL* curl = curl_easy_init();
         if (!curl) {
@@ -83,6 +118,17 @@ public:
             free(input_cstr);
             
             if (input.empty()) continue;
+
+            // Handle search commands
+            if (input.starts_with("/search ")) {
+                try {
+                    string query = input.substr(8);
+                    cout << "\n" << search_web(query) << "\n\n";
+                } catch(const exception& e) {
+                    cerr << "Search error: " << e.what() << "\n";
+                }
+                continue;
+            }
 
             try {
                 // Persist user message
