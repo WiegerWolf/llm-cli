@@ -18,7 +18,7 @@ struct PersistenceManager::Impl {
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                role TEXT CHECK(role IN ('system','user','assistant')),
+                role TEXT CHECK(role IN ('system','user','assistant', 'tool')), -- Added 'tool' role
                 content TEXT
             );
         )";
@@ -91,19 +91,7 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
     }
 }
 
-void PersistenceManager::saveToolMessage(const std::string& content) {
-    // Note: The 'content' here is expected to be a JSON string containing
-    // tool_call_id, name, and the actual tool result content.
-    // The role is hardcoded as "tool".
-    impl->exec("BEGIN");
-    try {
-        impl->insertMessage({"tool", content});
-        impl->exec("COMMIT");
-    } catch(...) {
-        impl->exec("ROLLBACK");
-        throw;
-    }
-}
+// Removed duplicate definition of saveToolMessage
 
 std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
     const std::string sql = R"(
