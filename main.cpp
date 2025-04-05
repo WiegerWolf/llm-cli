@@ -114,9 +114,6 @@ private:
         if (output) {
             find_tr_elements(output->root);
             
-            // DEBUG: Show total TR elements found
-            std::cerr << "DEBUG: Found " << elements.size() << " TR elements\n";
-
             // Find the starting index of the actual results
             size_t start_index = std::string::npos; // Use npos to indicate not found
             for (size_t i = 0; i + 3 < elements.size(); ++i) { // Check potential groups of 4
@@ -131,17 +128,17 @@ private:
                  if (a_tag && span_link_text) {
                      // Found the first likely result block
                      start_index = i;
-                     std::cerr << "DEBUG: Found potential start of results at index " << start_index << "\n";
+                     // std::cerr << "DEBUG: Found potential start of results at index " << start_index << "\n";
                      break; 
                  }
             }
 
             if (start_index == std::string::npos) {
-                 std::cerr << "DEBUG: Could not find the start of the results list.\n";
+                 // std::cerr << "DEBUG: Could not find the start of the results list.\n";
             } else {
                 // Process elements in groups of 4 starting from the identified index
                 for (size_t i = start_index; i + 3 < elements.size(); i += 4) { // Ensure 4 elements exist, step by 4
-                    std::cerr << "DEBUG: Processing group starting at index " << i << "\n";
+                    // std::cerr << "DEBUG: Processing group starting at index " << i << "\n";
                     
                     GumboNode* title_tr = elements[i];
                 GumboNode* snippet_tr = elements[i+1];
@@ -150,13 +147,10 @@ private:
 
                 // Add defensive checks for node validity
                 if (!title_tr || !snippet_tr || !url_tr) {
-                    std::cerr << "DEBUG: Invalid TR nodes detected in group starting at " << i << "\n";
+                    // std::cerr << "DEBUG: Invalid TR nodes detected in group starting at " << i << "\n";
                     continue; // Skip this group and step by 4
                 }
                 
-                // DEBUG: Print content of the first TR in the group
-                // std::cerr << "DEBUG: Title TR content: " << gumbo_get_text(title_tr) << "\n";
-
                 // Extract title link and text
                 std::string title;
                 std::string url; // URL from the title's href
@@ -165,7 +159,7 @@ private:
                 GumboNode* a_tag = find_node_by_tag(title_tr, GUMBO_TAG_A);
                 
                 if (a_tag) {
-                    std::cerr << "DEBUG: Found A tag within title TR\n";
+                    // std::cerr << "DEBUG: Found A tag within title TR\n";
                     GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
                     url = href ? href->value : "";
                     title = gumbo_get_text(a_tag);
@@ -173,7 +167,7 @@ private:
                     title.erase(0, title.find_first_not_of(" \n\r\t"));
                     title.erase(title.find_last_not_of(" \n\r\t") + 1);
                 } else {
-                    std::cerr << "DEBUG: No A tag found within title TR\n";
+                    // std::cerr << "DEBUG: No A tag found within title TR\n";
                     // Fallback: maybe the title is just the text content of the TR?
                     // title = gumbo_get_text(title_tr); // Let's skip this for now, title needs a link
                 }
@@ -192,16 +186,16 @@ private:
                     GumboNode* span_link_text = find_node_by_tag_and_class(url_tr, GUMBO_TAG_SPAN, "link-text");
 
                     if (span_link_text) {
-                         std::cerr << "DEBUG: Found span.link-text within URL TR\n";
+                         // std::cerr << "DEBUG: Found span.link-text within URL TR\n";
                          url_text = gumbo_get_text(span_link_text);
                          // Clean up url_text
                          url_text.erase(0, url_text.find_first_not_of(" \n\r\t"));
                          url_text.erase(url_text.find_last_not_of(" \n\r\t") + 1);
                     } else {
-                         std::cerr << "DEBUG: No span.link-text found within URL TR\n";
+                         // std::cerr << "DEBUG: No span.link-text found within URL TR\n";
                     }
 
-                    std::cerr << "DEBUG: Extracted URL text: " << url_text << "\n";
+                    // std::cerr << "DEBUG: Extracted URL text: " << url_text << "\n";
                     
                     // Ensure we have the title (from <a>) and the displayed URL text before adding
                     if (!url_text.empty()) {
@@ -215,10 +209,10 @@ private:
                         }
                         result += "   " + url_text + "\n\n";
                     } else {
-                         std::cerr << "DEBUG: Skipping group starting at " << i << " due to missing title/url_text\n";
+                         // std::cerr << "DEBUG: Skipping group starting at " << i << " due to missing title/url_text\n";
                     }
                 } else {
-                     std::cerr << "DEBUG: Skipping group starting at " << i << " due to missing title\n";
+                     // std::cerr << "DEBUG: Skipping group starting at " << i << " due to missing title\n";
                 }
                 // The loop automatically increments i by 4
             } // End of main processing loop (starting from start_index)
@@ -235,8 +229,8 @@ private:
         CURL* curl = curl_easy_init();
         if (!curl) throw std::runtime_error("Failed to initialize CURL");
         
-        // Enable verbose logging
-        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        // Disable verbose logging (commented out)
+        // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         
         std::string response;
         std::string url = "https://lite.duckduckgo.com/lite/";
@@ -267,10 +261,10 @@ private:
             throw std::runtime_error("Search failed: " + std::string(curl_easy_strerror(res)));
         }
 
-        // Save raw HTML for inspection
-        std::ofstream debug_file("debug.html");
-        debug_file << response;
-        debug_file.close();
+        // Save raw HTML for inspection (commented out)
+        // std::ofstream debug_file("debug.html");
+        // debug_file << response;
+        // debug_file.close();
 
         return parse_ddg_html(response);
     }
