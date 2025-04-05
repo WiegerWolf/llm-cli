@@ -69,7 +69,10 @@ private:
                 std::cerr << "DEBUG: Processing group starting at index " << i << "\n";
                 
                 // Check if we have at least 3 elements remaining
-                if (i + 2 >= elements.size()) break;
+                if (i + 2 >= elements.size()) {
+                    std::cerr << "DEBUG: Breaking - not enough elements remaining\n";
+                    break;
+                }
 
                 GumboNode* title_tr = elements[i];
                 GumboNode* snippet_tr = elements[i+1];
@@ -125,7 +128,17 @@ private:
                 }
 
                 // Move to next result group (skip separator TR if present)
-                i += (elements.size() > i+3 && elements[i+3]->v.element.children.length == 0) ? 4 : 3;
+                size_t step = 3;
+                if (i + 3 < elements.size()) {
+                    GumboNode* separator = elements[i+3];
+                    if (separator->v.element.children.length == 0) {
+                        step = 4;
+                        std::cerr << "DEBUG: Found separator, stepping by 4\n";
+                    }
+                }
+                
+                std::cerr << "DEBUG: Stepping by " << step << " positions\n";
+                i += step;
             }
 
             std::cerr << "DEBUG: Total results found: " << count << "\n";
