@@ -25,84 +25,113 @@ private:
     PersistenceManager db;
     string api_base = "https://api.groq.com/openai/v1/chat/completions";
     
+    static std::string gumbo_get_text(GumboNode* node) {
+        if (node->type == GUMBO_NODE_TEXT) {
+            return node->v.text.text;
+        }
+        
+        std::string result;
+        GumboVector* children = &node->v.element.children;
+        for (unsigned int i = 0; i < children->length; ++i) {
+            result += gumbo_get_text(static_cast<GumboNode*>(children->data[i]));
+        }
+        return result;
+    }
+
     std::string parse_ddg_html(const std::string& html) {
         GumboOutput* output = gumbo_parse(html.c_str());
         std::string result = "Web results:\n\n";
         int count = 0;
 
-        std::function<void(GumboNode*)> search_results = [&](GumboNode* node) {
+        std::function<void(GumboNode*)> parse_node = [&](GumboNode* node) {
             if (node->type != GUMBO_NODE_ELEMENT) return;
 
-            // Find result rows
+            // Detect result groups
             if (node->v.element.tag == GUMBO_TAG_TR) {
-                GumboAttribute* class_attr = gumbo_get_attribute(&node->v.element.attributes, "class");
-                if (class_attr && std::string(class_attr->value) == "result-row") {
-                    GumboNode* link = nullptr;
-                    GumboNode* snippet = nullptr;
-                    GumboNode* url = nullptr;
-
-                    // Iterate through table cells
-                    GumboVector* children = &node->v.element.children;
-                    for (unsigned int i = 0; i < children->length; ++i) {
-                        GumboNode* td = static_cast<GumboNode*>(children->data[i]);
-                        if (td->type == GUMBO_NODE_ELEMENT && td->v.element.tag == GUMBO_TAG_TD) {
-                            GumboAttribute* class_attr = gumbo_get_attribute(&td->v.element.attributes, "class");
-                            
-                            if (td->v.element.children.length > 0) {
-                                GumboNode* first_child = static_cast<GumboNode*>(td->v.element.children.data[0]);
-                                
-                                if (first_child->type == GUMBO_NODE_ELEMENT && first_child->v.element.tag == GUMBO_TAG_A) {
-                                    link = first_child;
-                                } else if (class_attr && std::string(class_attr->value) == "result-snippet") {
-                                    snippet = td;
-                                } else if (first_child->type == GUMBO_NODE_ELEMENT && first_child->v.element.tag == GUMBO_TAG_SPAN) {
-                                    url = first_child;
-                                }
-                            }
+                GumboVector* children = &node->v.element.children;
+                
+                // Result title row
+                if (children->length > 0) {
+                    GumboNode* first_td = static_cast<GumboNode*>(children->data[0]);
+                    if (first_td->v.element.tag == GUMBO_TAG_TD) {
+                        GumboNode* a_tag = nullptr;
+                        if (first_td->v.element.children.length > 0) {
+                            a_tag = static_cast<GumboNode*>(first_td->v.element.children.data[0]);
                         }
-                    }
+                        
+                        if (a_tag && a_tag->v.element.tag == GUMBO_TAG_A) {
+                            // Found a result entry
+                            std::string title, url, snippet;
 
-                    // Extract components
-                    if (link && snippet) {
-                        GumboAttribute* href_attr = gumbo_get_attribute(&link->v.element.attributes, "href");
-                        if (href_attr) {
-                            std::string title;
-                            std::string desc;
-                            std::string href = href_attr->value;
-                            
-                            // Extract title from link
-                            if (link->v.element.children.length > 0) {
-                                GumboNode* title_node = static_cast<GumboNode*>(link->v.element.children.data[0]);
-                                if (title_node->type == GUMBO_NODE_TEXT) {
-                                    title = title_node->v.text.text;
+                            // Extract title and URL
+                            GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
+                            if (href) {
+                                url = href->value;
+                                if (a_tag->v.element.children.length > 0) {
+                                    GumboNode* text_node = static_cast<GumboNode*>(a_tag->v.element.children.data[0]);
+                                    if (text_node->type == GUMBO_NODE_TEXT) {
+                                        title = text_node->v.text.text;
+                                    }
                                 }
                             }
-                            
-                            // Extract description
-                            if (snippet->v.element.children.length > 0) {
-                                GumboNode* desc_node = static_cast<GumboNode*>(snippet->v.element.children.data[0]);
-                                if (desc_node->type == GUMBO_NODE_TEXT) {
-                                    desc = desc_node->v.text.text;
+
+                            // Look for sibling TR elements containing snippet and URL
+                            GumboNode* parent = static_cast<GumboNode*>(node->parent);
+                            if (parent && parent->v.element.tag == GUMBO_TAG_TBODY) {
+                                size_t index = 0;
+                                while (index < parent->v.element.children.length && 
+                                       static_cast<GumboNode*>(parent->v.element.children.data[index]) != node) {
+                                    index++;
+                                }
+
+                                // Next TR contains snippet
+                                if (index + 1 < parent->v.element.children.length) {
+                                    GumboNode* snippet_tr = static_cast<GumboNode*>(parent->v.element.children.data[index + 1]);
+                                    if (snippet_tr->v.element.tag == GUMBO_TAG_TR) {
+                                        GumboNode* snippet_td = static_cast<GumboNode*>(snippet_tr->v.element.children.data[0]);
+                                        if (snippet_td->v.element.tag == GUMBO_TAG_TD) {
+                                            snippet = gumbo_get_text(snippet_td);
+                                        }
+                                    }
+                                }
+
+                                // Next+1 TR contains URL
+                                if (index + 2 < parent->v.element.children.length) {
+                                    GumboNode* url_tr = static_cast<GumboNode*>(parent->v.element.children.data[index + 2]);
+                                    if (url_tr->v.element.tag == GUMBO_TAG_TR) {
+                                        GumboNode* url_td = static_cast<GumboNode*>(url_tr->v.element.children.data[0]);
+                                        if (url_td->v.element.tag == GUMBO_TAG_TD) {
+                                            std::string full_text = gumbo_get_text(url_td);
+                                            size_t space_pos = full_text.find(' ');
+                                            if (space_pos != std::string::npos) {
+                                                url = full_text.substr(space_pos + 1);
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            
-                            result += std::to_string(++count) + ". " + title + "\n";
-                            result += "   " + desc + "\n";
-                            result += "   " + href + "\n\n";
+
+                            if (!title.empty() && !url.empty()) {
+                                result += std::to_string(++count) + ". " + title + "\n";
+                                if (!snippet.empty()) {
+                                    result += "   " + snippet + "\n";
+                                }
+                                result += "   " + url + "\n\n";
+                            }
                         }
                     }
                 }
             }
 
-            // Recursively search child nodes
+            // Recursively process child nodes
             GumboVector* children = &node->v.element.children;
             for (unsigned int i = 0; i < children->length; ++i) {
-                search_results(static_cast<GumboNode*>(children->data[i]));
+                parse_node(static_cast<GumboNode*>(children->data[i]));
             }
         };
 
         if (output) {
-            search_results(output->root);
+            parse_node(output->root);
             gumbo_destroy_output(&kGumboDefaultOptions, output);
         }
 
@@ -114,16 +143,28 @@ private:
         if (!curl) throw std::runtime_error("Failed to initialize CURL");
         
         std::string response;
-        std::string url = "https://lite.duckduckgo.com/lite/?q=" + 
-                         std::string(curl_easy_escape(curl, query.c_str(), query.length()));
+        std::string url = "https://lite.duckduckgo.com/lite/";
         
+        // Set headers
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0");
+        headers = curl_slist_append(headers, "Referer: https://lite.duckduckgo.com/");
+        headers = curl_slist_append(headers, "Origin: https://lite.duckduckgo.com");
+        headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+
+        // Prepare POST data
+        std::string post_data = "q=" + std::string(curl_easy_escape(curl, query.c_str(), query.length())) + 
+                              "&kl=wt-wt&df=";
+
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         
         CURLcode res = curl_easy_perform(curl);
+        curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
         
         if (res != CURLE_OK) {
