@@ -116,12 +116,34 @@ private:
             
             // DEBUG: Show total TR elements found
             std::cerr << "DEBUG: Found " << elements.size() << " TR elements\n";
-            
-            // Process elements in groups of 4 (title, snippet, URL, separator)
-            for (size_t i = 0; i + 3 < elements.size(); i += 4) { // Ensure 4 elements exist, step by 4
-                std::cerr << "DEBUG: Processing group starting at index " << i << "\n";
-                
-                GumboNode* title_tr = elements[i];
+
+            // Find the starting index of the actual results
+            size_t start_index = std::string::npos; // Use npos to indicate not found
+            for (size_t i = 0; i + 3 < elements.size(); ++i) { // Check potential groups of 4
+                 GumboNode* potential_title_tr = elements[i];
+                 GumboNode* potential_url_tr = elements[i+2];
+
+                 if (!potential_title_tr || !potential_url_tr) continue; // Skip if nodes are invalid
+
+                 GumboNode* a_tag = find_node_by_tag(potential_title_tr, GUMBO_TAG_A);
+                 GumboNode* span_link_text = find_node_by_tag_and_class(potential_url_tr, GUMBO_TAG_SPAN, "link-text");
+
+                 if (a_tag && span_link_text) {
+                     // Found the first likely result block
+                     start_index = i;
+                     std::cerr << "DEBUG: Found potential start of results at index " << start_index << "\n";
+                     break; 
+                 }
+            }
+
+            if (start_index == std::string::npos) {
+                 std::cerr << "DEBUG: Could not find the start of the results list.\n";
+            } else {
+                // Process elements in groups of 4 starting from the identified index
+                for (size_t i = start_index; i + 3 < elements.size(); i += 4) { // Ensure 4 elements exist, step by 4
+                    std::cerr << "DEBUG: Processing group starting at index " << i << "\n";
+                    
+                    GumboNode* title_tr = elements[i];
                 GumboNode* snippet_tr = elements[i+1];
                 GumboNode* url_tr = elements[i+2];
                 // GumboNode* separator_tr = elements[i+3]; // Separator is unused but part of the 4-step
