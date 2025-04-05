@@ -254,14 +254,16 @@ public:
             if (input.empty()) continue;
 
             // Handle search commands
-            if (input.rfind("/search ", 0) == 0) {  // Pre-C++20 compatible check
+            size_t search_pos = input.find("/search ");
+            if (search_pos != string::npos) {
                 try {
-                    string query = input.substr(8);
+                    string query = input.substr(search_pos + 8);
                     cout << "\n" << search_web(query) << "\n\n";
+                    continue;
                 } catch(const exception& e) {
                     cerr << "Search error: " << e.what() << "\n";
+                    continue;
                 }
-                continue;
             }
 
             try {
