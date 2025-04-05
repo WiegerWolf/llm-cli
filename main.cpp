@@ -43,95 +43,73 @@ private:
         std::string result = "Web results:\n\n";
         int count = 0;
 
-        std::function<void(GumboNode*)> parse_node = [&](GumboNode* node) {
+        std::vector<GumboNode*> elements;
+        std::function<void(GumboNode*)> find_tr_elements = [&](GumboNode* node) {
             if (node->type != GUMBO_NODE_ELEMENT) return;
-
-            // Detect result groups
+            
             if (node->v.element.tag == GUMBO_TAG_TR) {
-                GumboVector* children = &node->v.element.children;
-                
-                // Result title row
-                if (children->length > 0) {
-                    GumboNode* first_td = static_cast<GumboNode*>(children->data[0]);
-                    if (first_td->v.element.tag == GUMBO_TAG_TD) {
-                        GumboNode* a_tag = nullptr;
-                        if (first_td->v.element.children.length > 0) {
-                            a_tag = static_cast<GumboNode*>(first_td->v.element.children.data[0]);
-                        }
-                        
-                        if (a_tag && a_tag->v.element.tag == GUMBO_TAG_A) {
-                            // Found a result entry
-                            std::string title, url, snippet;
-
-                            // Extract title and URL
-                            GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
-                            if (href) {
-                                url = href->value;
-                                if (a_tag->v.element.children.length > 0) {
-                                    GumboNode* text_node = static_cast<GumboNode*>(a_tag->v.element.children.data[0]);
-                                    if (text_node->type == GUMBO_NODE_TEXT) {
-                                        title = text_node->v.text.text;
-                                    }
-                                }
-                            }
-
-                            // Look for sibling TR elements containing snippet and URL
-                            GumboNode* parent = static_cast<GumboNode*>(node->parent);
-                            if (parent && parent->v.element.tag == GUMBO_TAG_TBODY) {
-                                size_t index = 0;
-                                while (index < parent->v.element.children.length && 
-                                       static_cast<GumboNode*>(parent->v.element.children.data[index]) != node) {
-                                    index++;
-                                }
-
-                                // Next TR contains snippet
-                                if (index + 1 < parent->v.element.children.length) {
-                                    GumboNode* snippet_tr = static_cast<GumboNode*>(parent->v.element.children.data[index + 1]);
-                                    if (snippet_tr->v.element.tag == GUMBO_TAG_TR) {
-                                        GumboNode* snippet_td = static_cast<GumboNode*>(snippet_tr->v.element.children.data[0]);
-                                        if (snippet_td->v.element.tag == GUMBO_TAG_TD) {
-                                            snippet = gumbo_get_text(snippet_td);
-                                        }
-                                    }
-                                }
-
-                                // Next+1 TR contains URL
-                                if (index + 2 < parent->v.element.children.length) {
-                                    GumboNode* url_tr = static_cast<GumboNode*>(parent->v.element.children.data[index + 2]);
-                                    if (url_tr->v.element.tag == GUMBO_TAG_TR) {
-                                        GumboNode* url_td = static_cast<GumboNode*>(url_tr->v.element.children.data[0]);
-                                        if (url_td->v.element.tag == GUMBO_TAG_TD) {
-                                            std::string full_text = gumbo_get_text(url_td);
-                                            size_t space_pos = full_text.find(' ');
-                                            if (space_pos != std::string::npos) {
-                                                url = full_text.substr(space_pos + 1);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (!title.empty() && !url.empty()) {
-                                result += std::to_string(++count) + ". " + title + "\n";
-                                if (!snippet.empty()) {
-                                    result += "   " + snippet + "\n";
-                                }
-                                result += "   " + url + "\n\n";
-                            }
-                        }
-                    }
-                }
+                elements.push_back(node);
             }
 
-            // Recursively process child nodes
             GumboVector* children = &node->v.element.children;
             for (unsigned int i = 0; i < children->length; ++i) {
-                parse_node(static_cast<GumboNode*>(children->data[i]));
+                find_tr_elements(static_cast<GumboNode*>(children->data[i]));
             }
         };
 
         if (output) {
-            parse_node(output->root);
+            find_tr_elements(output->root);
+            
+            // Process elements in groups of 4 (matching Python's zip(cycle(range(1,5), elements))
+            for (size_t i = 0; i < elements.size(); ) {
+                GumboNode* title_tr = elements[i];
+                if (i + 3 >= elements.size()) break;
+
+                // Extract title link (first TR)
+                GumboNode* a_tag = nullptr;
+                GumboVector* title_children = &title_tr->v.element.children;
+                if (title_children->length > 0) {
+                    GumboNode* first_td = static_cast<GumboNode*>(title_children->data[0]);
+                    if (first_td->v.element.tag == GUMBO_TAG_TD && 
+                        first_td->v.element.children.length > 0) {
+                        a_tag = static_cast<GumboNode*>(first_td->v.element.children.data[0]);
+                    }
+                }
+
+                if (a_tag && a_tag->v.element.tag == GUMBO_TAG_A) {
+                    // Get href
+                    GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
+                    std::string url = href ? href->value : "";
+                    
+                    // Get title text
+                    std::string title = gumbo_get_text(a_tag);
+
+                    // Extract snippet (next TR)
+                    GumboNode* snippet_tr = elements[i+1];
+                    std::string snippet = gumbo_get_text(snippet_tr);
+
+                    // Extract URL (TR after snippet)
+                    GumboNode* url_tr = elements[i+2];
+                    std::string url_text = gumbo_get_text(url_tr);
+
+                    // Clean up URL text
+                    size_t space_pos = url_text.find(' ');
+                    if (space_pos != std::string::npos) {
+                        url = url_text.substr(space_pos + 1);
+                    }
+
+                    if (!title.empty() && !url.empty()) {
+                        result += std::to_string(++count) + ". " + title + "\n";
+                        if (!snippet.empty()) {
+                            result += "   " + snippet + "\n";
+                        }
+                        result += "   " + url + "\n\n";
+                    }
+                }
+
+                i += 4; // Move to next group of 4 elements
+            }
+
             gumbo_destroy_output(&kGumboDefaultOptions, output);
         }
 
