@@ -286,7 +286,8 @@ private:
         return parse_ddg_html(response);
     }
     
-    string makeApiCall(const vector<Message>& context) {
+    // Modified to optionally include tools
+    string makeApiCall(const vector<Message>& context, bool use_tools = false) {
         CURL* curl = curl_easy_init();
         if (!curl) {
             throw runtime_error("Failed to initialize CURL");

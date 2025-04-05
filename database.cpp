@@ -91,6 +91,20 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
     }
 }
 
+void PersistenceManager::saveToolMessage(const std::string& content) {
+    // Note: The 'content' here is expected to be a JSON string containing
+    // tool_call_id, name, and the actual tool result content.
+    // The role is hardcoded as "tool".
+    impl->exec("BEGIN");
+    try {
+        impl->insertMessage({"tool", content});
+        impl->exec("COMMIT");
+    } catch(...) {
+        impl->exec("ROLLBACK");
+        throw;
+    }
+}
+
 std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
     const std::string sql = R"(
         WITH system_msg AS (

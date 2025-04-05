@@ -16,6 +16,7 @@ public:
     
     void saveUserMessage(const std::string& content);
     void saveAssistantMessage(const std::string& content);
+    void saveToolMessage(const std::string& content); // Added for tool results
     std::vector<Message> getContextHistory(size_t max_pairs = 10);
 
 private:
