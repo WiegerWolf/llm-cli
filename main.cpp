@@ -10,6 +10,7 @@
 #include <readline/history.h>
 #include <functional>
 #include <gumbo.h>
+#include <fstream>
 #include "database.h"
 
 using namespace std;
@@ -60,14 +61,21 @@ private:
         if (output) {
             find_tr_elements(output->root);
             
+            // DEBUG: Show total TR elements found
+            std::cerr << "DEBUG: Found " << elements.size() << " TR elements\n";
+            
             // Process elements in groups of 3 (title, snippet, URL) + 1 separator
             for (size_t i = 0; i < elements.size(); ) {
+                std::cerr << "DEBUG: Processing group starting at index " << i << "\n";
+                
                 // Check if we have at least 3 elements remaining
                 if (i + 2 >= elements.size()) break;
 
                 GumboNode* title_tr = elements[i];
                 GumboNode* snippet_tr = elements[i+1];
                 GumboNode* url_tr = elements[i+2];
+                
+                std::cerr << "DEBUG: Title TR content: " << gumbo_get_text(title_tr) << "\n";
 
                 // Extract title link
                 GumboNode* a_tag = nullptr;
@@ -81,6 +89,7 @@ private:
                 }
 
                 if (a_tag && a_tag->v.element.tag == GUMBO_TAG_A) {
+                    std::cerr << "DEBUG: Found A tag\n";
                     // Get href and title
                     GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
                     std::string url = href ? href->value : "";
@@ -104,6 +113,8 @@ private:
                         }
                     }
 
+                    std::cerr << "DEBUG: Extracted URL text: " << url_text << "\n";
+                    
                     if (!title.empty() && !url_text.empty()) {
                         result += std::to_string(++count) + ". " + title + "\n";
                         if (!snippet.empty()) {
@@ -117,6 +128,7 @@ private:
                 i += (elements.size() > i+3 && elements[i+3]->v.element.children.length == 0) ? 4 : 3;
             }
 
+            std::cerr << "DEBUG: Total results found: " << count << "\n";
             gumbo_destroy_output(&kGumboDefaultOptions, output);
         }
 
@@ -126,6 +138,9 @@ private:
     std::string search_web(const std::string& query) {
         CURL* curl = curl_easy_init();
         if (!curl) throw std::runtime_error("Failed to initialize CURL");
+        
+        // Enable verbose logging
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         
         std::string response;
         std::string url = "https://lite.duckduckgo.com/lite/";
@@ -155,6 +170,11 @@ private:
         if (res != CURLE_OK) {
             throw std::runtime_error("Search failed: " + std::string(curl_easy_strerror(res)));
         }
+
+        // Save raw HTML for inspection
+        std::ofstream debug_file("debug.html");
+        debug_file << response;
+        debug_file.close();
 
         return parse_ddg_html(response);
     }
