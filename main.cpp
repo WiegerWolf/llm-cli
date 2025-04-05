@@ -186,12 +186,15 @@ private:
 
                     std::cerr << "DEBUG: Extracted URL text: " << url_text << "\n";
                     
-                    // Ensure we have both title and the displayed URL text before adding
-                    // Also check snippet is not empty, as sometimes empty snippets indicate non-result rows
-                    if (!url_text.empty() && !snippet.empty()) {
+                    // Ensure we have the title (from <a>) and the displayed URL text before adding
+                    if (!url_text.empty()) {
                         result += std::to_string(++count) + ". " + title + "\n";
-                        if (!snippet.empty()) {
+                        // Still include snippet if it exists and is not just whitespace
+                        if (!snippet.empty() && snippet.find_first_not_of(" \n\r\t") != std::string::npos) {
                             result += "   " + snippet + "\n";
+                        } else {
+                            // Optionally indicate if snippet was missing or empty
+                            // result += "   [No snippet available]\n"; 
                         }
                         result += "   " + url_text + "\n\n";
                     }
