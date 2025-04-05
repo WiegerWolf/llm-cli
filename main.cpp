@@ -218,7 +218,7 @@ private:
             } // End of main processing loop (starting from start_index)
         } // End of else (start_index was found)
 
-        std::cerr << "DEBUG: Total results parsed: " << count << "\n";
+        // std::cerr << "DEBUG: Total results parsed: " << count << "\n";
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } // End of if (output)
 
