@@ -78,6 +78,13 @@ private:
                 GumboNode* snippet_tr = elements[i+1];
                 GumboNode* url_tr = elements[i+2];
                 
+                // Add defensive checks for node validity
+                if (!title_tr || !snippet_tr || !url_tr) {
+                    std::cerr << "DEBUG: Invalid TR nodes detected\n";
+                    i++;
+                    continue;
+                }
+                
                 std::cerr << "DEBUG: Title TR content: " << gumbo_get_text(title_tr) << "\n";
 
                 // Extract title link
@@ -85,13 +92,14 @@ private:
                 GumboVector* title_children = &title_tr->v.element.children;
                 if (title_children->length > 0) {
                     GumboNode* first_td = static_cast<GumboNode*>(title_children->data[0]);
-                    if (first_td->v.element.tag == GUMBO_TAG_TD && 
+                    if (first_td && first_td->type == GUMBO_NODE_ELEMENT && 
+                        first_td->v.element.tag == GUMBO_TAG_TD && 
                         first_td->v.element.children.length > 0) {
                         a_tag = static_cast<GumboNode*>(first_td->v.element.children.data[0]);
                     }
                 }
 
-                if (a_tag && a_tag->v.element.tag == GUMBO_TAG_A) {
+                if (a_tag && a_tag->type == GUMBO_NODE_ELEMENT && a_tag->v.element.tag == GUMBO_TAG_A) {
                     std::cerr << "DEBUG: Found A tag\n";
                     // Get href and title
                     GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
@@ -106,9 +114,12 @@ private:
                     GumboVector* url_children = &url_tr->v.element.children;
                     if (url_children->length > 0) {
                         GumboNode* url_td = static_cast<GumboNode*>(url_children->data[0]);
-                        if (url_td->v.element.tag == GUMBO_TAG_TD) {
+                        if (url_td && url_td->type == GUMBO_NODE_ELEMENT && 
+                            url_td->v.element.tag == GUMBO_TAG_TD && 
+                            url_td->v.element.children.length > 0) {
                             GumboNode* span = static_cast<GumboNode*>(url_td->v.element.children.data[0]);
-                            if (span->v.element.tag == GUMBO_TAG_SPAN &&
+                            if (span && span->type == GUMBO_NODE_ELEMENT && 
+                                span->v.element.tag == GUMBO_TAG_SPAN &&
                                 gumbo_get_attribute(&span->v.element.attributes, "class") &&
                                 std::string(gumbo_get_attribute(&span->v.element.attributes, "class")->value) == "link-text") {
                                 url_text = gumbo_get_text(span);
@@ -131,7 +142,8 @@ private:
                 size_t step = 3;
                 if (i + 3 < elements.size()) {
                     GumboNode* separator = elements[i+3];
-                    if (separator->v.element.children.length == 0) {
+                    if (separator && separator->type == GUMBO_NODE_ELEMENT && 
+                        separator->v.element.children.length == 0) {
                         step = 4;
                         std::cerr << "DEBUG: Found separator, stepping by 4\n";
                     }
