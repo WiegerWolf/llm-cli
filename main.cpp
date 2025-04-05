@@ -69,6 +69,23 @@ class ChatClient {
 private:
     PersistenceManager db;
     string api_base = "https://api.groq.com/openai/v1/chat/completions";
+    const nlohmann::json search_web_tool = {
+        {"type", "function"},
+        {"function", {
+            {"name", "search_web"},
+            {"description", "Search the web for information using DuckDuckGo Lite. Use this for recent events, specific facts, or topics outside general knowledge."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {
+                    {"query", {
+                        {"type", "string"},
+                        {"description", "The search query string."}
+                    }}
+                }},
+                {"required", {"query"}}
+            }}
+        }}
+    };
     
     static std::string gumbo_get_text(GumboNode* node) {
         if (node->type == GUMBO_NODE_TEXT) {
@@ -290,10 +307,47 @@ private:
         
         // Add conversation history
         for (const auto& msg : context) {
+            // Handle different message structures (simple content vs. tool calls/responses)
+            if (msg.role == "assistant" && !msg.content.empty() && msg.content.front() == '{') { 
+                // Attempt to parse content as JSON for potential tool_calls
+                try {
+                    auto content_json = nlohmann::json::parse(msg.content);
+                    if (content_json.contains("tool_calls")) {
+                         payload["messages"].push_back({{"role", msg.role}, {"content", nullptr}, {"tool_calls", content_json["tool_calls"]}});
+                         continue; // Skip adding simple content if tool_calls are present
+                    }
+                } catch (const nlohmann::json::parse_error& e) {
+                    // Not valid JSON or doesn't contain tool_calls, treat as regular content
+                }
+            } else if (msg.role == "tool") {
+                 try {
+                    // The content is expected to be a JSON string like:
+                    // {"tool_call_id": "...", "name": "...", "content": "..."}
+                    auto content_json = nlohmann::json::parse(msg.content);
+                    payload["messages"].push_back({
+                        {"role", msg.role}, 
+                        {"tool_call_id", content_json["tool_call_id"]}, 
+                        {"name", content_json["name"]},
+                        {"content", content_json["content"]} // The actual tool result string
+                    });
+                    continue; // Skip default content handling
+                 } catch (const nlohmann::json::parse_error& e) {
+                     // Handle potential error or malformed tool message content
+                     std::cerr << "Warning: Could not parse tool message content for ID " << msg.id << std::endl;
+                 }
+            }
+            // Default handling for user messages and simple assistant messages
             payload["messages"].push_back({{"role", msg.role}, {"content", msg.content}});
         }
 
+        // Add tools if requested
+        if (use_tools) {
+            payload["tools"] = nlohmann::json::array({search_web_tool});
+            payload["tool_choice"] = "auto";
+        }
+
         string json_payload = payload.dump();
+        // std::cout << "DEBUG: Payload: " << json_payload << std::endl; // Uncomment for debugging API payload
         string response;
 
         curl_easy_setopt(curl, CURLOPT_URL, api_base.c_str());
@@ -312,8 +366,9 @@ private:
             throw runtime_error("API request failed: " + string(curl_easy_strerror(res)));
         }
 
-        auto json = nlohmann::json::parse(response);
-        return json["choices"][0]["message"]["content"];
+        // Return the full response string, not just the content, 
+        // as we need to check for tool_calls later.
+        return response; 
     }
 
 public:
@@ -347,18 +402,121 @@ public:
                 // Persist user message
                 db.saveUserMessage(input);
                 
-                // Get context for API call
+                // Get context for the first API call
                 auto context = db.getContextHistory(10);
                 
-                // Make API call
-                string ai_response = makeApiCall(context);
+                // Make the first API call, allowing the model to use tools
+                string first_api_response_str = makeApiCall(context, true); // Enable tools
+                nlohmann::json first_api_response;
+                try {
+                    first_api_response = nlohmann::json::parse(first_api_response_str);
+                } catch (const nlohmann::json::parse_error& e) {
+                    cerr << "JSON Parsing Error (First Response): " << e.what() << "\nResponse was: " << first_api_response_str << "\n";
+                    continue; // Skip processing this turn
+                }
+
+                // Extract the message part of the response
+                if (!first_api_response.contains("choices") || first_api_response["choices"].empty() || !first_api_response["choices"][0].contains("message")) {
+                    cerr << "Error: Invalid API response structure (First Response).\nResponse was: " << first_api_response_str << "\n";
+                    continue;
+                }
+                nlohmann::json response_message = first_api_response["choices"][0]["message"];
                 
-                // Persist assistant response
-                db.saveAssistantMessage(ai_response);
-                
-                // Display response
-                cout << ai_response << "\n\n"; // add spacing
-                
+                // Check if the response contains tool calls
+                if (response_message.contains("tool_calls") && !response_message["tool_calls"].is_null()) {
+                    // Save the assistant's message requesting tool use
+                    // Store the whole message object containing tool_calls as a JSON string
+                    db.saveAssistantMessage(response_message.dump()); 
+
+                    // Prepare for the second API call by adding the assistant's request to context
+                    context = db.getContextHistory(10); // Reload context including the tool call message
+
+                    // Execute tools and collect results
+                    for (const auto& tool_call : response_message["tool_calls"]) {
+                        if (!tool_call.contains("id") || !tool_call.contains("function") || !tool_call["function"].contains("name") || !tool_call["function"].contains("arguments")) {
+                             cerr << "Error: Malformed tool_call object received.\n";
+                             continue;
+                        }
+                        string tool_call_id = tool_call["id"];
+                        string function_name = tool_call["function"]["name"];
+                        string function_args_str = tool_call["function"]["arguments"];
+                        nlohmann::json function_args;
+                        try {
+                             function_args = nlohmann::json::parse(function_args_str);
+                        } catch (const nlohmann::json::parse_error& e) {
+                             cerr << "JSON Parsing Error (Tool Arguments): " << e.what() << "\nArgs were: " << function_args_str << "\n";
+                             continue;
+                        }
+
+
+                        if (function_name == "search_web") {
+                            if (!function_args.contains("query")) {
+                                cerr << "Error: 'query' argument missing for search_web tool.\n";
+                                continue;
+                            }
+                            string query = function_args["query"];
+                            cout << "[Searching web for: " << query << "]\n"; // Inform user
+                            string search_result;
+                            try {
+                                search_result = search_web(query);
+                            } catch (const std::exception& e) {
+                                cerr << "Web search failed: " << e.what() << "\n";
+                                search_result = "Error performing web search."; // Provide error feedback to LLM
+                            }
+                            
+                            // Prepare tool result message content as JSON string
+                            nlohmann::json tool_result_content;
+                            tool_result_content["tool_call_id"] = tool_call_id;
+                            tool_result_content["name"] = function_name;
+                            tool_result_content["content"] = search_result; // This is the actual result string
+
+                            // Save the tool's response message using the dedicated function
+                            db.saveToolMessage(tool_result_content.dump()); 
+
+                            // Add tool response to context for the next API call
+                            context = db.getContextHistory(10); // Reload context including the tool result
+                        } else {
+                             cerr << "Error: Unknown tool requested: " << function_name << "\n";
+                             // Optionally save an error message as a tool response?
+                             // For now, just log and continue
+                        }
+                    }
+
+                    // Make the second API call with the tool results included in the context
+                    string final_response_str = makeApiCall(context, false); // Tools not needed for the final response generation
+                    nlohmann::json final_response_json;
+                     try {
+                        final_response_json = nlohmann::json::parse(final_response_str);
+                    } catch (const nlohmann::json::parse_error& e) {
+                        cerr << "JSON Parsing Error (Second Response): " << e.what() << "\nResponse was: " << final_response_str << "\n";
+                        continue; // Skip processing this turn
+                    }
+
+                    if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message") || !final_response_json["choices"][0]["message"].contains("content")) {
+                        cerr << "Error: Invalid API response structure (Second Response).\nResponse was: " << final_response_str << "\n";
+                        continue;
+                    }
+                    string final_content = final_response_json["choices"][0]["message"]["content"];
+
+                    // Save the final assistant response
+                    db.saveAssistantMessage(final_content);
+
+                    // Display final response
+                    cout << final_content << "\n\n";
+
+                } else {
+                    // No tool calls, handle as a regular response
+                    if (!response_message.contains("content") || response_message["content"].is_null()) {
+                         cerr << "Error: API response missing content.\nResponse was: " << first_api_response_str << "\n";
+                         continue;
+                    }
+                    string final_content = response_message["content"];
+                    db.saveAssistantMessage(final_content);
+                    cout << final_content << "\n\n";
+                }
+
+            } catch (const nlohmann::json::parse_error& e) {
+                 cerr << "JSON Parsing Error: " << e.what() << "\n";
             } catch (const exception& e) {
                 cerr << "Error: " << e.what() << "\n";
             }
