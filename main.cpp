@@ -21,6 +21,50 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, string* o
     return total_size;
 }
 
+// Helper function to recursively find the first node with a specific tag
+static GumboNode* find_node_by_tag(GumboNode* node, GumboTag tag) {
+    if (!node || node->type != GUMBO_NODE_ELEMENT) {
+        return nullptr;
+    }
+
+    if (node->v.element.tag == tag) {
+        return node;
+    }
+
+    GumboVector* children = &node->v.element.children;
+    for (unsigned int i = 0; i < children->length; ++i) {
+        GumboNode* found = find_node_by_tag(static_cast<GumboNode*>(children->data[i]), tag);
+        if (found) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// Helper function to recursively find the first node with a specific tag and class
+static GumboNode* find_node_by_tag_and_class(GumboNode* node, GumboTag tag, const std::string& class_name) {
+     if (!node || node->type != GUMBO_NODE_ELEMENT) {
+        return nullptr;
+    }
+    
+    if (node->v.element.tag == tag) {
+        GumboAttribute* class_attr = gumbo_get_attribute(&node->v.element.attributes, "class");
+        if (class_attr && std::string(class_attr->value).find(class_name) != std::string::npos) {
+            return node;
+        }
+    }
+
+    GumboVector* children = &node->v.element.children;
+    for (unsigned int i = 0; i < children->length; ++i) {
+        GumboNode* found = find_node_by_tag_and_class(static_cast<GumboNode*>(children->data[i]), tag, class_name);
+        if (found) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+
 class ChatClient {
 private:
     PersistenceManager db;
@@ -99,69 +143,52 @@ private:
                 // Extract title link and text
                 std::string title;
                 std::string url; // URL from the title's href
-                GumboNode* a_tag = nullptr;
                 
-                // Check title_tr structure: tr -> td -> a
-                if (title_tr->type == GUMBO_NODE_ELEMENT && title_tr->v.element.children.length > 0) {
-                    GumboNode* first_td = static_cast<GumboNode*>(title_tr->v.element.children.data[0]);
-                    if (first_td && first_td->type == GUMBO_NODE_ELEMENT && 
-                        first_td->v.element.tag == GUMBO_TAG_TD && 
-                        first_td->v.element.children.length > 0) {
-                        
-                        a_tag = static_cast<GumboNode*>(first_td->v.element.children.data[0]);
-                        if (a_tag && a_tag->type == GUMBO_NODE_ELEMENT && a_tag->v.element.tag == GUMBO_TAG_A) {
-                            std::cerr << "DEBUG: Found A tag in title\n";
-                            GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
-                            url = href ? href->value : "";
-                            title = gumbo_get_text(a_tag);
-                        } else {
-                             std::cerr << "DEBUG: Title TR did not contain expected A tag\n";
-                        }
-                    } else {
-                        std::cerr << "DEBUG: Title TR did not contain expected TD structure\n";
-                    }
+                // Find the first <a> tag within the title_tr
+                GumboNode* a_tag = find_node_by_tag(title_tr, GUMBO_TAG_A);
+                
+                if (a_tag) {
+                    std::cerr << "DEBUG: Found A tag within title TR\n";
+                    GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
+                    url = href ? href->value : "";
+                    title = gumbo_get_text(a_tag);
+                    // Clean up title (remove extra spaces/newlines)
+                    title.erase(0, title.find_first_not_of(" \n\r\t"));
+                    title.erase(title.find_last_not_of(" \n\r\t") + 1);
                 } else {
-                     std::cerr << "DEBUG: Title TR was not an element or had no children\n";
+                    std::cerr << "DEBUG: No A tag found within title TR\n";
+                    // Fallback: maybe the title is just the text content of the TR?
+                    // title = gumbo_get_text(title_tr); // Let's skip this for now, title needs a link
                 }
 
-                // Only proceed if we found a title
+                // Only proceed if we found a title *from an <a> tag*
                 if (!title.empty()) {
                     // Extract snippet (safer access)
                     std::string snippet = gumbo_get_text(snippet_tr); // snippet_tr is already checked for null
+                    // Clean up snippet
+                    snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
+                    snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
 
-                    // Extract displayed URL text from url_tr's span.link-text
+
+                    // Extract displayed URL text from the first <span class="link-text"> within url_tr
                     std::string url_text;
-                    // Check url_tr structure: tr -> td -> span.link-text
-                    if (url_tr->type == GUMBO_NODE_ELEMENT && url_tr->v.element.children.length > 0) {
-                        GumboNode* url_td = static_cast<GumboNode*>(url_tr->v.element.children.data[0]);
-                        if (url_td && url_td->type == GUMBO_NODE_ELEMENT && 
-                            url_td->v.element.tag == GUMBO_TAG_TD && 
-                            url_td->v.element.children.length > 0) {
-                            
-                            GumboNode* span = static_cast<GumboNode*>(url_td->v.element.children.data[0]);
-                            if (span && span->type == GUMBO_NODE_ELEMENT && 
-                                span->v.element.tag == GUMBO_TAG_SPAN) {
-                                
-                                GumboAttribute* class_attr = gumbo_get_attribute(&span->v.element.attributes, "class");
-                                if (class_attr && std::string(class_attr->value) == "link-text") {
-                                    url_text = gumbo_get_text(span);
-                                } else {
-                                    std::cerr << "DEBUG: URL TR span did not have class 'link-text'\n";
-                                }
-                            } else {
-                                std::cerr << "DEBUG: URL TR TD did not contain expected SPAN tag\n";
-                            }
-                        } else {
-                             std::cerr << "DEBUG: URL TR did not contain expected TD structure\n";
-                        }
+                    GumboNode* span_link_text = find_node_by_tag_and_class(url_tr, GUMBO_TAG_SPAN, "link-text");
+
+                    if (span_link_text) {
+                         std::cerr << "DEBUG: Found span.link-text within URL TR\n";
+                         url_text = gumbo_get_text(span_link_text);
+                         // Clean up url_text
+                         url_text.erase(0, url_text.find_first_not_of(" \n\r\t"));
+                         url_text.erase(url_text.find_last_not_of(" \n\r\t") + 1);
                     } else {
-                        std::cerr << "DEBUG: URL TR was not an element or had no children\n";
+                         std::cerr << "DEBUG: No span.link-text found within URL TR\n";
                     }
 
                     std::cerr << "DEBUG: Extracted URL text: " << url_text << "\n";
                     
                     // Ensure we have both title and the displayed URL text before adding
-                    if (!url_text.empty()) {
+                    // Also check snippet is not empty, as sometimes empty snippets indicate non-result rows
+                    if (!url_text.empty() && !snippet.empty()) {
                         result += std::to_string(++count) + ". " + title + "\n";
                         if (!snippet.empty()) {
                             result += "   " + snippet + "\n";
