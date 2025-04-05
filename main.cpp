@@ -30,7 +30,7 @@ private:
         std::string response;
         std::string url = "https://api.duckduckgo.com/?q=" + 
                          std::string(curl_easy_escape(curl, query.c_str(), query.length())) + 
-                         "&format=json&no_html=1&no_redirect=1";
+                         "&format=json&t=h_&no_redirect=1";
         
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
@@ -46,16 +46,28 @@ private:
         auto json = nlohmann::json::parse(response);
         std::string result = "Web results:\n";
         
-        if (json.contains("RelatedTopics")) {
-            for (const auto& topic : json["RelatedTopics"]) {
-                if (topic.contains("Text") && topic.contains("FirstURL")) {
-                    result += "- " + topic["Text"].get<std::string>() + "\n";
-                    result += "  " + topic["FirstURL"].get<std::string>() + "\n\n";
+        if (json.contains("Results")) {
+            for (const auto& item : json["Results"]) {
+                if (item.contains("Text") && item.contains("FirstURL")) {
+                    result += "- " + item["Text"].get<std::string>() + "\n";
+                    result += "  " + item["FirstURL"].get<std::string>() + "\n\n";
                 }
             }
         }
         
-        return result.empty() ? "No results found" : result;
+        if (result == "Web results:\n") {
+            // Fallback to RelatedTopics if no direct results
+            if (json.contains("RelatedTopics")) {
+                for (const auto& topic : json["RelatedTopics"]) {
+                    if (topic.contains("Text") && topic.contains("FirstURL")) {
+                        result += "- " + topic["Text"].get<std::string>() + "\n";
+                        result += "  " + topic["FirstURL"].get<std::string>() + "\n\n";
+                    }
+                }
+            }
+        }
+        
+        return result.empty() ? "No relevant results found" : result;
     }
     
     string makeApiCall(const vector<Message>& context) {
