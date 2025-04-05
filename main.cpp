@@ -60,12 +60,16 @@ private:
         if (output) {
             find_tr_elements(output->root);
             
-            // Process elements in groups of 4 (matching Python's zip(cycle(range(1,5), elements))
+            // Process elements in groups of 3 (title, snippet, URL) + 1 separator
             for (size_t i = 0; i < elements.size(); ) {
-                GumboNode* title_tr = elements[i];
-                if (i + 3 >= elements.size()) break;
+                // Check if we have at least 3 elements remaining
+                if (i + 2 >= elements.size()) break;
 
-                // Extract title link (first TR)
+                GumboNode* title_tr = elements[i];
+                GumboNode* snippet_tr = elements[i+1];
+                GumboNode* url_tr = elements[i+2];
+
+                // Extract title link
                 GumboNode* a_tag = nullptr;
                 GumboVector* title_children = &title_tr->v.element.children;
                 if (title_children->length > 0) {
@@ -77,37 +81,40 @@ private:
                 }
 
                 if (a_tag && a_tag->v.element.tag == GUMBO_TAG_A) {
-                    // Get href
+                    // Get href and title
                     GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
                     std::string url = href ? href->value : "";
-                    
-                    // Get title text
                     std::string title = gumbo_get_text(a_tag);
 
-                    // Extract snippet (next TR)
-                    GumboNode* snippet_tr = elements[i+1];
+                    // Extract snippet
                     std::string snippet = gumbo_get_text(snippet_tr);
 
-                    // Extract URL (TR after snippet)
-                    GumboNode* url_tr = elements[i+2];
-                    std::string url_text = gumbo_get_text(url_tr);
-
-                    // Clean up URL text
-                    size_t space_pos = url_text.find(' ');
-                    if (space_pos != std::string::npos) {
-                        url = url_text.substr(space_pos + 1);
+                    // Extract URL from url_tr's span.link-text
+                    std::string url_text;
+                    GumboVector* url_children = &url_tr->v.element.children;
+                    if (url_children->length > 0) {
+                        GumboNode* url_td = static_cast<GumboNode*>(url_children->data[0]);
+                        if (url_td->v.element.tag == GUMBO_TAG_TD) {
+                            GumboNode* span = static_cast<GumboNode*>(url_td->v.element.children.data[0]);
+                            if (span->v.element.tag == GUMBO_TAG_SPAN &&
+                                gumbo_get_attribute(&span->v.element.attributes, "class") &&
+                                std::string(gumbo_get_attribute(&span->v.element.attributes, "class")->value) == "link-text") {
+                                url_text = gumbo_get_text(span);
+                            }
+                        }
                     }
 
-                    if (!title.empty() && !url.empty()) {
+                    if (!title.empty() && !url_text.empty()) {
                         result += std::to_string(++count) + ". " + title + "\n";
                         if (!snippet.empty()) {
                             result += "   " + snippet + "\n";
                         }
-                        result += "   " + url + "\n\n";
+                        result += "   " + url_text + "\n\n";
                     }
                 }
 
-                i += 4; // Move to next group of 4 elements
+                // Move to next result group (skip separator TR if present)
+                i += (elements.size() > i+3 && elements[i+3]->v.element.children.length == 0) ? 4 : 3;
             }
 
             gumbo_destroy_output(&kGumboDefaultOptions, output);
