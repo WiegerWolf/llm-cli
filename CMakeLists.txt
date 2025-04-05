@@ -18,6 +18,30 @@ FetchContent_MakeAvailable(nlohmann_json)
 # Find required packages
 find_package(CURL REQUIRED)
 find_package(SQLite3 QUIET)
+find_package(PkgConfig QUIET)
+
+# Find Gumbo HTML parser
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(GUMBO gumbo)
+endif()
+
+if(NOT GUMBO_FOUND)
+    find_path(GUMBO_INCLUDE_DIR gumbo.h
+        PATHS /usr/include /usr/local/include /usr/include/gumbo /usr/local/include/gumbo
+    )
+    
+    find_library(GUMBO_LIBRARY NAMES gumbo
+        PATHS /usr/lib /usr/local/lib
+    )
+    
+    if(GUMBO_INCLUDE_DIR AND GUMBO_LIBRARY)
+        set(GUMBO_FOUND TRUE)
+        set(GUMBO_INCLUDE_DIRS ${GUMBO_INCLUDE_DIR})
+        set(GUMBO_LIBRARIES ${GUMBO_LIBRARY})
+    else()
+        message(FATAL_ERROR "Gumbo HTML parser not found - install with: sudo apt-get install libgumbo-dev")
+    endif()
+endif()
 
 if(NOT SQLite3_FOUND)
     # Fallback search if standard method fails
@@ -62,7 +86,10 @@ target_link_libraries(llm PRIVATE
     nlohmann_json::nlohmann_json
     ${Readline_LIBRARIES}
     ${SQLite3_LIBRARIES}
+    ${GUMBO_LIBRARIES}
 )
+
+target_include_directories(llm PRIVATE ${GUMBO_INCLUDE_DIRS})
 
 # Installation setup
 install(TARGETS llm
