@@ -117,28 +117,23 @@ private:
             // DEBUG: Show total TR elements found
             std::cerr << "DEBUG: Found " << elements.size() << " TR elements\n";
             
-            // Process elements in groups of 3 (title, snippet, URL) + 1 separator
-            for (size_t i = 0; i < elements.size(); ) {
+            // Process elements in groups of 4 (title, snippet, URL, separator)
+            for (size_t i = 0; i + 3 < elements.size(); i += 4) { // Ensure 4 elements exist, step by 4
                 std::cerr << "DEBUG: Processing group starting at index " << i << "\n";
                 
-                // Check if we have at least 3 elements remaining
-                if (i + 2 >= elements.size()) {
-                    std::cerr << "DEBUG: Breaking - not enough elements remaining\n";
-                    break;
-                }
-
                 GumboNode* title_tr = elements[i];
                 GumboNode* snippet_tr = elements[i+1];
                 GumboNode* url_tr = elements[i+2];
-                
+                // GumboNode* separator_tr = elements[i+3]; // Separator is unused but part of the 4-step
+
                 // Add defensive checks for node validity
                 if (!title_tr || !snippet_tr || !url_tr) {
-                    std::cerr << "DEBUG: Invalid TR nodes detected\n";
-                    i++;
-                    continue;
+                    std::cerr << "DEBUG: Invalid TR nodes detected in group starting at " << i << "\n";
+                    continue; // Skip this group and step by 4
                 }
                 
-                std::cerr << "DEBUG: Title TR content: " << gumbo_get_text(title_tr) << "\n";
+                // DEBUG: Print content of the first TR in the group
+                // std::cerr << "DEBUG: Title TR content: " << gumbo_get_text(title_tr) << "\n";
 
                 // Extract title link and text
                 std::string title;
@@ -197,25 +192,17 @@ private:
                             // result += "   [No snippet available]\n"; 
                         }
                         result += "   " + url_text + "\n\n";
+                        result += "   " + url_text + "\n\n";
+                    } else {
+                         std::cerr << "DEBUG: Skipping group starting at " << i << " due to missing title/url_text\n";
                     }
+                } else {
+                     std::cerr << "DEBUG: Skipping group starting at " << i << " due to missing title\n";
                 }
-
-                // Move to next result group (skip separator TR if present)
-                size_t step = 3;
-                if (i + 3 < elements.size()) {
-                    GumboNode* separator = elements[i+3];
-                    if (separator && separator->type == GUMBO_NODE_ELEMENT && 
-                        separator->v.element.children.length == 0) {
-                        step = 4;
-                        std::cerr << "DEBUG: Found separator, stepping by 4\n";
-                    }
-                }
-                
-                std::cerr << "DEBUG: Stepping by " << step << " positions\n";
-                i += step;
+                // The loop automatically increments i by 4
             }
 
-            std::cerr << "DEBUG: Total results found: " << count << "\n";
+            std::cerr << "DEBUG: Total results parsed: " << count << "\n";
             gumbo_destroy_output(&kGumboDefaultOptions, output);
         }
 
