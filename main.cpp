@@ -120,7 +120,7 @@ public:
             if (input.empty()) continue;
 
             // Handle search commands
-            if (input.starts_with("/search ")) {
+            if (input.rfind("/search ", 0) == 0) {  // Pre-C++20 compatible check
                 try {
                     string query = input.substr(8);
                     cout << "\n" << search_web(query) << "\n\n";
