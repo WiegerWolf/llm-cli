@@ -539,16 +539,26 @@ public:
                     size_t func_start = content_str.find("<function=");
                     size_t func_end = content_str.rfind("</function>");
 
-                    // Basic check for the pattern
+                    // Basic check for the pattern <function=NAME,{ARGS}></function>
                     if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start) {
-                        size_t name_end = content_str.find('(', func_start);
-                        size_t args_start = name_end + 1;
-                        // Find the last ')' before '</function>' to handle nested structures if any (though unlikely needed here)
-                        size_t args_end = content_str.rfind(')', func_end); 
+                        // Find the comma separating name and args JSON
+                        size_t comma_pos = content_str.find(',', func_start + 10); // Start search after "<function="
+                        // Find the start of the JSON args (first '{' after comma)
+                        size_t args_start = content_str.find('{', comma_pos);
+                        // Find the end of the JSON args (last '}' before '</function>')
+                        size_t args_end = content_str.rfind('}', func_end);
 
-                        if (name_end != std::string::npos && args_end != std::string::npos && args_end > args_start && name_end > (func_start + 10)) {
-                            std::string function_name = content_str.substr(func_start + 10, name_end - (func_start + 10));
-                            std::string args_str = content_str.substr(args_start, args_end - args_start);
+                        if (comma_pos != std::string::npos && args_start != std::string::npos && args_end != std::string::npos &&
+                            args_start == comma_pos + 1 && // '{' should be right after ','
+                            args_end > args_start &&        // End must be after start
+                            comma_pos > func_start + 10)    // Ensure there's a name before the comma
+                        {
+                            std::string function_name = content_str.substr(func_start + 10, comma_pos - (func_start + 10));
+                            // Trim potential whitespace from name
+                            function_name.erase(0, function_name.find_first_not_of(" \n\r\t"));
+                            function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
+
+                            std::string args_str = content_str.substr(args_start, args_end - args_start + 1); // Include '{' and '}'
 
                             // Currently only handle search_web via this path
                             if (function_name == "search_web") {
