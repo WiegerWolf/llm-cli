@@ -116,6 +116,30 @@ private:
             }}
         }}
     };
+    const nlohmann::json read_history_tool = {
+        {"type", "function"},
+        {"function", {
+            {"name", "read_history"},
+            {"description", "Read a range of past messages from the conversation history database."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {
+                    {"limit", {
+                        {"type", "integer"},
+                        {"description", "The maximum number of messages to retrieve."},
+                        {"default", 20}
+                    }},
+                    {"offset", {
+                        {"type", "integer"},
+                        {"description", "The number of messages to skip from the beginning of the history."},
+                        {"default", 0}
+                    }}
+                }},
+                {"required", {}} // No required params, defaults are used
+            }}
+        }}
+    };
+
 
     static std::string gumbo_get_text(GumboNode* node) {
         if (node->type == GUMBO_NODE_TEXT) {
@@ -461,7 +485,7 @@ private:
         // Add tools if requested
         if (use_tools) {
             // Include all defined tools in the array
-            payload["tools"] = nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool}); 
+            payload["tools"] = nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool, read_history_tool}); 
             payload["tool_choice"] = "auto";
         }
 
@@ -502,6 +526,34 @@ private: // Tool implementations and helpers
         ss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S %Z"); 
         return ss.str();
     }
+
+    // Function to read history range and format it
+    std::string read_history(size_t limit, size_t offset) {
+         std::vector<Message> messages = db.getHistoryRange(limit, offset);
+         if (messages.empty()) {
+             return "No messages found for the specified range (Limit: " + std::to_string(limit) + ", Offset: " + std::to_string(offset) + ").";
+         }
+
+         std::stringstream ss;
+         ss << "History (Limit: " << limit << ", Offset: " << offset << "):\n";
+         for (const auto& msg : messages) {
+             // Basic formatting, truncate long content
+             std::string truncated_content = msg.content;
+             if (truncated_content.length() > 100) { // Limit content length in output
+                 truncated_content = truncated_content.substr(0, 97) + "...";
+             }
+             // Replace newlines in content to keep output clean
+             size_t pos = 0;
+             while ((pos = truncated_content.find('\n', pos)) != std::string::npos) {
+                 truncated_content.replace(pos, 1, "\\n");
+                 pos += 2; // Move past the replaced "\\n"
+             }
+
+             ss << "[ID: " << msg.id << ", Role: " << msg.role << "] " << truncated_content << "\n";
+         }
+         return ss.str();
+    }
+
 
     // Helper function to execute a tool, get final response, and handle persistence/output
     bool handleToolExecutionAndFinalResponse(
