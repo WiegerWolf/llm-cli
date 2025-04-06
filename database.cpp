@@ -131,3 +131,35 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
     return history;
 }
 
+
+std::vector<Message> PersistenceManager::getHistoryRange(size_t limit, size_t offset) {
+    // Fetches all message types in chronological order, paginated
+    const char* sql = R"(
+        SELECT id, role, content, timestamp FROM messages
+        ORDER BY id ASC -- Or timestamp ASC
+        LIMIT ? OFFSET ?
+    )";
+    sqlite3_stmt* stmt = nullptr;
+    std::vector<Message> history_range;
+
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, limit);
+        sqlite3_bind_int(stmt, 2, offset);
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            Message msg;
+            msg.id = sqlite3_column_int(stmt, 0);
+            msg.role = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            msg.content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+            // Optionally include timestamp if needed in Message struct
+            // msg.timestamp = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+            history_range.push_back(msg);
+        }
+        sqlite3_finalize(stmt);
+    } else {
+        std::cerr << "Warning: Failed to prepare statement for history range query: " << sqlite3_errmsg(impl->db) << std::endl;
+        // Consider throwing an exception
+    }
+    return history_range;
+}
+

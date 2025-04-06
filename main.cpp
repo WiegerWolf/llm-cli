@@ -602,6 +602,18 @@ private: // Tool implementations and helpers
                      tool_result_str = "Error visiting URL: " + std::string(e.what());
                  }
              }
+        } else if (function_name == "read_history") {
+             // Get limit and offset, using defaults if not provided
+             size_t limit = function_args.value("limit", 20); // Default limit 20
+             size_t offset = function_args.value("offset", 0); // Default offset 0
+             cout << "[Reading history (Limit: " << limit << ", Offset: " << offset << ")]\n"; // Inform user
+             cout.flush();
+             try {
+                 tool_result_str = read_history(limit, offset);
+             } catch (const std::exception& e) {
+                 cerr << "History read failed: " << e.what() << "\n";
+                 tool_result_str = "Error reading history: " + std::string(e.what());
+             }
         } else {
             cerr << "Error: Unknown tool requested: " << function_name << "\n";
             tool_result_str = "Error: Unknown tool requested."; // Provide error feedback

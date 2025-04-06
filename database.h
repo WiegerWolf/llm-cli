@@ -17,7 +17,8 @@ public:
     void saveUserMessage(const std::string& content);
     void saveAssistantMessage(const std::string& content);
     void saveToolMessage(const std::string& content); // Added for tool results
-    std::vector<Message> getContextHistory(size_t max_pairs = 10);
+    std::vector<Message> getContextHistory(size_t max_pairs = 10); // Gets recent context for API call
+    std::vector<Message> getHistoryRange(size_t limit, size_t offset); // Added for reading history range via tool
 
 private:
     struct Impl;
