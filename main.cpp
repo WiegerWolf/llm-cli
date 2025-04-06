@@ -215,7 +215,8 @@ private:
                     // std::cerr << "DEBUG: Extracted URL text: " << url_text << "\n";
                     
                     // Ensure we have the title (from <a>) and the displayed URL text before adding
-                    if (!url_text.empty()) {
+                    // Also limit the number of results
+                    if (!url_text.empty() && count < 5) { // Limit to 5 results
                         result += std::to_string(++count) + ". " + title + "\n";
                         // Still include snippet if it exists and is not just whitespace
                         if (!snippet.empty() && snippet.find_first_not_of(" \n\r\t") != std::string::npos) {
