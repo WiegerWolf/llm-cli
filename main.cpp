@@ -99,6 +99,23 @@ private:
             }}
         }}
     };
+    const nlohmann::json visit_url_tool = {
+        {"type", "function"},
+        {"function", {
+            {"name", "visit_url"},
+            {"description", "Fetch the main text content of a given URL."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {
+                    {"url", {
+                        {"type", "string"},
+                        {"description", "The full URL to visit (including http:// or https://)."}
+                    }}
+                }},
+                {"required", {"url"}}
+            }}
+        }}
+    };
 
     static std::string gumbo_get_text(GumboNode* node) {
         if (node->type == GUMBO_NODE_TEXT) {
@@ -256,6 +273,92 @@ private:
         return count > 0 ? result : "No relevant results found";
     }
 
+    // Function to fetch URL content and extract text
+    std::string visit_url(const std::string& url_str) {
+        CURL* curl = curl_easy_init();
+        if (!curl) throw std::runtime_error("Failed to initialize CURL");
+
+        std::string html_content;
+        long http_code = 0;
+
+        // Set common CURL options
+        curl_easy_setopt(curl, CURLOPT_URL, url_str.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &html_content);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L); // Follow redirects
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "llm-cli-tool/1.0"); // Simple user agent
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L); // 15 second timeout
+        // Disable SSL verification for simplicity (use with caution!)
+        // Consider adding proper certificate handling if needed for production
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+
+        CURLcode res = curl_easy_perform(curl);
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code); // Get HTTP status code
+        curl_easy_cleanup(curl);
+
+        if (res != CURLE_OK) {
+            return "Error fetching URL: " + std::string(curl_easy_strerror(res));
+        }
+
+        if (http_code >= 400) {
+            return "Error: Received HTTP status code " + std::to_string(http_code);
+        }
+
+        // Parse the HTML using Gumbo
+        GumboOutput* output = gumbo_parse(html_content.c_str());
+        if (!output || !output->root) {
+            if (output) gumbo_destroy_output(&kGumboDefaultOptions, output);
+            return "Error: Failed to parse HTML content.";
+        }
+
+        // Find the body node
+        GumboNode* body = find_node_by_tag(output->root, GUMBO_TAG_BODY);
+        std::string extracted_text;
+
+        if (body) {
+            // Extract all text content from the body
+            extracted_text = gumbo_get_text(body);
+            // Basic cleanup: remove excessive whitespace/newlines
+            std::stringstream ss_in(extracted_text);
+            std::string segment;
+            std::stringstream ss_out;
+            bool first = true;
+            while (ss_in >> segment) {
+                if (!first) ss_out << " ";
+                ss_out << segment;
+                first = false;
+            }
+            extracted_text = ss_out.str();
+
+        } else {
+            // Fallback: try getting text from the root if body not found
+            extracted_text = gumbo_get_text(output->root);
+             std::stringstream ss_in(extracted_text);
+            std::string segment;
+            std::stringstream ss_out;
+            bool first = true;
+            while (ss_in >> segment) {
+                if (!first) ss_out << " ";
+                ss_out << segment;
+                first = false;
+            }
+            extracted_text = ss_out.str();
+        }
+
+        gumbo_destroy_output(&kGumboDefaultOptions, output);
+
+        // Limit the length to avoid overwhelming the context
+        const size_t max_len = 4000; // Limit to ~4000 characters
+        if (extracted_text.length() > max_len) {
+            extracted_text = extracted_text.substr(0, max_len) + "... [truncated]";
+        }
+
+
+        return extracted_text.empty() ? "No text content found." : extracted_text;
+    }
+
+
     std::string search_web(const std::string& query) {
         CURL* curl = curl_easy_init();
         if (!curl) throw std::runtime_error("Failed to initialize CURL");
@@ -357,8 +460,8 @@ private:
 
         // Add tools if requested
         if (use_tools) {
-            // Include both tools in the array
-            payload["tools"] = nlohmann::json::array({search_web_tool, get_current_datetime_tool}); 
+            // Include all defined tools in the array
+            payload["tools"] = nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool}); 
             payload["tool_choice"] = "auto";
         }
 
@@ -431,6 +534,21 @@ private: // Tool implementations and helpers
              } catch (const std::exception& e) { // Should be unlikely, but good practice
                  cerr << "Getting date/time failed: " << e.what() << "\n";
                  tool_result_str = "Error getting current date and time.";
+             }
+        } else if (function_name == "visit_url") {
+             string url_to_visit = function_args.value("url", "");
+             if (url_to_visit.empty()) {
+                 cerr << "Error: 'url' argument missing or empty for visit_url tool.\n";
+                 tool_result_str = "Error: URL parameter is missing.";
+             } else {
+                 cout << "[Visiting URL: " << url_to_visit << "]\n"; // Inform user
+                 cout.flush();
+                 try {
+                     tool_result_str = visit_url(url_to_visit);
+                 } catch (const std::exception& e) {
+                     cerr << "URL visit failed: " << e.what() << "\n";
+                     tool_result_str = "Error visiting URL: " + std::string(e.what());
+                 }
              }
         } else {
             cerr << "Error: Unknown tool requested: " << function_name << "\n";
