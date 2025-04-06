@@ -505,6 +505,7 @@ public:
 
                     // Display final response
                     cout << final_content << "\n\n";
+                    cout.flush(); // Ensure output is displayed before next prompt
 
                 } else {
                     // No tool calls, handle as a regular response
@@ -515,6 +516,7 @@ public:
                     string final_content = response_message["content"];
                     db.saveAssistantMessage(final_content);
                     cout << final_content << "\n\n";
+                    cout.flush(); // Ensure output is displayed before next prompt
                 }
 
             } catch (const nlohmann::json::parse_error& e) {
