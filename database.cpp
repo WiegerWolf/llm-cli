@@ -132,27 +132,32 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
 }
 
 
-std::vector<Message> PersistenceManager::getHistoryRange(size_t limit, size_t offset) {
-    // Fetches all message types in chronological order, paginated
+// Updated implementation for time range query
+std::vector<Message> PersistenceManager::getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit) {
+    // Fetches messages within a time range, ordered chronologically, with a limit
     const char* sql = R"(
         SELECT id, role, content, timestamp FROM messages
-        ORDER BY id ASC -- Or timestamp ASC
-        LIMIT ? OFFSET ?
+        WHERE timestamp BETWEEN ? AND ?
+        ORDER BY timestamp ASC -- Order by time
+        LIMIT ?
     )";
     sqlite3_stmt* stmt = nullptr;
     std::vector<Message> history_range;
 
     if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_int(stmt, 1, limit);
-        sqlite3_bind_int(stmt, 2, offset);
+        // Bind start_time, end_time, and limit
+        sqlite3_bind_text(stmt, 1, start_time.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 2, end_time.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 3, limit);
 
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             Message msg;
             msg.id = sqlite3_column_int(stmt, 0);
             msg.role = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
             msg.content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-            // Optionally include timestamp if needed in Message struct
-            // msg.timestamp = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+            // Retrieve and store the timestamp
+            const unsigned char* ts = sqlite3_column_text(stmt, 3);
+            msg.timestamp = ts ? reinterpret_cast<const char*>(ts) : ""; 
             history_range.push_back(msg);
         }
         sqlite3_finalize(stmt);

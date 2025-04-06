@@ -7,6 +7,7 @@ struct Message {
     std::string role;
     std::string content;
     int id = 0;
+    std::string timestamp; // Added timestamp field
 };
 
 class PersistenceManager {
@@ -18,7 +19,8 @@ public:
     void saveAssistantMessage(const std::string& content);
     void saveToolMessage(const std::string& content); // Added for tool results
     std::vector<Message> getContextHistory(size_t max_pairs = 10); // Gets recent context for API call
-    std::vector<Message> getHistoryRange(size_t limit, size_t offset); // Added for reading history range via tool
+    // Changed signature to use time range and limit
+    std::vector<Message> getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit = 50); 
 
 private:
     struct Impl;

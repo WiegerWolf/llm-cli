@@ -120,22 +120,25 @@ private:
         {"type", "function"},
         {"function", {
             {"name", "read_history"},
-            {"description", "Read a range of past messages from the conversation history database."},
+            {"description", "Read past messages from the conversation history database within a specified time range."},
             {"parameters", {
                 {"type", "object"},
                 {"properties", {
+                    {"start_time", {
+                        {"type", "string"},
+                        {"description", "The start timestamp (inclusive) in 'YYYY-MM-DD HH:MM:SS' format."}
+                    }},
+                    {"end_time", {
+                        {"type", "string"},
+                        {"description", "The end timestamp (inclusive) in 'YYYY-MM-DD HH:MM:SS' format."}
+                    }},
                     {"limit", {
                         {"type", "integer"},
-                        {"description", "The maximum number of messages to retrieve."},
-                        {"default", 20}
-                    }},
-                    {"offset", {
-                        {"type", "integer"},
-                        {"description", "The number of messages to skip from the beginning of the history."},
-                        {"default", 0}
+                        {"description", "The maximum number of messages to retrieve within the range."},
+                        {"default", 50} // Default limit if not specified
                     }}
                 }},
-                {"required", {}} // No required params, defaults are used
+                {"required", {"start_time", "end_time"}} // Require time range
             }}
         }}
     };
@@ -527,15 +530,15 @@ private: // Tool implementations and helpers
         return ss.str();
     }
 
-    // Function to read history range and format it
-    std::string read_history(size_t limit, size_t offset) {
-         std::vector<Message> messages = db.getHistoryRange(limit, offset);
+    // Updated function to read history time range and format it
+    std::string read_history(const std::string& start_time, const std::string& end_time, size_t limit) {
+         std::vector<Message> messages = db.getHistoryRange(start_time, end_time, limit);
          if (messages.empty()) {
-             return "No messages found for the specified range (Limit: " + std::to_string(limit) + ", Offset: " + std::to_string(offset) + ").";
+             return "No messages found between " + start_time + " and " + end_time + " (Limit: " + std::to_string(limit) + ").";
          }
 
          std::stringstream ss;
-         ss << "History (Limit: " << limit << ", Offset: " << offset << "):\n";
+         ss << "History (" << start_time << " to " << end_time << ", Limit: " << limit << "):\n";
          for (const auto& msg : messages) {
              // Basic formatting, truncate long content
              std::string truncated_content = msg.content;
@@ -548,8 +551,8 @@ private: // Tool implementations and helpers
                  truncated_content.replace(pos, 1, "\\n");
                  pos += 2; // Move past the replaced "\\n"
              }
-
-             ss << "[ID: " << msg.id << ", Role: " << msg.role << "] " << truncated_content << "\n";
+             // Include timestamp in the output
+             ss << "[" << msg.timestamp << " ID: " << msg.id << ", Role: " << msg.role << "] " << truncated_content << "\n";
          }
          return ss.str();
     }
@@ -603,15 +606,21 @@ private: // Tool implementations and helpers
                  }
              }
         } else if (function_name == "read_history") {
-             // Get limit and offset, using defaults if not provided
-             size_t limit = function_args.value("limit", 20); // Default limit 20
-             size_t offset = function_args.value("offset", 0); // Default offset 0
-             cout << "[Reading history (Limit: " << limit << ", Offset: " << offset << ")]\n"; // Inform user
-             cout.flush();
-             try {
-                 tool_result_str = read_history(limit, offset);
-             } catch (const std::exception& e) {
-                 cerr << "History read failed: " << e.what() << "\n";
+             // Get time range and limit
+             std::string start_time = function_args.value("start_time", "");
+             std::string end_time = function_args.value("end_time", "");
+             size_t limit = function_args.value("limit", 50); // Default limit 50
+
+             if (start_time.empty() || end_time.empty()) {
+                  cerr << "Error: 'start_time' or 'end_time' missing for read_history tool.\n";
+                  tool_result_str = "Error: Both start_time and end_time are required.";
+             } else {
+                  cout << "[Reading history (" << start_time << " to " << end_time << ", Limit: " << limit << ")]\n"; // Inform user
+                  cout.flush();
+                  try {
+                      tool_result_str = read_history(start_time, end_time, limit);
+                  } catch (const std::exception& e) {
+                      cerr << "History read failed: " << e.what() << "\n";
                  tool_result_str = "Error reading history: " + std::string(e.what());
              }
         } else {
