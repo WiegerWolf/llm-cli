@@ -510,9 +510,17 @@ public:
                         string function_name = tool_call["function"]["name"];
                         nlohmann::json function_args;
                         try {
-                             function_args = nlohmann::json::parse(tool_call["function"]["arguments"]);
+                             // First get the arguments as a string, then parse that string
+                             std::string args_str = tool_call["function"]["arguments"].get<std::string>();
+                             function_args = nlohmann::json::parse(args_str);
                         } catch (const nlohmann::json::parse_error& e) {
-                             cerr << "JSON Parsing Error (Tool Arguments): " << e.what() << "\nArgs were: " << tool_call["function"]["arguments"].get<std::string>() << "\n";
+                             // If parsing fails, args_str might not have been initialized yet if get<> failed.
+                             // Let's log the original JSON value instead for better debugging.
+                             cerr << "JSON Parsing Error (Tool Arguments): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
+                             continue; // Skip this tool call
+                        } catch (const nlohmann::json::type_error& e) {
+                             // Handle cases where arguments might not be a string initially
+                             cerr << "JSON Type Error (Tool Arguments): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
                              continue; // Skip this tool call
                         }
 
