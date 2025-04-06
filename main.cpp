@@ -623,6 +623,7 @@ private: // Tool implementations and helpers
                       cerr << "History read failed: " << e.what() << "\n";
                  tool_result_str = "Error reading history: " + std::string(e.what());
              }
+           } // <-- Added missing brace for the 'else' part of read_history check
         } else {
             cerr << "Error: Unknown tool requested: " << function_name << "\n";
             tool_result_str = "Error: Unknown tool requested."; // Provide error feedback
@@ -854,7 +855,8 @@ public:
             }
         }
     }
-};
+}; // <-- Added missing brace for ChatClient class
+
 
 int main() {
     ChatClient client;
