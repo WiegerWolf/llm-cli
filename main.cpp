@@ -458,6 +458,7 @@ public:
                             }
                             string query = function_args["query"];
                             cout << "[Searching web for: " << query << "]\n"; // Inform user
+                            cout.flush(); // Flush immediately after printing the search message
                             string search_result;
                             try {
                                 search_result = search_web(query);
