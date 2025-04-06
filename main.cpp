@@ -373,9 +373,77 @@ private:
         return response; 
     }
 
+private: // Make helper private
+    // Helper function to execute a tool, get final response, and handle persistence/output
+    bool handleToolExecutionAndFinalResponse(
+        const std::string& tool_call_id,
+        const std::string& function_name,
+        const nlohmann::json& function_args,
+        std::vector<Message>& context // Pass context by reference to update it
+    ) {
+        string search_result;
+        if (function_name == "search_web") {
+            string query = function_args.value("query", ""); // Use .value for safety
+            if (query.empty()) {
+                 cerr << "Error: 'query' argument missing or empty for search_web tool.\n";
+                 return false; // Indicate failure
+            }
+            cout << "[Searching web for: " << query << "]\n";
+            cout.flush(); // Flush immediately
+            try {
+                search_result = search_web(query);
+            } catch (const std::exception& e) {
+                cerr << "Web search failed: " << e.what() << "\n";
+                search_result = "Error performing web search."; // Provide error feedback to LLM
+            }
+        } else {
+            cerr << "Error: Unknown tool requested: " << function_name << "\n";
+            search_result = "Error: Unknown tool requested."; // Provide error feedback
+            // We still need to save this error as a tool response
+        }
+
+        // Prepare tool result message content as JSON string
+        nlohmann::json tool_result_content;
+        tool_result_content["tool_call_id"] = tool_call_id;
+        tool_result_content["name"] = function_name;
+        tool_result_content["content"] = search_result; // Contains result or error message
+
+        // Save the tool's response message using the dedicated function
+        db.saveToolMessage(tool_result_content.dump());
+
+        // Reload context INCLUDING the tool result
+        context = db.getContextHistory(); // Reload context
+
+        // Make the second API call (tools are never needed for the final response)
+        string final_response_str = makeApiCall(context, false);
+        nlohmann::json final_response_json;
+         try {
+            final_response_json = nlohmann::json::parse(final_response_str);
+        } catch (const nlohmann::json::parse_error& e) {
+            cerr << "JSON Parsing Error (Second Response): " << e.what() << "\nResponse was: " << final_response_str << "\n";
+            return false; // Indicate failure
+        }
+
+        if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message") || !final_response_json["choices"][0]["message"].contains("content")) {
+            cerr << "Error: Invalid API response structure (Second Response).\nResponse was: " << final_response_str << "\n";
+            return false; // Indicate failure
+        }
+        string final_content = final_response_json["choices"][0]["message"]["content"];
+
+        // Save the final assistant response
+        db.saveAssistantMessage(final_content);
+
+        // Display final response
+        cout << final_content << "\n\n";
+        cout.flush(); // Ensure output is displayed before next prompt
+        return true; // Indicate success
+    }
+
+
 public:
     void run() {
         cout << "LLM CLI - Type your message (Ctrl+D to exit)\n";
+        static int synthetic_tool_call_counter = 0; // Counter for synthetic IDs
         
         while (true) {
             // Read input with readline for better line editing
@@ -405,7 +473,7 @@ public:
                 db.saveUserMessage(input);
                 
                 // Get context for the first API call
-                auto context = db.getContextHistory(10);
+                auto context = db.getContextHistory(); // Use default max_messages
                 
                 // Make the first API call, allowing the model to use tools
                 string first_api_response_str = makeApiCall(context, true); // Enable tools
@@ -424,104 +492,118 @@ public:
                 }
                 nlohmann::json response_message = first_api_response["choices"][0]["message"];
                 
-                // Check if the response contains tool calls
+                bool tool_call_flow_completed = false; // Flag to track if tool flow (path 1 or 2) happened
+
+                // --- Path 1: Standard Tool Calls ---
                 if (response_message.contains("tool_calls") && !response_message["tool_calls"].is_null()) {
                     // Save the assistant's message requesting tool use
-                    // Store the whole message object containing tool_calls as a JSON string
                     db.saveAssistantMessage(response_message.dump()); 
+                    context = db.getContextHistory(); // Reload context including the tool call message
 
-                    // Prepare for the second API call by adding the assistant's request to context
-                    context = db.getContextHistory(10); // Reload context including the tool call message
-
-                    // Execute tools and collect results
+                    // Execute tools and get final response via helper
                     for (const auto& tool_call : response_message["tool_calls"]) {
                         if (!tool_call.contains("id") || !tool_call.contains("function") || !tool_call["function"].contains("name") || !tool_call["function"].contains("arguments")) {
                              cerr << "Error: Malformed tool_call object received.\n";
-                             continue;
+                             continue; // Skip this tool call
                         }
                         string tool_call_id = tool_call["id"];
                         string function_name = tool_call["function"]["name"];
-                        string function_args_str = tool_call["function"]["arguments"];
                         nlohmann::json function_args;
                         try {
-                             function_args = nlohmann::json::parse(function_args_str);
+                             function_args = nlohmann::json::parse(tool_call["function"]["arguments"]);
                         } catch (const nlohmann::json::parse_error& e) {
-                             cerr << "JSON Parsing Error (Tool Arguments): " << e.what() << "\nArgs were: " << function_args_str << "\n";
-                             continue;
+                             cerr << "JSON Parsing Error (Tool Arguments): " << e.what() << "\nArgs were: " << tool_call["function"]["arguments"].get<std::string>() << "\n";
+                             continue; // Skip this tool call
                         }
 
-
-                        if (function_name == "search_web") {
-                            if (!function_args.contains("query")) {
-                                cerr << "Error: 'query' argument missing for search_web tool.\n";
-                                continue;
-                            }
-                            string query = function_args["query"];
-                            cout << "[Searching web for: " << query << "]\n"; // Inform user
-                            cout.flush(); // Flush immediately after printing the search message
-                            string search_result;
-                            try {
-                                search_result = search_web(query);
-                            } catch (const std::exception& e) {
-                                cerr << "Web search failed: " << e.what() << "\n";
-                                search_result = "Error performing web search."; // Provide error feedback to LLM
-                            }
-                            
-                            // Prepare tool result message content as JSON string
-                            nlohmann::json tool_result_content;
-                            tool_result_content["tool_call_id"] = tool_call_id;
-                            tool_result_content["name"] = function_name;
-                            tool_result_content["content"] = search_result; // This is the actual result string
-
-                            // Save the tool's response message using the dedicated function
-                            db.saveToolMessage(tool_result_content.dump()); 
-
-                            // Add tool response to context for the next API call
-                            context = db.getContextHistory(10); // Reload context including the tool result
+                        // Call the helper function - it handles execution, saving result, second call, saving/printing final response
+                        if (handleToolExecutionAndFinalResponse(tool_call_id, function_name, function_args, context)) {
+                             tool_call_flow_completed = true; // Mark success for at least one tool
                         } else {
-                             cerr << "Error: Unknown tool requested: " << function_name << "\n";
-                             // Optionally save an error message as a tool response?
-                             // For now, just log and continue
+                             // Error was already printed by the helper.
+                             // Decide if we should stop processing further tool calls in this turn? For now, continue.
+                        }
+                        // Context is updated within the helper after saving tool result
+                    }
+                // --- Path 2: <function=...> in content ---
+                } else if (response_message.contains("content") && response_message["content"].is_string()) {
+                    std::string content_str = response_message["content"];
+                    size_t func_start = content_str.find("<function=");
+                    size_t func_end = content_str.rfind("</function>");
+
+                    // Basic check for the pattern
+                    if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start) {
+                        size_t name_end = content_str.find('(', func_start);
+                        size_t args_start = name_end + 1;
+                        // Find the last ')' before '</function>' to handle nested structures if any (though unlikely needed here)
+                        size_t args_end = content_str.rfind(')', func_end); 
+
+                        if (name_end != std::string::npos && args_end != std::string::npos && args_end > args_start && name_end > (func_start + 10)) {
+                            std::string function_name = content_str.substr(func_start + 10, name_end - (func_start + 10));
+                            std::string args_str = content_str.substr(args_start, args_end - args_start);
+
+                            // Currently only handle search_web via this path
+                            if (function_name == "search_web") {
+                                try {
+                                    nlohmann::json function_args = nlohmann::json::parse(args_str);
+                                    if (function_args.contains("query")) {
+                                        // Save the original assistant message containing <function=...>
+                                        db.saveAssistantMessage(content_str);
+                                        context = db.getContextHistory(); // Reload context
+
+                                        // Generate synthetic ID
+                                        std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
+
+                                        // Call the helper function
+                                        if (handleToolExecutionAndFinalResponse(tool_call_id, function_name, function_args, context)) {
+                                            tool_call_flow_completed = true; // Mark success
+                                        } else {
+                                            // Error handled by helper
+                                        }
+                                    } else {
+                                         cerr << "Warning: Parsed <function=search_web> but 'query' missing in args: " << args_str << "\n";
+                                         // Fall through to treat as regular message below
+                                    }
+                                } catch (const nlohmann::json::parse_error& e) {
+                                    cerr << "Warning: Failed to parse arguments from <function=...>: " << e.what() << "\nArgs were: " << args_str << "\n";
+                                    // Fall through to treat as regular message below
+                                }
+                            } else {
+                                 cerr << "Warning: Unsupported function name in <function=...>: " << function_name << "\n";
+                                 // Fall through to treat as regular message below
+                            }
+                        } else {
+                             // Malformed <function=...> tag, treat as regular message below
                         }
                     }
-
-                    // Make the second API call with the tool results included in the context
-                    string final_response_str = makeApiCall(context, false); // Tools not needed for the final response generation
-                    nlohmann::json final_response_json;
-                     try {
-                        final_response_json = nlohmann::json::parse(final_response_str);
-                    } catch (const nlohmann::json::parse_error& e) {
-                        cerr << "JSON Parsing Error (Second Response): " << e.what() << "\nResponse was: " << final_response_str << "\n";
-                        continue; // Skip processing this turn
+                    
+                    // --- Path 3: Regular Response (if not tool_calls and not handled <function=...>) ---
+                    if (!tool_call_flow_completed) {
+                         // Content is already known to be a non-null string here
+                         db.saveAssistantMessage(content_str);
+                         cout << content_str << "\n\n";
+                         cout.flush();
                     }
-
-                    if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message") || !final_response_json["choices"][0]["message"].contains("content")) {
-                        cerr << "Error: Invalid API response structure (Second Response).\nResponse was: " << final_response_str << "\n";
-                        continue;
+                } else if (!tool_call_flow_completed) { 
+                    // Handle cases where content might be null or not a string, and no tool calls occurred
+                    if (response_message.contains("content") && !response_message["content"].is_null()) {
+                         // It has content, but it's not a string (shouldn't happen often with LLMs, but handle defensively)
+                         std::string non_string_content = response_message["content"].dump(); // Save/show the JSON representation
+                         db.saveAssistantMessage(non_string_content);
+                         cout << non_string_content << "\n\n";
+                         cout.flush();
+                    } else {
+                         // No tool calls and content is null or missing
+                         cerr << "Error: API response missing content and tool_calls.\nResponse was: " << first_api_response_str << "\n";
+                         // No message to save or print, just continue to next prompt
                     }
-                    string final_content = final_response_json["choices"][0]["message"]["content"];
-
-                    // Save the final assistant response
-                    db.saveAssistantMessage(final_content);
-
-                    // Display final response
-                    cout << final_content << "\n\n";
-                    cout.flush(); // Ensure output is displayed before next prompt
-
-                } else {
-                    // No tool calls, handle as a regular response
-                    if (!response_message.contains("content") || response_message["content"].is_null()) {
-                         cerr << "Error: API response missing content.\nResponse was: " << first_api_response_str << "\n";
-                         continue;
-                    }
-                    string final_content = response_message["content"];
-                    db.saveAssistantMessage(final_content);
-                    cout << final_content << "\n\n";
-                    cout.flush(); // Ensure output is displayed before next prompt
                 }
+                // If tool_call_flow_completed is true, the helper function already printed the final response.
+                // If it's false, the regular response was printed above (or an error occurred).
+                // Either way, we are ready for the next user input.
 
             } catch (const nlohmann::json::parse_error& e) {
-                 cerr << "JSON Parsing Error: " << e.what() << "\n";
+                 cerr << "JSON Parsing Error (Outer Loop): " << e.what() << "\n";
             } catch (const exception& e) {
                 cerr << "Error: " << e.what() << "\n";
             }
