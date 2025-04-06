@@ -11,6 +11,8 @@
 #include <functional>
 #include <gumbo.h>
 #include <fstream>
+#include <chrono> // For date/time
+#include <ctime>  // For date/time formatting
 #include "database.h"
 
 using namespace std;
@@ -86,7 +88,18 @@ private:
             }}
         }}
     };
-    
+    const nlohmann::json get_current_datetime_tool = {
+        {"type", "function"},
+        {"function", {
+            {"name", "get_current_datetime"},
+            {"description", "Get the current date and time."},
+            {"parameters", { // No parameters needed
+                {"type", "object"},
+                {"properties", {}}
+            }}
+        }}
+    };
+
     static std::string gumbo_get_text(GumboNode* node) {
         if (node->type == GUMBO_NODE_TEXT) {
             return node->v.text.text;
@@ -344,7 +357,8 @@ private:
 
         // Add tools if requested
         if (use_tools) {
-            payload["tools"] = nlohmann::json::array({search_web_tool});
+            // Include both tools in the array
+            payload["tools"] = nlohmann::json::array({search_web_tool, get_current_datetime_tool}); 
             payload["tool_choice"] = "auto";
         }
 
@@ -373,7 +387,19 @@ private:
         return response; 
     }
 
-private: // Make helper private
+private: // Tool implementations and helpers
+    // Function to get current date and time as a string
+    std::string get_current_datetime() {
+        auto now = std::chrono::system_clock::now();
+        auto now_c = std::chrono::system_clock::to_time_t(now);
+        std::stringstream ss;
+        // Format: YYYY-MM-DD HH:MM:SS Timezone (e.g., 2024-04-06 15:30:00 PDT)
+        // Using std::put_time requires #include <iomanip> which is already included
+        // Using %Z for timezone name might be locale-dependent. %z for offset is more standard.
+        ss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S %Z"); 
+        return ss.str();
+    }
+
     // Helper function to execute a tool, get final response, and handle persistence/output
     bool handleToolExecutionAndFinalResponse(
         const std::string& tool_call_id,
@@ -381,7 +407,7 @@ private: // Make helper private
         const nlohmann::json& function_args,
         std::vector<Message>& context // Pass context by reference to update it
     ) {
-        string search_result;
+        string tool_result_str; // Renamed from search_result for clarity
         if (function_name == "search_web") {
             string query = function_args.value("query", ""); // Use .value for safety
             if (query.empty()) {
@@ -391,14 +417,24 @@ private: // Make helper private
             cout << "[Searching web for: " << query << "]\n";
             cout.flush(); // Flush immediately
             try {
-                search_result = search_web(query);
+                tool_result_str = search_web(query);
             } catch (const std::exception& e) {
                 cerr << "Web search failed: " << e.what() << "\n";
-                search_result = "Error performing web search."; // Provide error feedback to LLM
+                tool_result_str = "Error performing web search."; // Provide error feedback to LLM
             }
+        } else if (function_name == "get_current_datetime") {
+             // No arguments needed for this tool
+             cout << "[Getting current date and time]\n"; // Inform user
+             cout.flush();
+             try {
+                 tool_result_str = get_current_datetime();
+             } catch (const std::exception& e) { // Should be unlikely, but good practice
+                 cerr << "Getting date/time failed: " << e.what() << "\n";
+                 tool_result_str = "Error getting current date and time.";
+             }
         } else {
             cerr << "Error: Unknown tool requested: " << function_name << "\n";
-            search_result = "Error: Unknown tool requested."; // Provide error feedback
+            tool_result_str = "Error: Unknown tool requested."; // Provide error feedback
             // We still need to save this error as a tool response
         }
 
@@ -406,7 +442,7 @@ private: // Make helper private
         nlohmann::json tool_result_content;
         tool_result_content["tool_call_id"] = tool_call_id;
         tool_result_content["name"] = function_name;
-        tool_result_content["content"] = search_result; // Contains result or error message
+        tool_result_content["content"] = tool_result_str; // Contains result or error message
 
         // Save the tool's response message using the dedicated function
         db.saveToolMessage(tool_result_content.dump());
