@@ -764,22 +764,23 @@ public:
                 // --- Path 2: <function=...> in content ---
                 } else if (response_message.contains("content") && response_message["content"].is_string()) {
                     std::string content_str = response_message["content"];
-                    size_t func_start = content_str.find("<function=");
+                    // Look for <function>NAME{ARGS}</function> format
+                    size_t func_start = content_str.find("<function>");
                     size_t func_end = content_str.rfind("</function>");
 
-                    // More robust check for the pattern <function=NAME...{ARGS...}></function>
+                    // Check if the tags exist and are in the correct order
                     if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start) {
-                        size_t name_start = func_start + 10; // After "<function="
-                        // Find the start of the arguments JSON (the first '{' after the name should start)
+                        size_t name_start = func_start + 10; // Position after "<function>"
+                        // Find the start of the arguments JSON (the first '{' after the name)
                         size_t args_start = content_str.find('{', name_start);
                         // Find the end of the arguments JSON (the last '}' before the end tag)
                         size_t args_end = content_str.rfind('}', func_end);
-                        // Find where the function name ends (first special char like '{', '(', '[', or ',')
-                        size_t name_end = content_str.find_first_of("{([,", name_start);
+                        // The function name ends just before the arguments start
+                        size_t name_end = args_start; 
 
-                        // Validate the found positions
+                        // Validate the found positions: name must exist, args must exist and be valid JSON boundaries
                         if (args_start != std::string::npos && args_end != std::string::npos && args_end > args_start &&
-                            name_end != std::string::npos && name_end < args_start) // Name must end before args start
+                            name_end > name_start) // Ensure name is not empty
                         {
                             std::string function_name = content_str.substr(name_start, name_end - name_start);
                             // Trim potential whitespace from name
@@ -788,7 +789,7 @@ public:
 
                             std::string args_str = content_str.substr(args_start, args_end - args_start + 1); // Include '{' and '}'
 
-                            // Currently only handle search_web via this path
+                            // Handle known functions (currently only search_web via this path)
                             if (function_name == "search_web") {
                                 try {
                                     nlohmann::json function_args = nlohmann::json::parse(args_str);
