@@ -385,8 +385,42 @@ void ChatClient::run() {
                             }
                         }
                     } else {
-                        function_name = content_str.substr(name_start, func_end - name_start);
-                        parsed_args_or_no_args_needed = true;
+                        // No explicit delimiter found, but check for special case:
+                        // function name immediately followed by '(' or '{' (e.g., <function(search_web={"query":...})</function>)
+                        size_t brace_pos = content_str.find_first_of("{(", name_start);
+                        if (brace_pos != std::string::npos && brace_pos < func_end) {
+                            function_name = content_str.substr(name_start, brace_pos - name_start);
+                            char open_delim = content_str[brace_pos];
+                            char close_delim = (open_delim == '{') ? '}' : ')';
+                            size_t search_end_pos = func_end - 1;
+                            size_t args_end = content_str.rfind(close_delim, search_end_pos);
+
+                            if (args_end != std::string::npos && args_end > brace_pos) {
+                                std::string args_str = content_str.substr(brace_pos, args_end - brace_pos + 1);
+                                try {
+                                    std::string trimmed_args = args_str;
+                                    trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
+                                    trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
+                                    if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
+                                        trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
+                                        trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
+                                        trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
+                                    }
+                                    function_args = nlohmann::json::parse(trimmed_args);
+                                    parsed_args_or_no_args_needed = true;
+                                } catch (const nlohmann::json::parse_error& e) {
+                                    std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
+                                    function_args = nlohmann::json::object();
+                                    parsed_args_or_no_args_needed = true;
+                                }
+                            } else {
+                                std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n";
+                                parsed_args_or_no_args_needed = true;
+                            }
+                        } else {
+                            function_name = content_str.substr(name_start, func_end - name_start);
+                            parsed_args_or_no_args_needed = true;
+                        }
                     }
 
                     if (!function_name.empty()) {
