@@ -1,4 +1,5 @@
 #include "tools.h"
+#include "chat_client.h" // Include the full definition of ChatClient
 #include "database.h" // Include database.h for PersistenceManager definition
 #include <stdexcept>
 #include <iostream> // For cerr/cout in tool execution feedback

@@ -78,10 +78,12 @@ endif()
 # Add executable and link libraries
 add_executable(llm 
     main.cpp
+    chat_client.cpp # Add new source file
+    chat_client.h   # Add new header file
     database.cpp
     database.h
-    tools.cpp   # Add new source file
-    tools.h     # Add new header file (optional but good practice)
+    tools.cpp   
+    tools.h     
 )
 target_link_libraries(llm PRIVATE 
     ${CURL_LIBRARIES} 
