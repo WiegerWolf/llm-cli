@@ -28,6 +28,7 @@ private:
     PersistenceManager db;
     ToolManager toolManager; // Instantiate ToolManager
     string api_base = "https://api.groq.com/openai/v1/chat/completions";
+    string model_name = "llama-3.3-70b-versatile"; // Added model name member
     // Removed tool JSON definitions (moved to ToolManager)
 
     // Tool implementation functions (gumbo_get_text, parse_ddg_html, visit_url, search_web)
@@ -50,7 +51,7 @@ private:
         headers = curl_slist_append(headers, "Content-Type: application/json");
 
         nlohmann::json payload;
-        payload["model"] = "llama-3.3-70b-versatile";
+        payload["model"] = this->model_name; // Use member variable
         payload["messages"] = nlohmann::json::array();
         
         // Add conversation history
@@ -186,7 +187,7 @@ private:
 
 public:
     void run() {
-        cout << "LLM CLI - Type your message (Ctrl+D to exit)\n";
+        cout << "Chatting with " << this->model_name << " - Type your message (Ctrl+D to exit)\n"; // Updated greeting
         static int synthetic_tool_call_counter = 0; // Counter for synthetic IDs
         
         while (true) {
