@@ -8,7 +8,6 @@
 #include <sstream>
 #include <vector>
 #include <functional> // For std::function in parse_ddg_html
-#include <fstream>   // For debug file saving (optional)
 #include <chrono>    // For get_current_datetime
 #include <ctime>     // For get_current_datetime formatting
 #include <iomanip>   // For get_current_datetime formatting
@@ -615,11 +614,9 @@ std::string ToolManager::parse_brave_search_html(const std::string& html) {
                     snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
                 }
             }
-            std::cerr << "DEBUG: parse_brave_search_html:   Extracted Snippet: '" << snippet.substr(0, 70) << "...'" << std::endl;
 
             // Find Display URL (often within cite.snippet-url)
             GumboNode* url_cite = find_node_by_tag_and_class(result_div, GUMBO_TAG_CITE, "snippet-url");
-            std::cerr << "DEBUG: parse_brave_search_html:   Found CITE with class 'snippet-url'? " << (url_cite ? "Yes" : "No") << std::endl;
             if (url_cite) {
                 display_url_text = gumbo_get_text(url_cite);
                 display_url_text.erase(0, display_url_text.find_first_not_of(" \n\r\t"));
@@ -633,11 +630,9 @@ std::string ToolManager::parse_brave_search_html(const std::string& html) {
                      display_url_text.erase(display_url_text.find_last_not_of(" \n\r\t") + 1);
                  }
             }
-            std::cerr << "DEBUG: parse_brave_search_html:   Extracted Display URL: '" << display_url_text << "'" << std::endl;
 
             // Add result if we found the essentials (title and actual URL)
             if (!title.empty() && !url.empty()) {
-                std::cerr << "DEBUG: parse_brave_search_html:   -> Adding result #" << (count + 1) << " to output." << std::endl;
                 result += std::to_string(++count) + ". " + title + "\n";
                 if (!snippet.empty()) {
                     result += "   " + snippet + "\n";
@@ -645,18 +640,13 @@ std::string ToolManager::parse_brave_search_html(const std::string& html) {
                 // Use the display URL text if available, otherwise fallback to the actual URL
                 std::string display_url = display_url_text.empty() ? url : display_url_text;
                 result += "   " + display_url + " [href=" + url + "]\n\n";
-            } else {
-                 std::cerr << "DEBUG: parse_brave_search_html:   -> Skipping div - missing title or URL." << std::endl;
             }
         } // End loop through result divs
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
-    } else {
-        std::cerr << "DEBUG: parse_brave_search_html: Gumbo output or root node was null." << std::endl;
     }
 
     std::string final_result = count > 0 ? result : "No results found or failed to parse results page.";
-    std::cerr << "DEBUG: parse_brave_search_html: Final result string (first 200 chars): " << final_result.substr(0, 200) << "..." << std::endl;
     return final_result;
 }
 
@@ -764,13 +754,10 @@ std::string ToolManager::search_web(const std::string& query) {
     // Ensure it's a GET request (default, but explicit doesn't hurt)
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L); 
 
-    std::cerr << "DEBUG: search_web: Requesting URL (GET): " << url << std::endl; // Re-add URL log
-    
     CURLcode res = curl_easy_perform(curl);
     long http_code = 0; 
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        std::cerr << "DEBUG: search_web: Received HTTP status code: " << http_code << std::endl; // Re-add status code log
         // Add specific check for 202
         if (http_code == 202) {
              std::cerr << "WARNING: search_web: Received HTTP 202 Accepted. This might indicate the results page wasn't returned correctly." << std::endl;
@@ -781,21 +768,10 @@ std::string ToolManager::search_web(const std::string& query) {
     curl_easy_cleanup(curl);
     
     if (res != CURLE_OK) {
-        std::cerr << "DEBUG: search_web: CURL error: " << curl_easy_strerror(res) << std::endl; // Re-add CURL error log
         throw std::runtime_error("Search failed: " + std::string(curl_easy_strerror(res)));
     }
 
-    // Re-add saving raw HTML to debug file
-    std::ofstream debug_file("debug_search_raw.html");
-    debug_file << response;
-    debug_file.close();
-    std::cerr << "DEBUG: search_web: Raw HTML response saved to debug_search_raw.html" << std::endl;
-    // Re-add logging for raw response snippet
-    std::cerr << "DEBUG: search_web: Raw response snippet (first 500 chars): " << response.substr(0, 500) << "..." << std::endl;
-
     std::string parsed_result = parse_brave_search_html(response); // Use Brave parsing function
-    // Re-add logging for parsed result
-    std::cerr << "DEBUG: search_web: Result from parse_brave_search_html (first 200 chars): " << parsed_result.substr(0, 200) << "..." << std::endl;
     return parsed_result;
 }
 
