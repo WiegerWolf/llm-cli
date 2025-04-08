@@ -21,7 +21,8 @@ public:
     // Executes a tool based on its name and arguments
     // Returns the result as a string. Throws exceptions on failure.
     // Needs PersistenceManager for tools like read_history
-    std::string execute_tool(PersistenceManager& db, const std::string& tool_name, const nlohmann::json& args);
+    // Needs ChatClient for tools like web_research that need to make internal API calls
+    std::string execute_tool(PersistenceManager& db, class ChatClient& client, const std::string& tool_name, const nlohmann::json& args);
 
 private:
     // Tool definitions (moved from main.cpp)

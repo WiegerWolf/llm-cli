@@ -205,7 +205,8 @@ nlohmann::json ToolManager::get_tool_definitions() const {
     return nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool, read_history_tool, web_research_tool}); // Added web_research_tool
 }
 
-std::string ToolManager::execute_tool(PersistenceManager& db, const std::string& tool_name, const nlohmann::json& args) {
+// Added ChatClient& client parameter
+std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client, const std::string& tool_name, const nlohmann::json& args) {
     // Execute the appropriate tool based on name
     if (tool_name == "search_web") {
         std::string query = args.value("query", "");
@@ -259,6 +260,90 @@ std::string ToolManager::execute_tool(PersistenceManager& db, const std::string&
             std::cerr << "History read failed: " << e.what() << "\n";
             return "Error reading history: " + std::string(e.what());
         }
+    } else if (tool_name == "web_research") {
+        std::string topic = args.value("topic", "");
+        if (topic.empty()) {
+            throw std::runtime_error("'topic' argument missing or empty for web_research tool.");
+        }
+        std::cout << "[Performing web research on: " << topic << "]\n";
+        std::cout.flush();
+
+        try {
+            // Step 1: Search the web
+            std::cout << "  [Research Step 1: Searching web...]\n"; std::cout.flush();
+            std::string search_query = topic; // Use topic directly or refine if needed
+            std::string search_results_raw = search_web(search_query);
+
+            // Step 2: Parse search results to get URLs (simplified parsing)
+            std::vector<std::string> urls;
+            std::stringstream ss_search(search_results_raw);
+            std::string line;
+            int url_count = 0;
+            const int max_urls_to_visit = 3; // Limit number of pages to visit
+            while (getline(ss_search, line) && url_count < max_urls_to_visit) {
+                // Look for lines starting with "   http" which likely contain URLs from parse_ddg_html output
+                 size_t url_start = line.find("http");
+                 if (url_start != std::string::npos && line.find("   ") == 0) {
+                     // Extract URL (basic extraction, might need refinement)
+                     size_t url_end = line.find_first_of(" \t\n\r", url_start);
+                     urls.push_back(line.substr(url_start, url_end - url_start));
+                     url_count++;
+                 }
+            }
+             std::cout << "  [Research Step 2: Found " << urls.size() << " URLs to visit...]\n"; std::cout.flush();
+
+
+            // Step 3: Visit URLs and gather content
+            std::string visited_content_summary = "\n\nVisited Pages Content:\n";
+            if (urls.empty()) {
+                 visited_content_summary += "No relevant URLs found in search results to visit.\n";
+            } else {
+                for (size_t i = 0; i < urls.size(); ++i) {
+                    std::cout << "  [Research Step 3." << (i+1) << ": Visiting " << urls[i] << "...]\n"; std::cout.flush();
+                    try {
+                        std::string page_content = visit_url(urls[i]);
+                        visited_content_summary += "\n--- Content from " + urls[i] + " ---\n";
+                        visited_content_summary += page_content;
+                        visited_content_summary += "\n--- End Content ---\n";
+                    } catch (const std::exception& visit_e) {
+                        visited_content_summary += "\n--- Failed to visit " + urls[i] + ": " + visit_e.what() + " ---\n";
+                    }
+                }
+            }
+
+            // Step 4: Compile context and create synthesis prompt
+             std::cout << "  [Research Step 4: Synthesizing results...]\n"; std::cout.flush();
+            std::string synthesis_context = "Web search results for '" + topic + "':\n" + search_results_raw + visited_content_summary;
+            
+            // Create a simple context for the synthesis call
+            std::vector<Message> synthesis_messages;
+            synthesis_messages.push_back({"system", "You are a research assistant. Based *only* on the provided text which contains web search results and content from visited web pages, synthesize a comprehensive answer to the original research topic. Do not add any preamble like 'Based on the provided text...'."});
+            synthesis_messages.push_back({"user", "Original research topic: " + topic + "\n\nProvided research context:\n" + synthesis_context});
+
+            // Step 5: Make internal API call for synthesis (no tools needed for this call)
+            std::string synthesis_response_str = client.makeApiCall(synthesis_messages, false); // Use the passed client object
+            nlohmann::json synthesis_response_json;
+            try {
+                synthesis_response_json = nlohmann::json::parse(synthesis_response_str);
+            } catch (const nlohmann::json::parse_error& e) {
+                 std::cerr << "JSON Parsing Error (Synthesis Response): " << e.what() << "\nResponse was: " << synthesis_response_str << "\n";
+                 return "Error: Failed to parse synthesis response from LLM.";
+            }
+
+            if (!synthesis_response_json.contains("choices") || synthesis_response_json["choices"].empty() || !synthesis_response_json["choices"][0].contains("message") || !synthesis_response_json["choices"][0]["message"].contains("content")) {
+                std::cerr << "Error: Invalid API response structure (Synthesis Response).\nResponse was: " << synthesis_response_str << "\n";
+                return "Error: Invalid response structure from LLM during synthesis.";
+            }
+            std::string final_synthesized_content = synthesis_response_json["choices"][0]["message"]["content"];
+
+            std::cout << "[Web research complete for: " << topic << "]\n"; std::cout.flush();
+            return final_synthesized_content; // Return the synthesized answer
+
+        } catch (const std::exception& e) {
+            std::cerr << "Web research failed during execution: " << e.what() << "\n";
+            return "Error performing web research: " + std::string(e.what());
+        }
+
     } else {
         std::cerr << "Error: Unknown tool requested: " << tool_name << "\n";
         throw std::runtime_error("Unknown tool requested: " + tool_name);

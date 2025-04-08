@@ -33,7 +33,8 @@ private:
 
     // Tool implementation functions (gumbo_get_text, parse_ddg_html, visit_url, search_web)
     // have been moved to tools.cpp and are accessed via toolManager instance.
-    
+
+public: // Make makeApiCall public so ToolManager can use it for synthesis
     // Modified to optionally include tools (gets definitions from ToolManager)
     string makeApiCall(const vector<Message>& context, bool use_tools = false) {
         CURL* curl = curl_easy_init();
@@ -138,7 +139,8 @@ private:
         try {
             // Execute the tool using the ToolManager
             // Pass the db instance needed by some tools like read_history
-            tool_result_str = toolMgr.execute_tool(db, function_name, function_args); 
+            // Pass the ChatClient instance (*this) for tools that need to make API calls (like web_research)
+            tool_result_str = toolMgr.execute_tool(db, *this, function_name, function_args);
         } catch (const std::exception& e) {
              // Errors during argument validation or unknown tool are caught here
              cerr << "Tool execution error for '" << function_name << "': " << e.what() << "\n";
@@ -267,115 +269,31 @@ public:
                         }
                         // Context is updated within the helper after saving tool result
                     }
-                // --- Path 2: <function=...> in content ---
+                // --- Path 2: Regular Response (No tool calls) ---
                 } else if (response_message.contains("content") && response_message["content"].is_string()) {
+                    // This path is taken if the response message does NOT contain 'tool_calls'
                     std::string content_str = response_message["content"];
-                    // Look for <function>NAME{ARGS}</function> format
-                    size_t func_start = content_str.find("<function>");
-                    size_t func_end = content_str.rfind("</function>");
+                    db.saveAssistantMessage(content_str);
+                    cout << content_str << "\n\n";
+                    cout.flush();
+                    tool_call_flow_completed = false; // Explicitly mark that no tool flow happened
 
-                    // Check if the tags exist and are in the correct order
-                    if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start) {
-                        size_t name_start = func_start + 10; // After "<function>"
-                        size_t args_start = content_str.find('{', name_start);
-                        size_t args_end = content_str.rfind('}', func_end);
-
-                        std::string function_name;
-                        nlohmann::json function_args = nlohmann::json::object(); // Default empty args
-                        bool parsed_function = false;
-
-                        // Case 1: Braces found, potentially with arguments
-                        if (args_start != std::string::npos && args_end != std::string::npos && args_end > args_start && args_start < func_end) {
-                            size_t name_end = args_start;
-                            if (name_end > name_start) {
-                                function_name = content_str.substr(name_start, name_end - name_start);
-                                function_name.erase(0, function_name.find_first_not_of(" \n\r\t")); // Trim whitespace
-                                function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
-
-                                std::string args_str = content_str.substr(args_start, args_end - args_start + 1);
-                                try {
-                                    function_args = nlohmann::json::parse(args_str);
-                                    parsed_function = true; // Successfully parsed name and args JSON
-                                } catch (const nlohmann::json::parse_error& e) {
-                                    cerr << "Warning: Failed to parse arguments JSON from <function=...>: " << e.what() << "\nArgs string was: " << args_str << "\n";
-                                    // Fall through without setting parsed_function = true
-                                }
-                            }
-                        // Case 2: No braces found between <function> and </function>
-                        } else if (args_start == std::string::npos || args_start > func_end) { // Check if '{' is absent or after the end tag
-                             size_t name_end = func_end; // Name goes up to the end tag
-                             if (name_end > name_start) {
-                                 function_name = content_str.substr(name_start, name_end - name_start);
-                                 function_name.erase(0, function_name.find_first_not_of(" \n\r\t")); // Trim whitespace
-                                 function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
-                                 // function_args remains the default empty object {}
-                                 parsed_function = true; // Successfully parsed name, no args provided/needed
-                             }
-                        }
-                        // Else: Malformed tags (e.g., { before name, } missing, etc.) - parsed_function remains false
-
-                        // If we successfully parsed a function name (with or without args)
-                        if (parsed_function && !function_name.empty()) {
-                            // Check if it's a known tool (This check might be redundant if ToolManager handles unknown tools)
-                            if (function_name == "search_web" || function_name == "visit_url" || function_name == "get_current_datetime" || function_name == "read_history") {
-                                // Basic validation - check if required args exist for the specific function
-                                // Note: ToolManager's execute_tool also performs validation, this is a pre-check.
-                                bool args_valid = false;
-                                if (function_name == "search_web" && function_args.contains("query")) args_valid = true;
-                                else if (function_name == "visit_url" && function_args.contains("url")) args_valid = true;
-                                else if (function_name == "get_current_datetime") args_valid = true; // No args needed, function_args is {}
-                                else if (function_name == "read_history" && function_args.contains("start_time") && function_args.contains("end_time")) args_valid = true;
-
-                                if (args_valid) {
-                                    // Save the original assistant message containing <function=...>
-                                    db.saveAssistantMessage(content_str);
-                                    context = db.getContextHistory(); // Reload context
-
-                                    // Generate synthetic ID
-                                    std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
-
-                                    // Call the helper function, passing the toolManager instance
-                                    if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
-                                        tool_call_flow_completed = true; // Mark success
-                                    } else {
-                                        // Error handled by helper or execute_tool
-                                    }
-                                } else {
-                                     cerr << "Warning: Parsed <function=" << function_name << "> but required arguments missing or invalid.\nArgs JSON: " << function_args.dump() << "\n";
-                                     // Fall through to treat as regular message below
-                                }
-                            } else {
-                                 cerr << "Warning: Unsupported function name in <function=...>: " << function_name << "\n";
-                                 // Fall through to treat as regular message below
-                            }
-                        }
-                        // Else: If !parsed_function or function_name is empty, fall through to treat as regular message
-                    }
-                    
-                    // --- Path 3: Regular Response (if not tool_calls and not handled <function=...>) ---
-                    if (!tool_call_flow_completed) {
-                         // Content is already known to be a non-null string here
-                         db.saveAssistantMessage(content_str);
-                         cout << content_str << "\n\n";
-                         cout.flush();
-                    }
-                } else if (!tool_call_flow_completed) { 
-                    // Handle cases where content might be null or not a string, and no tool calls occurred
+                // --- Path 3: Handle Error Cases (No tool calls, content is null or not string) ---
+                } else if (!tool_call_flow_completed) { // Only enter if tool_calls didn't happen
                     if (response_message.contains("content") && !response_message["content"].is_null()) {
-                         // It has content, but it's not a string (shouldn't happen often with LLMs, but handle defensively)
-                         std::string non_string_content = response_message["content"].dump(); // Save/show the JSON representation
+                         // Content exists but isn't a string (unlikely but handled)
+                         std::string non_string_content = response_message["content"].dump();
                          db.saveAssistantMessage(non_string_content);
                          cout << non_string_content << "\n\n";
                          cout.flush();
                     } else {
-                         // No tool calls and content is null or missing
+                         // No tool_calls and content is null or missing
                          cerr << "Error: API response missing content and tool_calls.\nResponse was: " << first_api_response_str << "\n";
-                         // No message to save or print, just continue to next prompt
+                         // No message to save or print
                     }
                 }
-                // If tool_call_flow_completed is true, the helper function already printed the final response.
-                // If it's false, the regular response was printed above (or an error occurred).
-                // Either way, we are ready for the next user input.
+                // If tool_call_flow_completed is true, the helper function handled saving and printing the final response.
+                // If it's false, the regular response (or error) was handled above.
 
             } catch (const nlohmann::json::parse_error& e) {
                  cerr << "JSON Parsing Error (Outer Loop): " << e.what() << "\n";
