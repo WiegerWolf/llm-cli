@@ -443,10 +443,11 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
                         if (!snippet.empty() && snippet.find_first_not_of(" \n\r\t") != std::string::npos) {
                             result += "   " + snippet + "\n";
                         }
-                        result += "   " + url_text + "\n\n";
-                    } 
-                } 
-            } 
+                        // Include both the displayed text and the actual href URL
+                        result += "   " + url_text + " [href=" + url + "]\n\n"; 
+                    }
+                }
+            }
         } 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } 
