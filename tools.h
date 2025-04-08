@@ -29,6 +29,7 @@ private:
     const nlohmann::json get_current_datetime_tool;
     const nlohmann::json visit_url_tool;
     const nlohmann::json read_history_tool;
+    const nlohmann::json web_research_tool; // Added declaration
 
     // Tool implementations (moved from main.cpp)
     std::string search_web(const std::string& query);

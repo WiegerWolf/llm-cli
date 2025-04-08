@@ -170,6 +170,30 @@ ToolManager::ToolManager() :
                 {"required", {"start_time", "end_time"}} // Require time range
             }}
         }}
+    }),
+    web_research_tool({ // Added definition
+        {"type", "function"},
+        {"function", {
+            {"name", "web_research"},
+            {"description", 
+             "Performs multi-step web research on a given topic. This involves: "
+             "1. Using 'search_web' to find relevant web pages. "
+             "2. Analyzing search results and using 'visit_url' on promising links. "
+             "3. Reading the content from visited pages. "
+             "4. Synthesizing the gathered information into a comprehensive answer or summary for the user's original request. "
+             "Use this tool when a user asks a question that requires gathering and combining information from multiple web sources."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {
+                    {"topic", {
+                        {"type", "string"},
+                        {"description", "The core topic or question to research."}
+                    }}
+                    // Note: The LLM will need to generate the 'query' for search_web itself based on the topic.
+                }},
+                {"required", {"topic"}}
+            }}
+        }}
     })
 {} // End Constructor
 
@@ -178,7 +202,7 @@ ToolManager::ToolManager() :
 
 nlohmann::json ToolManager::get_tool_definitions() const {
     // Return all defined tools in a JSON array
-    return nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool, read_history_tool});
+    return nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool, read_history_tool, web_research_tool}); // Added web_research_tool
 }
 
 std::string ToolManager::execute_tool(PersistenceManager& db, const std::string& tool_name, const nlohmann::json& args) {
