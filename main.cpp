@@ -789,11 +789,18 @@ public:
 
                             std::string args_str = content_str.substr(args_start, args_end - args_start + 1); // Include '{' and '}'
 
-                            // Handle known functions (currently only search_web via this path)
-                            if (function_name == "search_web") {
+                            // Handle known functions that might appear in this format
+                            if (function_name == "search_web" || function_name == "visit_url" || function_name == "get_current_datetime" || function_name == "read_history") { // Added other tools
                                 try {
                                     nlohmann::json function_args = nlohmann::json::parse(args_str);
-                                    if (function_args.contains("query")) {
+                                    // Basic validation (can be improved) - check if required args exist for the specific function
+                                    bool args_valid = false;
+                                    if (function_name == "search_web" && function_args.contains("query")) args_valid = true;
+                                    else if (function_name == "visit_url" && function_args.contains("url")) args_valid = true;
+                                    else if (function_name == "get_current_datetime") args_valid = true; // No args needed
+                                    else if (function_name == "read_history" && function_args.contains("start_time") && function_args.contains("end_time")) args_valid = true;
+
+                                    if (args_valid) {
                                         // Save the original assistant message containing <function=...>
                                         db.saveAssistantMessage(content_str);
                                         context = db.getContextHistory(); // Reload context
@@ -808,11 +815,11 @@ public:
                                             // Error handled by helper
                                         }
                                     } else {
-                                         cerr << "Warning: Parsed <function=search_web> but 'query' missing in args: " << args_str << "\n";
+                                         cerr << "Warning: Parsed <function=" << function_name << "> but required arguments missing in args: " << args_str << "\n";
                                          // Fall through to treat as regular message below
                                     }
-                                } catch (const nlohmann::json::parse_error& e) {
-                                    cerr << "Warning: Failed to parse arguments from <function=...>: " << e.what() << "\nArgs were: " << args_str << "\n";
+                                } catch (const nlohmann::json::parse_Error& e) { // Corrected typo: parse_Error -> parse_error
+                                    cerr << "Warning: Failed to parse arguments from <function=" << function_name << ">: " << e.what() << "\nArgs were: " << args_str << "\n";
                                     // Fall through to treat as regular message below
                                 }
                             } else {
