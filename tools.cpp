@@ -437,7 +437,8 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
                          url_text.erase(url_text.find_last_not_of(" \n\r\t") + 1);
                     } 
 
-                    if (!url_text.empty() && count < 5) { 
+                    // Removed count < 5 limit
+                    if (!url_text.empty()) { 
                         result += std::to_string(++count) + ". " + title + "\n";
                         if (!snippet.empty() && snippet.find_first_not_of(" \n\r\t") != std::string::npos) {
                             result += "   " + snippet + "\n";
@@ -451,7 +452,7 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } 
 
-    return count > 0 ? result : "No relevant results found";
+    return count > 0 ? result : "No results found on the page."; // Updated message
 }
 
 
