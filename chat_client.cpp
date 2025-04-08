@@ -439,6 +439,21 @@ void ChatClient::run() {
                     }
 
                     if (!function_name.empty() && parsed_args_or_no_args_needed) {
+                        // If args are empty, try to recover by parsing the first {...} block inside the tag
+                        if (function_args.empty()) {
+                            size_t brace_start = content_str.find('{', name_start);
+                            size_t brace_end = content_str.rfind('}', func_end - 1);
+                            if (brace_start != std::string::npos && brace_end != std::string::npos && brace_end > brace_start) {
+                                std::string possible_args = content_str.substr(brace_start, brace_end - brace_start + 1);
+                                try {
+                                    nlohmann::json recovered_args = nlohmann::json::parse(possible_args);
+                                    function_args = recovered_args;
+                                } catch (...) {
+                                    // Ignore parse errors, keep empty args
+                                }
+                            }
+                        }
+
                         std::string function_block = content_str.substr(func_start, func_end + 11 - func_start);
                         db.saveAssistantMessage(function_block);
                         context = db.getContextHistory();
