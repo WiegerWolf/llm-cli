@@ -572,7 +572,7 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
 
     if (output && output->root) {
         find_result_divs(output->root);
-        std::cerr << "DEBUG: parse_search_results_html: Found " << result_divs.size() << " result divs." << std::endl;
+        // Removed DEBUG logging for found result divs
 
         for (GumboNode* result_div : result_divs) {
             std::string title;
@@ -628,7 +628,7 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
 
             // Add result if we found the essentials (title and actual URL)
             if (!title.empty() && !url.empty()) {
-                 std::cerr << "DEBUG: parse_search_results_html:   Adding result #" << (count + 1) << ": Title='" << title << "', URL='" << url << "', Snippet='" << snippet.substr(0, 50) << "...', DisplayURL='" << display_url_text << "'" << std::endl;
+                 // Removed DEBUG logging for adding result
                 result += std::to_string(++count) + ". " + title + "\n";
                 if (!snippet.empty()) {
                     result += "   " + snippet + "\n";
@@ -637,17 +637,17 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
                 std::string display_url = display_url_text.empty() ? url : display_url_text;
                 result += "   " + display_url + " [href=" + url + "]\n\n";
             } else {
-                 std::cerr << "DEBUG: parse_search_results_html:   Skipping div - missing title or URL." << std::endl;
+                 // Removed DEBUG logging for skipping div
             }
         } // End loop through result divs
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } else {
-        std::cerr << "DEBUG: parse_search_results_html: Gumbo output or root node was null." << std::endl;
+        // Removed DEBUG logging for null Gumbo output/root
     }
 
     std::string final_result = count > 0 ? result : "No results found or failed to parse results page.";
-    std::cerr << "DEBUG: parse_search_results_html: Final result string (first 200 chars): " << final_result.substr(0, 200) << "..." << std::endl;
+    // Removed DEBUG logging for final result string
     return final_result;
 }
 
@@ -752,34 +752,28 @@ std::string ToolManager::search_web(const std::string& query) {
     // Ensure it's a GET request (default, but explicit doesn't hurt)
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L); 
 
-    std::cerr << "DEBUG: search_web: Requesting URL (GET): " << url << std::endl;
-    // Removed POST data logging
+    // Removed DEBUG logging for URL
     
     CURLcode res = curl_easy_perform(curl);
-    long http_code = 0;
+    long http_code = 0; // Keep http_code variable if needed for future logic, otherwise remove
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        std::cerr << "DEBUG: search_web: Received HTTP status code: " << http_code << std::endl;
+        // Removed DEBUG logging for HTTP status code
     }
     
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     
     if (res != CURLE_OK) {
-        std::cerr << "DEBUG: search_web: CURL error: " << curl_easy_strerror(res) << std::endl;
+        // Removed DEBUG logging for CURL error
         throw std::runtime_error("Search failed: " + std::string(curl_easy_strerror(res)));
     }
 
-    // Save raw HTML for debugging
-    std::ofstream debug_file("debug_search_raw.html");
-    debug_file << response;
-    debug_file.close();
-    std::cerr << "DEBUG: search_web: Raw HTML response saved to debug_search_raw.html" << std::endl;
-    // Optionally log a snippet of the response
-    std::cerr << "DEBUG: search_web: Raw response snippet (first 500 chars): " << response.substr(0, 500) << "..." << std::endl;
+    // Removed saving raw HTML to debug file
+    // Removed DEBUG logging for raw response snippet
 
     std::string parsed_result = parse_search_results_html(response); // Use renamed function
-    std::cerr << "DEBUG: search_web: Result from parse_search_results_html: " << parsed_result.substr(0, 200) << "..." << std::endl; // Update debug message
+    // Removed DEBUG logging for parsed result
     return parsed_result;
     // Removed unreachable: return parse_ddg_html(response); 
 }
