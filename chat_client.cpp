@@ -392,6 +392,16 @@ void ChatClient::run() {
                     if (!function_name.empty()) {
                         function_name.erase(0, function_name.find_first_not_of(" \n\r\t"));
                         function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
+
+                        // Additional cleanup: remove trailing stray characters like '[', '(', '{'
+                        while (!function_name.empty() && 
+                               (function_name.back() == '[' || function_name.back() == '(' || function_name.back() == '{')) {
+                            function_name.pop_back();
+                            // Also trim any whitespace after popping
+                            while (!function_name.empty() && isspace(function_name.back())) {
+                                function_name.pop_back();
+                            }
+                        }
                     }
 
                     if (!function_name.empty() && parsed_args_or_no_args_needed) {
