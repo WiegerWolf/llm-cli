@@ -254,63 +254,79 @@ void ChatClient::run() {
             // --- Path 2: Fallback <function> parsing ---
             } else if (response_message.contains("content") && response_message["content"].is_string()) {
                 std::string content_str = response_message["content"];
-                // Look for <function>NAME{ARGS}</function> format
+                // Look for <function>NAME</function> or <function>NAME{ARGS}</function> format
                 size_t func_start = content_str.find("<function>");
                 size_t func_end = content_str.rfind("</function>");
-                size_t name_start = (func_start != std::string::npos) ? func_start + 10 : std::string::npos; // After "<function>"
-                size_t args_start = (name_start != std::string::npos) ? content_str.find('{', name_start) : std::string::npos;
-                size_t args_end = (func_end != std::string::npos) ? content_str.rfind('}', func_end) : std::string::npos;
 
-                // Check if the tags and braces seem correctly ordered and present
-                if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start &&
-                    args_start != std::string::npos && args_end != std::string::npos && args_end > args_start &&
-                    args_start > name_start && args_end < func_end) 
-                {
-                    std::string function_name = content_str.substr(name_start, args_start - name_start);
-                    function_name.erase(0, function_name.find_first_not_of(" \n\r\t")); // Trim whitespace
-                    function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
+                if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start) {
+                    size_t name_start = func_start + 10; // After "<function>"
+                    size_t args_start = content_str.find('{', name_start);
+                    // Ensure args_start is before the closing tag if it exists
+                    if (args_start != std::string::npos && args_start >= func_end) {
+                        args_start = std::string::npos; // Treat as if no args brace found
+                    }
+                    size_t args_end = (args_start != std::string::npos) ? content_str.rfind('}', func_end) : std::string::npos;
 
-                    std::string args_str = content_str.substr(args_start, args_end - args_start + 1);
-                    nlohmann::json function_args;
-                    bool parsed_args = false;
-                    try {
-                        function_args = nlohmann::json::parse(args_str);
-                        parsed_args = true; // Successfully parsed args JSON
-                    } catch (const nlohmann::json::parse_error& e) {
-                        std::cerr << "Warning: Failed to parse arguments JSON from <function=...>: " << e.what() << "\nArgs string was: " << args_str << "\n";
-                        // Fall through without setting parsed_args = true
+                    std::string function_name;
+                    nlohmann::json function_args = nlohmann::json::object(); // Default to empty object
+                    bool parsed_args_or_no_args_needed = false; // Flag to indicate success
+
+                    // Case 1: Braces found, potentially containing arguments
+                    if (args_start != std::string::npos && args_end != std::string::npos && args_end > args_start && args_end < func_end) {
+                        function_name = content_str.substr(name_start, args_start - name_start);
+                        std::string args_str = content_str.substr(args_start, args_end - args_start + 1);
+                        try {
+                            function_args = nlohmann::json::parse(args_str);
+                            parsed_args_or_no_args_needed = true; // Successfully parsed args JSON
+                        } catch (const nlohmann::json::parse_error& e) {
+                            std::cerr << "Warning: Failed to parse arguments JSON from <function...{...}>: " << e.what() << "\nArgs string was: " << args_str << "\n";
+                            // Fall through, parsed_args_or_no_args_needed remains false
+                        }
+                    }
+                    // Case 2: No valid braces found between name and end tag - assume no arguments
+                    else if (args_start == std::string::npos || args_start >= func_end) { // Check args_start is not found OR is after the end tag
+                        function_name = content_str.substr(name_start, func_end - name_start);
+                        // function_args is already {}
+                        parsed_args_or_no_args_needed = true; // Treat as success, args are empty object {}
+                    }
+                    // Else: Malformed structure (e.g., opening brace but no closing before </function>) - function_name remains empty
+
+                    // Trim whitespace from function name if extracted
+                    if (!function_name.empty()) {
+                        function_name.erase(0, function_name.find_first_not_of(" \n\r\t"));
+                        function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
                     }
 
-                    // If we successfully parsed a function name and its arguments
-                    if (!function_name.empty() && parsed_args) {
+                    // If we successfully extracted a function name AND (parsed args OR determined no args were needed)
+                    if (!function_name.empty() && parsed_args_or_no_args_needed) {
                         // Save the original assistant message containing <function=...>
                         db.saveAssistantMessage(content_str);
                         context = db.getContextHistory(); // Reload context
 
-                        // Generate synthetic ID (since none is provided by the API in this format)
+                        // Generate synthetic ID
                         std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
 
                         std::cout << "[Executing function from content: " << function_name << "]\n"; // User feedback
                         std::cout.flush();
 
-                        // Call the helper function, passing the toolManager instance
+                        // Call the helper function
                         if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
                             tool_call_flow_completed = true; // Mark success
                         } else {
                             // Error handled by helper or execute_tool
                         }
                     } else {
-                         // Malformed name or args JSON.
-                         // Do nothing here; let the final block handle printing if needed.
-                         // tool_call_flow_completed remains false.
+                        // Malformed name or args JSON, or structure error.
+                        // Do nothing here; let the final block handle printing if needed.
+                        // tool_call_flow_completed remains false.
                     }
                 } else {
-                    // Pattern not found or malformed.
+                    // <function> tags not found or malformed.
                     // Do nothing here; let the final block handle printing if needed.
                     // tool_call_flow_completed remains false.
                 }
                 // tool_call_flow_completed is set above ONLY if the function was successfully handled.
-            } 
+            }
             // Note: The original Path 3 logic is now merged into the final block below.
 
 
