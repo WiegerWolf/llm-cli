@@ -770,35 +770,37 @@ std::string ToolManager::search_web(const std::string& query) {
     if (!curl) throw std::runtime_error("Failed to initialize CURL for search");
     
     std::string response;
-    std::string url = "https://lite.duckduckgo.com/lite/";
     
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0");
-    headers = curl_slist_append(headers, "Referer: https://lite.duckduckgo.com/");
-    headers = curl_slist_append(headers, "Origin: https://lite.duckduckgo.com");
-    headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
-
     // URL-encode the query
     char *escaped_query = curl_easy_escape(curl, query.c_str(), query.length());
     if (!escaped_query) {
         curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
         throw std::runtime_error("Failed to URL-encode search query");
     }
-    std::string post_data = "q=" + std::string(escaped_query) + "&kl=wt-wt&df=";
+    // Construct URL with GET parameters
+    std::string url = "https://lite.duckduckgo.com/lite/?q=" + std::string(escaped_query) + "&kl=wt-wt&df=";
     curl_free(escaped_query); // Free the escaped string
+    
+    struct curl_slist* headers = nullptr;
+    // Keep User-Agent and Referer, remove POST-specific headers
+    headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0");
+    headers = curl_slist_append(headers, "Referer: https://lite.duckduckgo.com/");
+    // Removed Origin header
+    // Removed Content-Type header
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data.c_str());
+    // Removed CURLOPT_POSTFIELDS
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    // Add timeout for search request
+    // Keep timeout
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); // 10 second timeout
+    // Ensure it's a GET request (default, but explicit doesn't hurt)
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L); 
 
-    std::cerr << "DEBUG: search_web: Requesting URL: " << url << std::endl;
-    std::cerr << "DEBUG: search_web: POST data: " << post_data << std::endl;
+    std::cerr << "DEBUG: search_web: Requesting URL (GET): " << url << std::endl;
+    // Removed POST data logging
     
     CURLcode res = curl_easy_perform(curl);
     long http_code = 0;
