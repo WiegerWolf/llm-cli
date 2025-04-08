@@ -818,7 +818,7 @@ public:
                                          cerr << "Warning: Parsed <function=" << function_name << "> but required arguments missing in args: " << args_str << "\n";
                                          // Fall through to treat as regular message below
                                     }
-                                } catch (const nlohmann::json::parse_Error& e) { // Corrected typo: parse_Error -> parse_error
+                                } catch (const nlohmann::json::parse_error& e) { // Corrected typo: parse_Error -> parse_error
                                     cerr << "Warning: Failed to parse arguments from <function=" << function_name << ">: " << e.what() << "\nArgs were: " << args_str << "\n";
                                     // Fall through to treat as regular message below
                                 }
