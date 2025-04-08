@@ -506,7 +506,7 @@ void ChatClient::run() {
                 // or if content was missing/null, nothing gets printed here, which is correct.
                 // The API error message was already printed when detected.
             }
-            // If tool_call_flow_completed is true, the helper function handled saving and printing the final response.
+            // If tool_call_flow_completed is true, the helper function already printed the final LLM response after tool execution.
 
         } catch (const nlohmann::json::parse_error& e) {
              std::cerr << "JSON Parsing Error (Outer Loop): " << e.what() << "\n";
