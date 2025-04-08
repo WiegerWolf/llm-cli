@@ -583,7 +583,7 @@ std::string ToolManager::parse_brave_search_html(const std::string& html) {
 
             // Find Title and URL (now within the main A tag with class 'heading-serpresult')
             GumboNode* title_a = find_node_by_tag_and_class(result_div, GUMBO_TAG_A, "heading-serpresult");
-            std::cerr << "DEBUG: parse_brave_search_html:   Found A tag with class 'heading-serpresult'? " << (title_a ? "Yes" : "No") << std::endl;
+            // std::cerr << "DEBUG: parse_brave_search_html:   Found A tag with class 'heading-serpresult'? " << (title_a ? "Yes" : "No") << std::endl; // Removed debug
 
             if (title_a) {
                 GumboAttribute* href = gumbo_get_attribute(&title_a->v.element.attributes, "href");
