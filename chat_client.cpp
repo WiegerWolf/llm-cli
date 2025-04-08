@@ -275,37 +275,58 @@ void ChatClient::run() {
                 size_t func_end = content_str.rfind("</function>");
 
                 if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start && name_start != std::string::npos) {
-                    // name_start is already calculated based on the found tag
-                    size_t args_start = content_str.find('{', name_start);
-                    // Ensure args_start is before the closing tag if it exists
-                    if (args_start != std::string::npos && args_start >= func_end) {
-                        args_start = std::string::npos; // Treat as if no args brace found
+                    // Find the start of arguments: either '{' or '('
+                    size_t args_delimiter_start = content_str.find_first_of("{(" , name_start);
+
+                    // Ensure the delimiter is before the closing tag if it exists
+                    if (args_delimiter_start != std::string::npos && args_delimiter_start >= func_end) {
+                        args_delimiter_start = std::string::npos; // Treat as if no delimiter found before end tag
                     }
-                    size_t args_end = (args_start != std::string::npos) ? content_str.rfind('}', func_end) : std::string::npos;
 
                     std::string function_name;
                     nlohmann::json function_args = nlohmann::json::object(); // Default to empty object
                     bool parsed_args_or_no_args_needed = false; // Flag to indicate success
 
-                    // Case 1: Braces found, potentially containing arguments
-                    if (args_start != std::string::npos && args_end != std::string::npos && args_end > args_start && args_end < func_end) {
-                        function_name = content_str.substr(name_start, args_start - name_start);
-                        std::string args_str = content_str.substr(args_start, args_end - args_start + 1);
-                        try {
-                            function_args = nlohmann::json::parse(args_str);
-                            parsed_args_or_no_args_needed = true; // Successfully parsed args JSON
-                        } catch (const nlohmann::json::parse_error& e) {
-                            std::cerr << "Warning: Failed to parse arguments JSON from <function...{...}>: " << e.what() << "\nArgs string was: " << args_str << "\n";
-                            // Fall through, parsed_args_or_no_args_needed remains false
+                    // Case 1: Argument delimiter '{' or '(' found before the end tag
+                    if (args_delimiter_start != std::string::npos) {
+                        function_name = content_str.substr(name_start, args_delimiter_start - name_start); // Extract name before delimiter
+
+                        // Determine the corresponding closing delimiter
+                        char open_delim = content_str[args_delimiter_start];
+                        char close_delim = (open_delim == '{') ? '}' : ')';
+
+                        // Find the matching closing delimiter, searching backwards from just before </function>
+                        // Ensure the search doesn't go before the opening delimiter.
+                        size_t search_end_pos = (func_end > args_delimiter_start) ? func_end -1 : args_delimiter_start;
+                        size_t args_end = content_str.rfind(close_delim, search_end_pos);
+
+                        // Validate the closing delimiter position
+                        if (args_end != std::string::npos && args_end > args_delimiter_start) {
+                            std::string args_str = content_str.substr(args_delimiter_start, args_end - args_delimiter_start + 1);
+                            // Arguments need to be valid JSON, even if inside (), so expect {} or {"key": "value"}
+                            try {
+                                // Attempt to parse, even if it's just "()" -> this will likely fail unless it's "{}"
+                                function_args = nlohmann::json::parse(args_str);
+                                parsed_args_or_no_args_needed = true; // Successfully parsed args JSON
+                            } catch (const nlohmann::json::parse_error& e) {
+                                // If parsing fails (e.g., content was just '()'), treat as no args for now.
+                                // We could also return an error here if strict JSON is required within delimiters.
+                                std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
+                                function_args = nlohmann::json::object(); // Reset to empty object
+                                parsed_args_or_no_args_needed = true; // Still proceed, but with empty args
+                            }
+                        } else {
+                             // Malformed: opening delimiter found, but no valid closing one before </function>
+                             std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n";
+                             // Fall through, parsed_args_or_no_args_needed remains false
                         }
                     }
-                    // Case 2: No valid braces found between name and end tag - assume no arguments
-                    else if (args_start == std::string::npos || args_start >= func_end) { // Check args_start is not found OR is after the end tag
-                        function_name = content_str.substr(name_start, func_end - name_start);
+                    // Case 2: No argument delimiter '{' or '(' found before the end tag
+                    else {
+                        function_name = content_str.substr(name_start, func_end - name_start); // Extract name up to </function>
                         // function_args is already {}
                         parsed_args_or_no_args_needed = true; // Treat as success, args are empty object {}
                     }
-                    // Else: Malformed structure (e.g., opening brace but no closing before </function>) - function_name remains empty
 
                     // Trim whitespace from function name if extracted
                     if (!function_name.empty()) {
