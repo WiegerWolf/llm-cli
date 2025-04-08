@@ -572,9 +572,11 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
 
     if (output && output->root) {
         find_result_divs(output->root);
-        // Removed DEBUG logging for found result divs
+        std::cerr << "DEBUG: parse_search_results_html: Found " << result_divs.size() << " potential result divs." << std::endl; // Re-add count log
 
+        int div_index = 0; // Add index for logging
         for (GumboNode* result_div : result_divs) {
+            std::cerr << "DEBUG: parse_search_results_html: --- Processing potential result div #" << ++div_index << " ---" << std::endl;
             std::string title;
             std::string url;
             std::string snippet;
@@ -582,7 +584,9 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
 
             // Find Title and URL (usually within h2 > a.result__a)
             GumboNode* title_h2 = find_node_by_tag(result_div, GUMBO_TAG_H2);
+            std::cerr << "DEBUG: parse_search_results_html:   Found H2 tag? " << (title_h2 ? "Yes" : "No") << std::endl;
             GumboNode* title_a = title_h2 ? find_node_by_tag_and_class(title_h2, GUMBO_TAG_A, "result__a") : nullptr;
+            std::cerr << "DEBUG: parse_search_results_html:   Found A tag with class 'result__a' inside H2? " << (title_a ? "Yes" : "No") << std::endl;
             
             if (title_a) {
                 GumboAttribute* href = gumbo_get_attribute(&title_a->v.element.attributes, "href");
@@ -609,26 +613,32 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
                 title.erase(0, title.find_first_not_of(" \n\r\t"));
                 title.erase(title.find_last_not_of(" \n\r\t") + 1);
             }
+            std::cerr << "DEBUG: parse_search_results_html:   Extracted Title: '" << title << "'" << std::endl;
+            std::cerr << "DEBUG: parse_search_results_html:   Extracted URL: '" << url << "'" << std::endl;
 
             // Find Snippet (usually within a.result__snippet)
             GumboNode* snippet_a = find_node_by_tag_and_class(result_div, GUMBO_TAG_A, "result__snippet");
+            std::cerr << "DEBUG: parse_search_results_html:   Found A tag with class 'result__snippet'? " << (snippet_a ? "Yes" : "No") << std::endl;
             if (snippet_a) {
                 snippet = gumbo_get_text(snippet_a);
                 snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
                 snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
             }
+             std::cerr << "DEBUG: parse_search_results_html:   Extracted Snippet: '" << snippet.substr(0, 70) << "...'" << std::endl;
 
             // Find Display URL (usually within a.result__url)
             GumboNode* url_a = find_node_by_tag_and_class(result_div, GUMBO_TAG_A, "result__url");
+            std::cerr << "DEBUG: parse_search_results_html:   Found A tag with class 'result__url'? " << (url_a ? "Yes" : "No") << std::endl;
             if (url_a) {
                 display_url_text = gumbo_get_text(url_a);
                 display_url_text.erase(0, display_url_text.find_first_not_of(" \n\r\t"));
                 display_url_text.erase(display_url_text.find_last_not_of(" \n\r\t") + 1);
             }
+            std::cerr << "DEBUG: parse_search_results_html:   Extracted Display URL: '" << display_url_text << "'" << std::endl;
 
             // Add result if we found the essentials (title and actual URL)
             if (!title.empty() && !url.empty()) {
-                 // Removed DEBUG logging for adding result
+                 std::cerr << "DEBUG: parse_search_results_html:   -> Adding result #" << (count + 1) << " to output." << std::endl; // Re-add adding log
                 result += std::to_string(++count) + ". " + title + "\n";
                 if (!snippet.empty()) {
                     result += "   " + snippet + "\n";
@@ -637,17 +647,17 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
                 std::string display_url = display_url_text.empty() ? url : display_url_text;
                 result += "   " + display_url + " [href=" + url + "]\n\n";
             } else {
-                 // Removed DEBUG logging for skipping div
+                 std::cerr << "DEBUG: parse_search_results_html:   -> Skipping div - missing title or URL." << std::endl; // Re-add skipping log
             }
         } // End loop through result divs
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } else {
-        // Removed DEBUG logging for null Gumbo output/root
+        std::cerr << "DEBUG: parse_search_results_html: Gumbo output or root node was null." << std::endl; // Re-add null output log
     }
 
     std::string final_result = count > 0 ? result : "No results found or failed to parse results page.";
-    // Removed DEBUG logging for final result string
+    std::cerr << "DEBUG: parse_search_results_html: Final result string (first 200 chars): " << final_result.substr(0, 200) << "..." << std::endl; // Re-add final result log
     return final_result;
 }
 
@@ -752,28 +762,34 @@ std::string ToolManager::search_web(const std::string& query) {
     // Ensure it's a GET request (default, but explicit doesn't hurt)
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L); 
 
-    // Removed DEBUG logging for URL
+    std::cerr << "DEBUG: search_web: Requesting URL (GET): " << url << std::endl; // Re-add URL log
     
     CURLcode res = curl_easy_perform(curl);
-    long http_code = 0; // Keep http_code variable if needed for future logic, otherwise remove
+    long http_code = 0; 
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        // Removed DEBUG logging for HTTP status code
+        std::cerr << "DEBUG: search_web: Received HTTP status code: " << http_code << std::endl; // Re-add status code log
     }
     
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     
     if (res != CURLE_OK) {
-        // Removed DEBUG logging for CURL error
+        std::cerr << "DEBUG: search_web: CURL error: " << curl_easy_strerror(res) << std::endl; // Re-add CURL error log
         throw std::runtime_error("Search failed: " + std::string(curl_easy_strerror(res)));
     }
 
-    // Removed saving raw HTML to debug file
-    // Removed DEBUG logging for raw response snippet
+    // Re-add saving raw HTML to debug file
+    std::ofstream debug_file("debug_search_raw.html");
+    debug_file << response;
+    debug_file.close();
+    std::cerr << "DEBUG: search_web: Raw HTML response saved to debug_search_raw.html" << std::endl;
+    // Re-add logging for raw response snippet
+    std::cerr << "DEBUG: search_web: Raw response snippet (first 500 chars): " << response.substr(0, 500) << "..." << std::endl;
 
     std::string parsed_result = parse_search_results_html(response); // Use renamed function
-    // Removed DEBUG logging for parsed result
+    // Re-add logging for parsed result
+    std::cerr << "DEBUG: search_web: Result from parse_search_results_html (first 200 chars): " << parsed_result.substr(0, 200) << "..." << std::endl; 
     return parsed_result;
     // Removed unreachable: return parse_ddg_html(response); 
 }
