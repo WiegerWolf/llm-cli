@@ -581,11 +581,9 @@ std::string ToolManager::parse_brave_search_html(const std::string& html) {
             std::string snippet;
             std::string display_url_text;
 
-            // Find Title and URL (often within div.heading > a)
-            GumboNode* heading_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "heading");
-            std::cerr << "DEBUG: parse_brave_search_html:   Found DIV with class 'heading'? " << (heading_div ? "Yes" : "No") << std::endl;
-            GumboNode* title_a = heading_div ? find_node_by_tag(heading_div, GUMBO_TAG_A) : nullptr;
-            std::cerr << "DEBUG: parse_brave_search_html:   Found A tag inside heading? " << (title_a ? "Yes" : "No") << std::endl;
+            // Find Title and URL (now within the main A tag with class 'heading-serpresult')
+            GumboNode* title_a = find_node_by_tag_and_class(result_div, GUMBO_TAG_A, "heading-serpresult");
+            std::cerr << "DEBUG: parse_brave_search_html:   Found A tag with class 'heading-serpresult'? " << (title_a ? "Yes" : "No") << std::endl;
 
             if (title_a) {
                 GumboAttribute* href = gumbo_get_attribute(&title_a->v.element.attributes, "href");
@@ -593,36 +591,53 @@ std::string ToolManager::parse_brave_search_html(const std::string& html) {
                     url = href->value;
                     // Brave URLs seem direct, no decoding needed currently
                 }
-                title = gumbo_get_text(title_a);
+                // Title is often within a div with class 'title' inside the A tag
+                GumboNode* title_div = find_node_by_tag_and_class(title_a, GUMBO_TAG_DIV, "title");
+                if (title_div) {
+                    title = gumbo_get_text(title_div);
+                } else {
+                    // Fallback: get text directly from the A tag if no title div found
+                    title = gumbo_get_text(title_a);
+                }
                 title.erase(0, title.find_first_not_of(" \n\r\t"));
                 title.erase(title.find_last_not_of(" \n\r\t") + 1);
             }
             std::cerr << "DEBUG: parse_brave_search_html:   Extracted Title: '" << title << "'" << std::endl;
             std::cerr << "DEBUG: parse_brave_search_html:   Extracted URL: '" << url << "'" << std::endl;
 
-            // Find Snippet (often within div.snippet-content > p)
-            GumboNode* snippet_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "snippet-content");
-             std::cerr << "DEBUG: parse_brave_search_html:   Found DIV with class 'snippet-content'? " << (snippet_div ? "Yes" : "No") << std::endl;
-            GumboNode* snippet_p = snippet_div ? find_node_by_tag(snippet_div, GUMBO_TAG_P) : nullptr;
-             std::cerr << "DEBUG: parse_brave_search_html:   Found P tag inside snippet-content? " << (snippet_p ? "Yes" : "No") << std::endl;
-            if (snippet_p) {
-                snippet = gumbo_get_text(snippet_p);
+            // Find Snippet (often within div.snippet-description)
+            GumboNode* snippet_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "snippet-description");
+            std::cerr << "DEBUG: parse_brave_search_html:   Found DIV with class 'snippet-description'? " << (snippet_div ? "Yes" : "No") << std::endl;
+            if (snippet_div) {
+                snippet = gumbo_get_text(snippet_div);
                 snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
                 snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
-            } else if (snippet_div) { // Fallback: get text directly from snippet_div if no <p>
-                 snippet = gumbo_get_text(snippet_div);
-                 snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
-                 snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
+            } else {
+                // Fallback: try finding div.snippet-content if description is missing
+                GumboNode* snippet_content_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "snippet-content");
+                if (snippet_content_div) {
+                    snippet = gumbo_get_text(snippet_content_div);
+                    snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
+                    snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
+                }
             }
             std::cerr << "DEBUG: parse_brave_search_html:   Extracted Snippet: '" << snippet.substr(0, 70) << "...'" << std::endl;
 
-            // Find Display URL (often within div.url)
-            GumboNode* url_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "url");
-            std::cerr << "DEBUG: parse_brave_search_html:   Found DIV with class 'url'? " << (url_div ? "Yes" : "No") << std::endl;
-            if (url_div) {
-                display_url_text = gumbo_get_text(url_div);
+            // Find Display URL (often within cite.snippet-url)
+            GumboNode* url_cite = find_node_by_tag_and_class(result_div, GUMBO_TAG_CITE, "snippet-url");
+            std::cerr << "DEBUG: parse_brave_search_html:   Found CITE with class 'snippet-url'? " << (url_cite ? "Yes" : "No") << std::endl;
+            if (url_cite) {
+                display_url_text = gumbo_get_text(url_cite);
                 display_url_text.erase(0, display_url_text.find_first_not_of(" \n\r\t"));
                 display_url_text.erase(display_url_text.find_last_not_of(" \n\r\t") + 1);
+            } else {
+                 // Fallback: try finding div.url if cite is missing
+                 GumboNode* url_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "url");
+                 if (url_div) {
+                     display_url_text = gumbo_get_text(url_div);
+                     display_url_text.erase(0, display_url_text.find_first_not_of(" \n\r\t"));
+                     display_url_text.erase(display_url_text.find_last_not_of(" \n\r\t") + 1);
+                 }
             }
             std::cerr << "DEBUG: parse_brave_search_html:   Extracted Display URL: '" << display_url_text << "'" << std::endl;
 
