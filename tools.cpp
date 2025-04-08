@@ -28,8 +28,8 @@ size_t ToolManager::WriteCallback(void* contents, size_t size, size_t nmemb, std
     return total_size;
 }
 
-GumboNode* ToolManager::find_node_by_tag(GumboNode* node, int tag_enum) {
-     GumboTag tag = static_cast<GumboTag>(tag_enum); // Cast int back to GumboTag
+GumboNode* ToolManager::find_node_by_tag(GumboNode* node, GumboTag tag) {
+    // GumboTag tag = static_cast<GumboTag>(tag_enum); // No longer needed
     if (!node || node->type != GUMBO_NODE_ELEMENT) {
         return nullptr;
     }
@@ -40,7 +40,7 @@ GumboNode* ToolManager::find_node_by_tag(GumboNode* node, int tag_enum) {
 
     GumboVector* children = &node->v.element.children;
     for (unsigned int i = 0; i < children->length; ++i) {
-        GumboNode* found = find_node_by_tag(static_cast<GumboNode*>(children->data[i]), tag_enum);
+        GumboNode* found = find_node_by_tag(static_cast<GumboNode*>(children->data[i]), tag); // Pass tag directly
         if (found) {
             return found;
         }
@@ -48,8 +48,8 @@ GumboNode* ToolManager::find_node_by_tag(GumboNode* node, int tag_enum) {
     return nullptr;
 }
 
-GumboNode* ToolManager::find_node_by_tag_and_class(GumboNode* node, int tag_enum, const std::string& class_name) {
-    GumboTag tag = static_cast<GumboTag>(tag_enum); // Cast int back to GumboTag
+GumboNode* ToolManager::find_node_by_tag_and_class(GumboNode* node, GumboTag tag, const std::string& class_name) {
+    // GumboTag tag = static_cast<GumboTag>(tag_enum); // No longer needed
      if (!node || node->type != GUMBO_NODE_ELEMENT) {
         return nullptr;
     }
@@ -63,7 +63,7 @@ GumboNode* ToolManager::find_node_by_tag_and_class(GumboNode* node, int tag_enum
 
     GumboVector* children = &node->v.element.children;
     for (unsigned int i = 0; i < children->length; ++i) {
-        GumboNode* found = find_node_by_tag_and_class(static_cast<GumboNode*>(children->data[i]), tag_enum, class_name);
+        GumboNode* found = find_node_by_tag_and_class(static_cast<GumboNode*>(children->data[i]), tag, class_name); // Pass tag directly
         if (found) {
             return found;
         }
@@ -551,10 +551,10 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
                 }
                 
                 std::string title;
-                std::string url; 
-                
-                GumboNode* a_tag = find_node_by_tag(title_tr, GUMBO_TAG_A);
-                
+                std::string url;
+
+                GumboNode* a_tag = find_node_by_tag(title_tr, GUMBO_TAG_A); // Pass enum directly
+
                 if (a_tag) {
                     GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
                     url = href ? href->value : "";
@@ -630,7 +630,7 @@ std::string ToolManager::visit_url(const std::string& url_str) {
         return "Error: Failed to parse HTML content.";
     }
 
-    GumboNode* body = find_node_by_tag(output->root, GUMBO_TAG_BODY);
+    GumboNode* body = find_node_by_tag(output->root, GUMBO_TAG_BODY); // Pass enum directly
     std::string extracted_text;
 
     if (body) {

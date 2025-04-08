@@ -48,8 +48,8 @@ private:
     std::string parse_ddg_html(const std::string& html);
     std::string gumbo_get_text(GumboNode* node); // Use GumboNode directly (no struct keyword needed)
     // Static helpers can remain static or become private members
-    static GumboNode* find_node_by_tag(GumboNode* node, int tag); // Use GumboNode directly
-    static GumboNode* find_node_by_tag_and_class(GumboNode* node, int tag, const std::string& class_name); // Use GumboNode directly
+    static GumboNode* find_node_by_tag(GumboNode* node, GumboTag tag); // Use GumboTag directly
+    static GumboNode* find_node_by_tag_and_class(GumboNode* node, GumboTag tag, const std::string& class_name); // Use GumboTag directly
 
     // CURL write callback (can be static or moved if only used here)
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output);
