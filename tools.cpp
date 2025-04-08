@@ -279,9 +279,8 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
             std::vector<std::string> urls;
             std::stringstream ss_search(search_results_raw);
             std::string line;
-            int url_count = 0;
-            const int max_urls_to_visit = 3; // Limit number of pages to visit
-            while (getline(ss_search, line) && url_count < max_urls_to_visit) {
+            // Removed url_count and max_urls_to_visit limit
+            while (getline(ss_search, line)) { // Loop through all lines
                 // Look for lines containing the pattern " [href=...]"
                 size_t href_start = line.find(" [href=");
                 if (href_start != std::string::npos && line.find("   ") == 0) { // Check for leading spaces too
@@ -292,7 +291,7 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
                         // Basic check if it looks like a usable absolute URL
                         if (extracted_url.rfind("http", 0) == 0 || extracted_url.rfind("https", 0) == 0) {
                              urls.push_back(extracted_url);
-                             url_count++;
+                             // Removed url_count increment
                         } else {
                              // Optionally handle relative URLs later if needed
                              std::cerr << "Warning: Skipping non-absolute URL found in search results: " << extracted_url << std::endl;
@@ -300,7 +299,7 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
                     }
                 }
             }
-            std::cout << "  [Research Step 2: Found " << urls.size() << " absolute URLs to visit...]\n"; std::cout.flush();
+            std::cout << "  [Research Step 2: Found " << urls.size() << " absolute URLs. Visiting all...]\n"; std::cout.flush(); // Updated log message
 
 
             // Step 3: Visit URLs and gather content
