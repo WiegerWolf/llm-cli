@@ -282,16 +282,25 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
             int url_count = 0;
             const int max_urls_to_visit = 3; // Limit number of pages to visit
             while (getline(ss_search, line) && url_count < max_urls_to_visit) {
-                // Look for lines starting with "   http" which likely contain URLs from parse_ddg_html output
-                 size_t url_start = line.find("http");
-                 if (url_start != std::string::npos && line.find("   ") == 0) {
-                     // Extract URL (basic extraction, might need refinement)
-                     size_t url_end = line.find_first_of(" \t\n\r", url_start);
-                     urls.push_back(line.substr(url_start, url_end - url_start));
-                     url_count++;
-                 }
+                // Look for lines containing the pattern " [href=...]"
+                size_t href_start = line.find(" [href=");
+                if (href_start != std::string::npos && line.find("   ") == 0) { // Check for leading spaces too
+                    size_t url_start_pos = href_start + 7; // Start after "[href="
+                    size_t url_end_pos = line.find(']', url_start_pos);
+                    if (url_end_pos != std::string::npos) {
+                        std::string extracted_url = line.substr(url_start_pos, url_end_pos - url_start_pos);
+                        // Basic check if it looks like a usable absolute URL
+                        if (extracted_url.rfind("http", 0) == 0 || extracted_url.rfind("https", 0) == 0) {
+                             urls.push_back(extracted_url);
+                             url_count++;
+                        } else {
+                             // Optionally handle relative URLs later if needed
+                             std::cerr << "Warning: Skipping non-absolute URL found in search results: " << extracted_url << std::endl;
+                        }
+                    }
+                }
             }
-             std::cout << "  [Research Step 2: Found " << urls.size() << " URLs to visit...]\n"; std::cout.flush();
+            std::cout << "  [Research Step 2: Found " << urls.size() << " absolute URLs to visit...]\n"; std::cout.flush();
 
 
             // Step 3: Visit URLs and gather content
