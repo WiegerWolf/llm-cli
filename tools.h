@@ -38,6 +38,8 @@ private:
     std::string get_current_datetime();
     // Takes PersistenceManager reference now
     std::string read_history(PersistenceManager& db, const std::string& start_time, const std::string& end_time, size_t limit);
+    // Internal implementation for web research logic
+    std::string perform_web_research(PersistenceManager& db, ChatClient& client, const std::string& topic);
 
     // HTML parsing helpers (moved from main.cpp)
     std::string parse_ddg_html(const std::string& html);

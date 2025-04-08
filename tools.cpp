@@ -268,94 +268,101 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         }
         std::cout << "[Performing web research on: " << topic << "]\n";
         std::cout.flush();
-
-        try {
-            // Step 1: Search the web
-            std::cout << "  [Research Step 1: Searching web...]\n"; std::cout.flush();
-            std::string search_query = topic; // Use topic directly or refine if needed
-            std::string search_results_raw = search_web(search_query);
-
-            // Step 2: Parse search results to get URLs (simplified parsing)
-            std::vector<std::string> urls;
-            std::stringstream ss_search(search_results_raw);
-            std::string line;
-            // Removed url_count and max_urls_to_visit limit
-            while (getline(ss_search, line)) { // Loop through all lines
-                // Look for lines containing the pattern " [href=...]"
-                size_t href_start = line.find(" [href=");
-                if (href_start != std::string::npos && line.find("   ") == 0) { // Check for leading spaces too
-                    size_t url_start_pos = href_start + 7; // Start after "[href="
-                    size_t url_end_pos = line.find(']', url_start_pos);
-                    if (url_end_pos != std::string::npos) {
-                        std::string extracted_url = line.substr(url_start_pos, url_end_pos - url_start_pos);
-                        // Basic check if it looks like a usable absolute URL
-                        if (extracted_url.rfind("http", 0) == 0 || extracted_url.rfind("https", 0) == 0) {
-                             urls.push_back(extracted_url);
-                             // Removed url_count increment
-                        } else {
-                             // Optionally handle relative URLs later if needed
-                             std::cerr << "Warning: Skipping non-absolute URL found in search results: " << extracted_url << std::endl;
-                        }
-                    }
-                }
-            }
-            std::cout << "  [Research Step 2: Found " << urls.size() << " absolute URLs. Visiting all...]\n"; std::cout.flush(); // Updated log message
-
-
-            // Step 3: Visit URLs and gather content
-            std::string visited_content_summary = "\n\nVisited Pages Content:\n";
-            if (urls.empty()) {
-                 visited_content_summary += "No relevant URLs found in search results to visit.\n";
-            } else {
-                for (size_t i = 0; i < urls.size(); ++i) {
-                    std::cout << "  [Research Step 3." << (i+1) << ": Visiting " << urls[i] << "...]\n"; std::cout.flush();
-                    try {
-                        std::string page_content = visit_url(urls[i]);
-                        visited_content_summary += "\n--- Content from " + urls[i] + " ---\n";
-                        visited_content_summary += page_content;
-                        visited_content_summary += "\n--- End Content ---\n";
-                    } catch (const std::exception& visit_e) {
-                        visited_content_summary += "\n--- Failed to visit " + urls[i] + ": " + visit_e.what() + " ---\n";
-                    }
-                }
-            }
-
-            // Step 4: Compile context and create synthesis prompt
-             std::cout << "  [Research Step 4: Synthesizing results...]\n"; std::cout.flush();
-            std::string synthesis_context = "Web search results for '" + topic + "':\n" + search_results_raw + visited_content_summary;
-            
-            // Create a simple context for the synthesis call
-            std::vector<Message> synthesis_messages;
-            synthesis_messages.push_back({"system", "You are a research assistant. Based *only* on the provided text which contains web search results and content from visited web pages, synthesize a comprehensive answer to the original research topic. Do not add any preamble like 'Based on the provided text...'."});
-            synthesis_messages.push_back({"user", "Original research topic: " + topic + "\n\nProvided research context:\n" + synthesis_context});
-
-            // Step 5: Make internal API call for synthesis (no tools needed for this call)
-            std::string synthesis_response_str = client.makeApiCall(synthesis_messages, false); // Use the passed client object
-            nlohmann::json synthesis_response_json;
-            try {
-                synthesis_response_json = nlohmann::json::parse(synthesis_response_str);
-            } catch (const nlohmann::json::parse_error& e) {
-                 std::cerr << "JSON Parsing Error (Synthesis Response): " << e.what() << "\nResponse was: " << synthesis_response_str << "\n";
-                 return "Error: Failed to parse synthesis response from LLM.";
-            }
-
-            if (!synthesis_response_json.contains("choices") || synthesis_response_json["choices"].empty() || !synthesis_response_json["choices"][0].contains("message") || !synthesis_response_json["choices"][0]["message"].contains("content")) {
-                std::cerr << "Error: Invalid API response structure (Synthesis Response).\nResponse was: " << synthesis_response_str << "\n";
-                return "Error: Invalid response structure from LLM during synthesis.";
-            }
-            std::string final_synthesized_content = synthesis_response_json["choices"][0]["message"]["content"];
-
-            std::cout << "[Web research complete for: " << topic << "]\n"; std::cout.flush();
-            return final_synthesized_content; // Return the synthesized answer
-
-        } catch (const std::exception& e) {
-            std::cerr << "Web research failed during execution: " << e.what() << "\n";
-            return "Error performing web research: " + std::string(e.what());
-        }
-
+        // Call the dedicated internal method
+        return perform_web_research(db, client, topic);
     } else {
         std::cerr << "Error: Unknown tool requested: " << tool_name << "\n";
         throw std::runtime_error("Unknown tool requested: " + tool_name);
+    }
+}
+
+
+// --- Internal Tool Logic Implementations ---
+
+std::string ToolManager::perform_web_research(PersistenceManager& db, ChatClient& client, const std::string& topic) {
+    // This is the logic moved from the execute_tool's web_research case
+    try {
+        // Step 1: Search the web
+        std::cout << "  [Research Step 1: Searching web...]\n"; std::cout.flush();
+        std::string search_query = topic; // Use topic directly or refine if needed
+        std::string search_results_raw = search_web(search_query);
+
+        // Step 2: Parse search results to get URLs (simplified parsing)
+        std::vector<std::string> urls;
+        std::stringstream ss_search(search_results_raw);
+        std::string line;
+        // Removed url_count and max_urls_to_visit limit
+        while (getline(ss_search, line)) { // Loop through all lines
+            // Look for lines containing the pattern " [href=...]"
+            size_t href_start = line.find(" [href=");
+            if (href_start != std::string::npos && line.find("   ") == 0) { // Check for leading spaces too
+                size_t url_start_pos = href_start + 7; // Start after "[href="
+                size_t url_end_pos = line.find(']', url_start_pos);
+                if (url_end_pos != std::string::npos) {
+                    std::string extracted_url = line.substr(url_start_pos, url_end_pos - url_start_pos);
+                    // Basic check if it looks like a usable absolute URL
+                    if (extracted_url.rfind("http", 0) == 0 || extracted_url.rfind("https", 0) == 0) {
+                         urls.push_back(extracted_url);
+                         // Removed url_count increment
+                    } else {
+                         // Optionally handle relative URLs later if needed
+                         std::cerr << "Warning: Skipping non-absolute URL found in search results: " << extracted_url << std::endl;
+                    }
+                }
+            }
+        }
+        std::cout << "  [Research Step 2: Found " << urls.size() << " absolute URLs. Visiting all...]\n"; std::cout.flush(); // Updated log message
+
+
+        // Step 3: Visit URLs and gather content
+        std::string visited_content_summary = "\n\nVisited Pages Content:\n";
+        if (urls.empty()) {
+             visited_content_summary += "No relevant URLs found in search results to visit.\n";
+        } else {
+            for (size_t i = 0; i < urls.size(); ++i) {
+                std::cout << "  [Research Step 3." << (i+1) << ": Visiting " << urls[i] << "...]\n"; std::cout.flush();
+                try {
+                    std::string page_content = visit_url(urls[i]);
+                    visited_content_summary += "\n--- Content from " + urls[i] + " ---\n";
+                    visited_content_summary += page_content;
+                    visited_content_summary += "\n--- End Content ---\n";
+                } catch (const std::exception& visit_e) {
+                    visited_content_summary += "\n--- Failed to visit " + urls[i] + ": " + visit_e.what() + " ---\n";
+                }
+            }
+        }
+
+        // Step 4: Compile context and create synthesis prompt
+         std::cout << "  [Research Step 4: Synthesizing results...]\n"; std::cout.flush();
+        std::string synthesis_context = "Web search results for '" + topic + "':\n" + search_results_raw + visited_content_summary;
+        
+        // Create a simple context for the synthesis call
+        std::vector<Message> synthesis_messages;
+        synthesis_messages.push_back({"system", "You are a research assistant. Based *only* on the provided text which contains web search results and content from visited web pages, synthesize a comprehensive answer to the original research topic. Do not add any preamble like 'Based on the provided text...'."});
+        synthesis_messages.push_back({"user", "Original research topic: " + topic + "\n\nProvided research context:\n" + synthesis_context});
+
+        // Step 5: Make internal API call for synthesis (no tools needed for this call)
+        std::string synthesis_response_str = client.makeApiCall(synthesis_messages, false); // Use the passed client object
+        nlohmann::json synthesis_response_json;
+        try {
+            synthesis_response_json = nlohmann::json::parse(synthesis_response_str);
+        } catch (const nlohmann::json::parse_error& e) {
+             std::cerr << "JSON Parsing Error (Synthesis Response): " << e.what() << "\nResponse was: " << synthesis_response_str << "\n";
+             return "Error: Failed to parse synthesis response from LLM.";
+        }
+
+        if (!synthesis_response_json.contains("choices") || synthesis_response_json["choices"].empty() || !synthesis_response_json["choices"][0].contains("message") || !synthesis_response_json["choices"][0]["message"].contains("content")) {
+            std::cerr << "Error: Invalid API response structure (Synthesis Response).\nResponse was: " << synthesis_response_str << "\n";
+            return "Error: Invalid response structure from LLM during synthesis.";
+        }
+        std::string final_synthesized_content = synthesis_response_json["choices"][0]["message"]["content"];
+
+        std::cout << "[Web research complete for: " << topic << "]\n"; std::cout.flush();
+        return final_synthesized_content; // Return the synthesized answer
+
+    } catch (const std::exception& e) {
+        std::cerr << "Web research failed during execution: " << e.what() << "\n";
+        return "Error performing web research: " + std::string(e.what());
     }
 }
 
