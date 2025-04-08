@@ -8,12 +8,9 @@
 #include <stdexcept>
 #include <readline/readline.h>
 #include <readline/history.h>
-#include <functional>
-#include <gumbo.h>
-#include <fstream>
-#include <chrono> // For date/time
-#include <ctime>  // For date/time formatting
+// Removed functional, gumbo.h, fstream, chrono, ctime, iomanip (moved to tools.cpp)
 #include "database.h"
+#include "tools.h" // Include the new ToolManager header
 
 using namespace std;
 
@@ -40,14 +37,7 @@ static GumboNode* find_node_by_tag(GumboNode* node, GumboTag tag) {
             return found;
         }
     }
-    return nullptr;
-}
-
-// Helper function to recursively find the first node with a specific tag and class
-static GumboNode* find_node_by_tag_and_class(GumboNode* node, GumboTag tag, const std::string& class_name) {
-     if (!node || node->type != GUMBO_NODE_ELEMENT) {
-        return nullptr;
-    }
+// Removed find_node_by_tag and find_node_by_tag_and_class (moved to tools.cpp)
     
     if (node->v.element.tag == tag) {
         GumboAttribute* class_attr = gumbo_get_attribute(&node->v.element.attributes, "class");
@@ -62,92 +52,18 @@ static GumboNode* find_node_by_tag_and_class(GumboNode* node, GumboTag tag, cons
         if (found) {
             return found;
         }
-    }
-    return nullptr;
-}
+// Removed find_node_by_tag_and_class implementation
 
 
 class ChatClient {
 private:
     PersistenceManager db;
+    ToolManager toolManager; // Instantiate ToolManager
     string api_base = "https://api.groq.com/openai/v1/chat/completions";
-    const nlohmann::json search_web_tool = {
-        {"type", "function"},
-        {"function", {
-            {"name", "search_web"},
-            {"description", "Search the web for information using DuckDuckGo Lite. Use this for recent events, specific facts, or topics outside general knowledge."},
-            {"parameters", {
-                {"type", "object"},
-                {"properties", {
-                    {"query", {
-                        {"type", "string"},
-                        {"description", "The search query string."}
-                    }}
-                }},
-                {"required", {"query"}}
-            }}
-        }}
-    };
-    const nlohmann::json get_current_datetime_tool = {
-        {"type", "function"},
-        {"function", {
-            {"name", "get_current_datetime"},
-            {"description", "Get the current date and time."},
-            {"parameters", { // No parameters needed
-                {"type", "object"},
-                {"properties", {}}
-            }}
-        }}
-    };
-    const nlohmann::json visit_url_tool = {
-        {"type", "function"},
-        {"function", {
-            {"name", "visit_url"},
-            {"description", "Fetch the main text content of a given URL."},
-            {"parameters", {
-                {"type", "object"},
-                {"properties", {
-                    {"url", {
-                        {"type", "string"},
-                        {"description", "The full URL to visit (including http:// or https://)."}
-                    }}
-                }},
-                {"required", {"url"}}
-            }}
-        }}
-    };
-    const nlohmann::json read_history_tool = {
-        {"type", "function"},
-        {"function", {
-            {"name", "read_history"},
-            {"description", "Read past messages from the conversation history database within a specified time range."},
-            {"parameters", {
-                {"type", "object"},
-                {"properties", {
-                    {"start_time", {
-                        {"type", "string"},
-                        {"description", "The start timestamp (inclusive) in 'YYYY-MM-DD HH:MM:SS' format."}
-                    }},
-                    {"end_time", {
-                        {"type", "string"},
-                        {"description", "The end timestamp (inclusive) in 'YYYY-MM-DD HH:MM:SS' format."}
-                    }},
-                    {"limit", {
-                        {"type", "integer"},
-                        {"description", "The maximum number of messages to retrieve within the range."},
-                        {"default", 50} // Default limit if not specified
-                    }}
-                }},
-                {"required", {"start_time", "end_time"}} // Require time range
-            }}
-        }}
-    };
+    // Removed tool JSON definitions (moved to ToolManager)
 
 
-    static std::string gumbo_get_text(GumboNode* node) {
-        if (node->type == GUMBO_NODE_TEXT) {
-            return node->v.text.text;
-        }
+    // Removed gumbo_get_text (moved to tools.cpp)
         
         // Return empty string for non-element nodes (like comments, doctype, etc.)
         if (node->type != GUMBO_NODE_ELEMENT) {
@@ -297,15 +213,10 @@ private:
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } // End of if (output)
 
-        return count > 0 ? result : "No relevant results found";
-    }
+    // Removed parse_ddg_html (moved to tools.cpp)
 
-    // Function to fetch URL content and extract text
-    std::string visit_url(const std::string& url_str) {
-        CURL* curl = curl_easy_init();
-        if (!curl) throw std::runtime_error("Failed to initialize CURL");
 
-        std::string html_content;
+    // Removed visit_url (moved to tools.cpp)
         long http_code = 0;
 
         // Set common CURL options
@@ -382,13 +293,10 @@ private:
         }
 
 
-        return extracted_text.empty() ? "No text content found." : extracted_text;
-    }
+    // Removed visit_url implementation
 
 
-    std::string search_web(const std::string& query) {
-        CURL* curl = curl_easy_init();
-        if (!curl) throw std::runtime_error("Failed to initialize CURL");
+    // Removed search_web (moved to tools.cpp)
         
         // Disable verbose logging (commented out)
         // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
@@ -427,10 +335,9 @@ private:
         // debug_file << response;
         // debug_file.close();
 
-        return parse_ddg_html(response);
-    }
+    // Removed search_web implementation
     
-    // Modified to optionally include tools
+    // Modified to optionally include tools (gets definitions from ToolManager)
     string makeApiCall(const vector<Message>& context, bool use_tools = false) {
         CURL* curl = curl_easy_init();
         if (!curl) {
@@ -487,8 +394,8 @@ private:
 
         // Add tools if requested
         if (use_tools) {
-            // Include all defined tools in the array
-            payload["tools"] = nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool, read_history_tool}); 
+            // Get tool definitions from the ToolManager
+            payload["tools"] = toolManager.get_tool_definitions(); 
             payload["tool_choice"] = "auto";
         }
 
@@ -517,118 +424,31 @@ private:
         return response; 
     }
 
-private: // Tool implementations and helpers
-    // Function to get current date and time as a string
-    std::string get_current_datetime() {
-        auto now = std::chrono::system_clock::now();
-        auto now_c = std::chrono::system_clock::to_time_t(now);
-        std::stringstream ss;
-        // Format: YYYY-MM-DD HH:MM:SS Timezone (e.g., 2024-04-06 15:30:00 PDT)
-        // Using std::put_time requires #include <iomanip> which is already included
-        // Using %Z for timezone name might be locale-dependent. %z for offset is more standard.
-        ss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S %Z"); 
-        return ss.str();
-    }
-
-    // Updated function to read history time range and format it
-    std::string read_history(const std::string& start_time, const std::string& end_time, size_t limit) {
-         std::vector<Message> messages = db.getHistoryRange(start_time, end_time, limit);
-         if (messages.empty()) {
-             return "No messages found between " + start_time + " and " + end_time + " (Limit: " + std::to_string(limit) + ").";
-         }
-
-         std::stringstream ss;
-         ss << "History (" << start_time << " to " << end_time << ", Limit: " << limit << "):\n";
-         for (const auto& msg : messages) {
-             // Basic formatting, truncate long content
-             std::string truncated_content = msg.content;
-             if (truncated_content.length() > 100) { // Limit content length in output
-                 truncated_content = truncated_content.substr(0, 97) + "...";
-             }
-             // Replace newlines in content to keep output clean
-             size_t pos = 0;
-             while ((pos = truncated_content.find('\n', pos)) != std::string::npos) {
-                 truncated_content.replace(pos, 1, "\\n");
-                 pos += 2; // Move past the replaced "\\n"
-             }
-             // Include timestamp in the output
-             ss << "[" << msg.timestamp << " ID: " << msg.id << ", Role: " << msg.role << "] " << truncated_content << "\n";
-         }
-         return ss.str();
-    }
+private: 
+    // Removed tool implementations (get_current_datetime, read_history) - moved to ToolManager
+    // Removed tool helpers
 
 
-    // Helper function to execute a tool, get final response, and handle persistence/output
+    // Helper function now takes ToolManager reference and uses it to execute tools
     bool handleToolExecutionAndFinalResponse(
+        ToolManager& toolMgr, // Pass ToolManager by reference
         const std::string& tool_call_id,
         const std::string& function_name,
         const nlohmann::json& function_args,
         std::vector<Message>& context // Pass context by reference to update it
     ) {
-        string tool_result_str; // Renamed from search_result for clarity
-        if (function_name == "search_web") {
-            string query = function_args.value("query", ""); // Use .value for safety
-            if (query.empty()) {
-                 cerr << "Error: 'query' argument missing or empty for search_web tool.\n";
-                 return false; // Indicate failure
-            }
-            cout << "[Searching web for: " << query << "]\n";
-            cout.flush(); // Flush immediately
-            try {
-                tool_result_str = search_web(query);
-            } catch (const std::exception& e) {
-                cerr << "Web search failed: " << e.what() << "\n";
-                tool_result_str = "Error performing web search."; // Provide error feedback to LLM
-            }
-        } else if (function_name == "get_current_datetime") {
-             // No arguments needed for this tool
-             cout << "[Getting current date and time]\n"; // Inform user
-             cout.flush();
-             try {
-                 tool_result_str = get_current_datetime();
-             } catch (const std::exception& e) { // Should be unlikely, but good practice
-                 cerr << "Getting date/time failed: " << e.what() << "\n";
-                 tool_result_str = "Error getting current date and time.";
-             }
-        } else if (function_name == "visit_url") {
-             string url_to_visit = function_args.value("url", "");
-             if (url_to_visit.empty()) {
-                 cerr << "Error: 'url' argument missing or empty for visit_url tool.\n";
-                 tool_result_str = "Error: URL parameter is missing.";
-             } else {
-                 cout << "[Visiting URL: " << url_to_visit << "]\n"; // Inform user
-                 cout.flush();
-                 try {
-                     tool_result_str = visit_url(url_to_visit);
-                 } catch (const std::exception& e) {
-                     cerr << "URL visit failed: " << e.what() << "\n";
-                     tool_result_str = "Error visiting URL: " + std::string(e.what());
-                 }
-             }
-        } else if (function_name == "read_history") {
-             // Get time range and limit
-             std::string start_time = function_args.value("start_time", "");
-             std::string end_time = function_args.value("end_time", "");
-             size_t limit = function_args.value("limit", 50); // Default limit 50
-
-             if (start_time.empty() || end_time.empty()) {
-                  cerr << "Error: 'start_time' or 'end_time' missing for read_history tool.\n";
-                  tool_result_str = "Error: Both start_time and end_time are required.";
-             } else {
-                  cout << "[Reading history (" << start_time << " to " << end_time << ", Limit: " << limit << ")]\n"; // Inform user
-                  cout.flush();
-                  try {
-                      tool_result_str = read_history(start_time, end_time, limit);
-                  } catch (const std::exception& e) {
-                      cerr << "History read failed: " << e.what() << "\n";
-                 tool_result_str = "Error reading history: " + std::string(e.what());
-             }
-           } // <-- Added missing brace for the 'else' part of read_history check
-        } else {
-            cerr << "Error: Unknown tool requested: " << function_name << "\n";
-            tool_result_str = "Error: Unknown tool requested."; // Provide error feedback
-            // We still need to save this error as a tool response
+        string tool_result_str; 
+        try {
+            // Execute the tool using the ToolManager
+            // Pass the db instance needed by some tools like read_history
+            tool_result_str = toolMgr.execute_tool(db, function_name, function_args); 
+        } catch (const std::exception& e) {
+             // Errors during argument validation or unknown tool are caught here
+             cerr << "Tool execution error for '" << function_name << "': " << e.what() << "\n";
+             tool_result_str = "Error executing tool '" + function_name + "': " + e.what();
+             // Continue to save this error as the tool result
         }
+        // Note: User feedback like "[Searching web...]" is now handled within toolMgr.execute_tool()
 
         // Prepare tool result message content as JSON string
         nlohmann::json tool_result_content;
@@ -683,18 +503,7 @@ public:
             
             if (input.empty()) continue;
 
-            // Handle search commands
-            size_t search_pos = input.find("/search ");
-            if (search_pos != string::npos) {
-                try {
-                    string query = input.substr(search_pos + 8);
-                    cout << "\n" << search_web(query) << "\n\n";
-                    continue;
-                } catch(const exception& e) {
-                    cerr << "Search error: " << e.what() << "\n";
-                    continue;
-                }
-            }
+            // Removed standalone /search command block - use the tool via LLM instead
 
             try {
                 // Persist user message
@@ -752,11 +561,11 @@ public:
                              continue; // Skip this tool call
                         }
 
-                        // Call the helper function - it handles execution, saving result, second call, saving/printing final response
-                        if (handleToolExecutionAndFinalResponse(tool_call_id, function_name, function_args, context)) {
+                        // Call the helper function, passing the toolManager instance
+                        if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
                              tool_call_flow_completed = true; // Mark success for at least one tool
                         } else {
-                             // Error was already printed by the helper.
+                             // Error was already printed by the helper or execute_tool.
                              // Decide if we should stop processing further tool calls in this turn? For now, continue.
                         }
                         // Context is updated within the helper after saving tool result
@@ -829,7 +638,6 @@ public:
                                     std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
 
                                     // Call the helper function, passing the toolManager instance
-                                    // *** This is the line that changed in the previous refactor ***
                                     if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
                                         tool_call_flow_completed = true; // Mark success
                                     } else {
@@ -879,7 +687,7 @@ public:
             }
         }
     }
-}; // <-- Added missing brace for ChatClient class
+}; 
 
 
 int main() {

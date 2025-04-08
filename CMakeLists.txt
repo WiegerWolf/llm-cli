@@ -80,6 +80,8 @@ add_executable(llm
     main.cpp
     database.cpp
     database.h
+    tools.cpp   # Add new source file
+    tools.h     # Add new header file (optional but good practice)
 )
 target_link_libraries(llm PRIVATE 
     ${CURL_LIBRARIES} 
@@ -89,7 +91,8 @@ target_link_libraries(llm PRIVATE
     ${GUMBO_LIBRARIES}
 )
 
-target_include_directories(llm PRIVATE ${GUMBO_INCLUDE_DIRS})
+# Ensure Gumbo includes are available (already present, just confirming)
+target_include_directories(llm PRIVATE ${GUMBO_INCLUDE_DIRS}) 
 
 # Installation setup
 install(TARGETS llm
