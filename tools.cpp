@@ -741,12 +741,14 @@ std::string ToolManager::search_web(const std::string& query) {
         throw std::runtime_error("Failed to URL-encode search query");
     }
     // Construct URL with GET parameters for the HTML endpoint
-    std::string url = "https://html.duckduckgo.com/html/?q=" + std::string(escaped_query); // Removed other params like kl, df
+    // std::string url = "https://html.duckduckgo.com/html/?q=" + std::string(escaped_query); // Removed other params like kl, df
+    std::string url = "https://html.duckduckgo.com/html/?q=" + std::string(escaped_query) + "&kl=us-en"; // Add region parameter
     curl_free(escaped_query); // Free the escaped string
     
     struct curl_slist* headers = nullptr;
     // Keep User-Agent, Referer is less critical for this endpoint but doesn't hurt
-    headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0");
+    // headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0");
+    headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"); // Try a common Chrome UA
     headers = curl_slist_append(headers, "Referer: https://html.duckduckgo.com/"); // Update Referer
     // Removed Origin header
     // Removed Content-Type header
@@ -769,6 +771,10 @@ std::string ToolManager::search_web(const std::string& query) {
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
         std::cerr << "DEBUG: search_web: Received HTTP status code: " << http_code << std::endl; // Re-add status code log
+        // Add specific check for 202
+        if (http_code == 202) {
+             std::cerr << "WARNING: search_web: Received HTTP 202 Accepted. This might indicate the results page wasn't returned correctly." << std::endl;
+        }
     }
     
     curl_slist_free_all(headers);
