@@ -251,11 +251,73 @@ void ChatClient::run() {
                     }
                     // Context is updated within the helper after saving tool result
                 }
-            // --- Path 2: Regular Response (No tool calls) ---
+            // --- Path 2: Fallback <function> parsing ---
             } else if (response_message.contains("content") && response_message["content"].is_string()) {
-                // This path is taken if the response message does NOT contain 'tool_calls'
                 std::string content_str = response_message["content"];
-                db.saveAssistantMessage(content_str);
+                // Look for <function>NAME{ARGS}</function> format
+                size_t func_start = content_str.find("<function>");
+                size_t func_end = content_str.rfind("</function>");
+                size_t name_start = (func_start != std::string::npos) ? func_start + 10 : std::string::npos; // After "<function>"
+                size_t args_start = (name_start != std::string::npos) ? content_str.find('{', name_start) : std::string::npos;
+                size_t args_end = (func_end != std::string::npos) ? content_str.rfind('}', func_end) : std::string::npos;
+
+                // Check if the tags and braces seem correctly ordered and present
+                if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start &&
+                    args_start != std::string::npos && args_end != std::string::npos && args_end > args_start &&
+                    args_start > name_start && args_end < func_end) 
+                {
+                    std::string function_name = content_str.substr(name_start, args_start - name_start);
+                    function_name.erase(0, function_name.find_first_not_of(" \n\r\t")); // Trim whitespace
+                    function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
+
+                    std::string args_str = content_str.substr(args_start, args_end - args_start + 1);
+                    nlohmann::json function_args;
+                    bool parsed_args = false;
+                    try {
+                        function_args = nlohmann::json::parse(args_str);
+                        parsed_args = true; // Successfully parsed args JSON
+                    } catch (const nlohmann::json::parse_error& e) {
+                        std::cerr << "Warning: Failed to parse arguments JSON from <function=...>: " << e.what() << "\nArgs string was: " << args_str << "\n";
+                        // Fall through without setting parsed_args = true
+                    }
+
+                    // If we successfully parsed a function name and its arguments
+                    if (!function_name.empty() && parsed_args) {
+                        // Save the original assistant message containing <function=...>
+                        db.saveAssistantMessage(content_str);
+                        context = db.getContextHistory(); // Reload context
+
+                        // Generate synthetic ID (since none is provided by the API in this format)
+                        std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
+
+                        std::cout << "[Executing function from content: " << function_name << "]\n"; // User feedback
+                        std::cout.flush();
+
+                        // Call the helper function, passing the toolManager instance
+                        if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
+                            tool_call_flow_completed = true; // Mark success
+                        } else {
+                            // Error handled by helper or execute_tool
+                        }
+                    } else {
+                         // Malformed name or args JSON, treat as regular message below
+                         db.saveAssistantMessage(content_str); // Save the message as is
+                         std::cout << content_str << "\n\n";
+                         std::cout.flush();
+                    }
+                } else {
+                    // Pattern not found or malformed, treat as regular message
+                    db.saveAssistantMessage(content_str);
+                    std::cout << content_str << "\n\n";
+                    std::cout.flush();
+                }
+                // tool_call_flow_completed is set above if the function was handled
+
+            // --- Path 3: Regular Response (No tool calls, no <function>) ---
+            // } else if (response_message.contains("content") && response_message["content"].is_string()) { // This condition is now part of Path 2 check
+            //     // This path is taken if the response message does NOT contain 'tool_calls'
+            //     std::string content_str = response_message["content"];
+            //     db.saveAssistantMessage(content_str);
                 std::cout << content_str << "\n\n";
                 std::cout.flush();
                 tool_call_flow_completed = false; // Explicitly mark that no tool flow happened
