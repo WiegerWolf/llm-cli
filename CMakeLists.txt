@@ -62,6 +62,9 @@ if(NOT SQLite3_FOUND)
     endif()
 endif()
 
+# Find Threads package
+find_package(Threads REQUIRED)
+
 # Find Readline using alternative methods
 find_path(READLINE_INCLUDE_DIR readline/readline.h)
 find_library(READLINE_LIBRARY NAMES readline)
@@ -91,6 +94,7 @@ target_link_libraries(llm PRIVATE
     ${Readline_LIBRARIES}
     ${SQLite3_LIBRARIES}
     ${GUMBO_LIBRARIES}
+    Threads::Threads # Link Threads library
 )
 
 # Ensure Gumbo includes are available (already present, just confirming)

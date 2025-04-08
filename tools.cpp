@@ -12,6 +12,9 @@
 #include <chrono>    // For get_current_datetime
 #include <ctime>     // For get_current_datetime formatting
 #include <iomanip>   // For get_current_datetime formatting
+#include <thread>    // For std::thread, std::async
+#include <future>    // For std::future, std::async
+#include <mutex>     // For std::mutex
 
 // Gumbo header is now included via tools.h, remove redundant include and guards
 // #ifndef GUMBO_TAG_ENUMS_DEFINED
@@ -342,22 +345,55 @@ std::string ToolManager::perform_web_research(PersistenceManager& db, ChatClient
         std::cout << "  [Research Step 2: Found " << urls.size() << " absolute URLs. Visiting all...]\n"; std::cout.flush(); // Updated log message
 
 
-        // Step 3: Visit URLs and gather content
+        // Step 3: Visit URLs in parallel and gather content
         std::string visited_content_summary = "\n\nVisited Pages Content:\n";
+        std::mutex summary_mutex; // Mutex to protect access to visited_content_summary
+
         if (urls.empty()) {
              visited_content_summary += "No relevant URLs found in search results to visit.\n";
         } else {
-            for (size_t i = 0; i < urls.size(); ++i) {
-                std::cout << "  [Research Step 3." << (i+1) << ": Visiting " << urls[i] << "...]\n"; std::cout.flush();
+            std::vector<std::future<std::pair<std::string, std::string>>> futures;
+            std::cout << "  [Research Step 3: Launching " << urls.size() << " parallel URL visits...]\n"; std::cout.flush();
+
+            for (const std::string& url : urls) {
+                // Launch async task for each URL
+                futures.push_back(std::async(std::launch::async, [this, url]() {
+                    try {
+                        std::string content = visit_url(url);
+                        return std::make_pair(url, content);
+                    } catch (const std::exception& e) {
+                        return std::make_pair(url, "Error visiting URL: " + std::string(e.what()));
+                    }
+                }));
+            }
+
+            // Wait for all futures to complete and collect results
+            std::cout << "  [Research Step 3: Waiting for URL visits to complete...]\n"; std::cout.flush();
+            for (size_t i = 0; i < futures.size(); ++i) {
                 try {
-                    std::string page_content = visit_url(urls[i]);
-                    visited_content_summary += "\n--- Content from " + urls[i] + " ---\n";
-                    visited_content_summary += page_content;
-                    visited_content_summary += "\n--- End Content ---\n";
-                } catch (const std::exception& visit_e) {
-                    visited_content_summary += "\n--- Failed to visit " + urls[i] + ": " + visit_e.what() + " ---\n";
+                    std::pair<std::string, std::string> result = futures[i].get(); // Blocks until ready
+                    const std::string& url = result.first;
+                    const std::string& content_or_error = result.second;
+
+                    std::lock_guard<std::mutex> lock(summary_mutex); // Lock before modifying shared string
+                    if (content_or_error.rfind("Error visiting URL:", 0) == 0) {
+                         visited_content_summary += "\n--- Failed to visit " + url + ": " + content_or_error.substr(20) + " ---\n";
+                    } else {
+                         visited_content_summary += "\n--- Content from " + url + " ---\n";
+                         visited_content_summary += content_or_error;
+                         visited_content_summary += "\n--- End Content ---\n";
+                    }
+                     // Optional: Log completion of individual fetch here if needed, but might clutter output
+                     // std::cout << "    [Completed fetch for: " << url << "]\n"; std::cout.flush();
+
+                } catch (const std::exception& e) {
+                    // Should not happen often if visit_url catches its own errors, but handle future errors
+                    std::lock_guard<std::mutex> lock(summary_mutex);
+                    // We don't know which URL failed here without more complex tracking, log generically
+                    visited_content_summary += "\n--- Error retrieving result from future: " + std::string(e.what()) + " ---\n";
                 }
             }
+             std::cout << "  [Research Step 3: All URL visits completed.]\n"; std::cout.flush();
         }
 
         // Step 4: Compile context and create synthesis prompt
