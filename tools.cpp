@@ -559,11 +559,13 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
 
     if (output && output->root) { // Added null check for output->root
         find_tr_elements(output->root);
+        std::cerr << "DEBUG: parse_ddg_html: Found " << elements.size() << " <tr> elements." << std::endl;
 
         // Iterate through all found TR elements
         for (size_t i = 0; i < elements.size(); ++i) {
             GumboNode* potential_title_tr = elements[i];
             if (!potential_title_tr) continue;
+            // std::cerr << "DEBUG: parse_ddg_html: Processing TR index " << i << std::endl; // Can be very verbose
 
             std::string title;
             std::string url;
@@ -595,12 +597,14 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
                     // Check if we actually got a title and a non-empty, non-skipped URL
                     if (!title.empty() && !url.empty()) {
                          is_result_block = true; // Found a potential result title/URL
+                         std::cerr << "DEBUG: parse_ddg_html: Potential result found at TR index " << i << ": Title='" << title << "', URL='" << url << "'" << std::endl;
                     }
                 }
             }
 
             // If this looks like a result block's title row, try parsing subsequent rows
             if (is_result_block) {
+                std::cerr << "DEBUG: parse_ddg_html: --- Processing potential result block starting at TR " << i << " ---" << std::endl;
                 // --- Try to extract Snippet from the *next* TR (i+1) ---
                 if (i + 1 < elements.size()) {
                     GumboNode* snippet_tr = elements[i+1];
@@ -623,6 +627,9 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
                              }
                          }
                     }
+                    std::cerr << "DEBUG: parse_ddg_html:   Extracted Snippet (TR " << i+1 << "): '" << snippet << "'" << std::endl;
+                } else {
+                     std::cerr << "DEBUG: parse_ddg_html:   No TR found at index " << i+1 << " for snippet." << std::endl;
                 } // End snippet extraction
 
                 // --- Try to extract Displayed URL Text from the TR after snippet (i+2) ---
@@ -657,10 +664,14 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
                              }
                         }
                     }
+                     std::cerr << "DEBUG: parse_ddg_html:   Extracted URL Text (TR " << i+2 << "): '" << url_text << "'" << std::endl;
+                } else {
+                     std::cerr << "DEBUG: parse_ddg_html:   No TR found at index " << i+2 << " for URL text." << std::endl;
                 } // End URL text extraction
 
                 // --- Add result ---
                 // Title and URL were already validated when setting is_result_block
+                std::cerr << "DEBUG: parse_ddg_html:   Adding result #" << (count + 1) << " to output." << std::endl;
                 result += std::to_string(++count) + ". " + title + "\n";
                 if (!snippet.empty()) { // Only add snippet if found
                     result += "   " + snippet + "\n";
@@ -678,9 +689,13 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
         } // End for loop iterating through all TR elements
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
+    } else {
+         std::cerr << "DEBUG: parse_ddg_html: Gumbo output or root node was null." << std::endl;
     } // End if (output && output->root)
 
-    return count > 0 ? result : "No results found or failed to parse results page."; // Updated message
+    std::string final_result = count > 0 ? result : "No results found or failed to parse results page.";
+    std::cerr << "DEBUG: parse_ddg_html: Final result string (first 200 chars): " << final_result.substr(0, 200) << "..." << std::endl;
+    return final_result;
 }
 
 
@@ -781,18 +796,36 @@ std::string ToolManager::search_web(const std::string& query) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     // Add timeout for search request
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); // 10 second timeout
+
+    std::cerr << "DEBUG: search_web: Requesting URL: " << url << std::endl;
+    std::cerr << "DEBUG: search_web: POST data: " << post_data << std::endl;
     
     CURLcode res = curl_easy_perform(curl);
+    long http_code = 0;
+    if (res == CURLE_OK) {
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        std::cerr << "DEBUG: search_web: Received HTTP status code: " << http_code << std::endl;
+    }
+    
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     
     if (res != CURLE_OK) {
+        std::cerr << "DEBUG: search_web: CURL error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Search failed: " + std::string(curl_easy_strerror(res)));
     }
 
-    // Optional: Save raw HTML for debugging
-    // std::ofstream debug_file("debug_search.html");
-    // debug_file << response;
+    // Save raw HTML for debugging
+    std::ofstream debug_file("debug_search_raw.html");
+    debug_file << response;
+    debug_file.close();
+    std::cerr << "DEBUG: search_web: Raw HTML response saved to debug_search_raw.html" << std::endl;
+    // Optionally log a snippet of the response
+    std::cerr << "DEBUG: search_web: Raw response snippet (first 500 chars): " << response.substr(0, 500) << "..." << std::endl;
+
+    std::string parsed_result = parse_ddg_html(response);
+    std::cerr << "DEBUG: search_web: Result from parse_ddg_html: " << parsed_result.substr(0, 200) << "..." << std::endl;
+    return parsed_result;
     // debug_file.close();
 
     return parse_ddg_html(response);
