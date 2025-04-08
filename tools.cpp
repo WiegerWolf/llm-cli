@@ -560,83 +560,122 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
     if (output && output->root) { // Added null check for output->root
         find_tr_elements(output->root);
 
-        // REMOVED start_index logic
-
-        // Iterate through potential result blocks (assuming 4 TRs per result)
-        for (size_t i = 0; i + 3 < elements.size(); i += 4) {
-            GumboNode* title_tr = elements[i];
-            GumboNode* snippet_tr = elements[i+1];
-            GumboNode* url_tr = elements[i+2];
-            // elements[i+3] is assumed to be a spacer
-
-            if (!title_tr || !snippet_tr || !url_tr) {
-                // Should not happen if i+3 < elements.size(), but good practice
-                continue;
-            }
+        // Iterate through all found TR elements
+        for (size_t i = 0; i < elements.size(); ++i) {
+            GumboNode* potential_title_tr = elements[i];
+            if (!potential_title_tr) continue;
 
             std::string title;
             std::string url;
             std::string snippet;
             std::string url_text;
+            bool is_result_block = false;
 
-            // --- Extract Title and URL from title_tr ---
-            GumboNode* a_tag = find_node_by_tag(title_tr, GUMBO_TAG_A);
+            // --- Check if this TR is a title row ---
+            GumboNode* a_tag = find_node_by_tag(potential_title_tr, GUMBO_TAG_A);
             if (a_tag) {
                 GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
-                if (href && href->value) { // Check href->value is not null
+                // Ensure href and its value exist
+                if (href && href->value) {
                     url = href->value;
+                    // Basic check for common non-result links to skip (e.g., related searches, JS links)
+                    if (url.find("duckduckgo.com/y.js") != std::string::npos ||
+                        url.find("duckduckgo.com/l/") != std::string::npos ||
+                        url.find("javascript:") == 0 ||
+                        url.empty()) // Skip if URL is empty
+                    {
+                         continue; // Skip likely non-result links
+                    }
+
+                    title = gumbo_get_text(a_tag);
+                    // Trim whitespace
+                    title.erase(0, title.find_first_not_of(" \n\r\t"));
+                    title.erase(title.find_last_not_of(" \n\r\t") + 1);
+
+                    // Check if we actually got a title and a non-empty, non-skipped URL
+                    if (!title.empty() && !url.empty()) {
+                         is_result_block = true; // Found a potential result title/URL
+                    }
                 }
-                title = gumbo_get_text(a_tag);
-                // Trim whitespace
-                title.erase(0, title.find_first_not_of(" \n\r\t"));
-                title.erase(title.find_last_not_of(" \n\r\t") + 1);
             }
 
-            // --- Extract Snippet from snippet_tr ---
-            // Snippet is often in the second TD of the snippet row
-            if (snippet_tr->type == GUMBO_NODE_ELEMENT) {
-                 GumboVector* snippet_children = &snippet_tr->v.element.children;
-                 for (unsigned int j = 0; j < snippet_children->length; ++j) {
-                     GumboNode* td_node = static_cast<GumboNode*>(snippet_children->data[j]);
-                     if (td_node && td_node->type == GUMBO_NODE_ELEMENT && td_node->v.element.tag == GUMBO_TAG_TD) {
-                         // Heuristic: Assume the snippet is in a TD that isn't empty.
-                         // A better check might involve looking for a specific class if available.
-                         std::string potential_snippet = gumbo_get_text(td_node);
-                         potential_snippet.erase(0, potential_snippet.find_first_not_of(" \n\r\t"));
-                         potential_snippet.erase(potential_snippet.find_last_not_of(" \n\r\t") + 1);
-                         if (!potential_snippet.empty()) {
-                             snippet = potential_snippet;
-                             break; // Take the first non-empty TD content as snippet
+            // If this looks like a result block's title row, try parsing subsequent rows
+            if (is_result_block) {
+                // --- Try to extract Snippet from the *next* TR (i+1) ---
+                if (i + 1 < elements.size()) {
+                    GumboNode* snippet_tr = elements[i+1];
+                    // Check if snippet_tr exists and is an element
+                    if (snippet_tr && snippet_tr->type == GUMBO_NODE_ELEMENT) {
+                         GumboVector* snippet_children = &snippet_tr->v.element.children;
+                         for (unsigned int j = 0; j < snippet_children->length; ++j) {
+                             GumboNode* td_node = static_cast<GumboNode*>(snippet_children->data[j]);
+                             // Check if td_node exists, is an element, and is a TD tag
+                             if (td_node && td_node->type == GUMBO_NODE_ELEMENT && td_node->v.element.tag == GUMBO_TAG_TD) {
+                                 std::string potential_snippet = gumbo_get_text(td_node);
+                                 // Trim whitespace
+                                 potential_snippet.erase(0, potential_snippet.find_first_not_of(" \n\r\t"));
+                                 potential_snippet.erase(potential_snippet.find_last_not_of(" \n\r\t") + 1);
+                                 // Check if it's non-empty and doesn't look like a URL itself
+                                 if (!potential_snippet.empty() && potential_snippet.rfind("http", 0) != 0) {
+                                     snippet = potential_snippet;
+                                     break; // Take the first suitable TD content as snippet
+                                 }
+                             }
                          }
-                     }
-                 }
-            }
-            // Trim snippet (already done above, but ensure it's clean)
-            snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
-            snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
+                    }
+                } // End snippet extraction
 
+                // --- Try to extract Displayed URL Text from the TR after snippet (i+2) ---
+                if (i + 2 < elements.size()) {
+                    GumboNode* url_tr = elements[i+2];
+                    if (url_tr) { // Check if url_tr exists
+                        // First, try the specific span class
+                        GumboNode* span_link_text = find_node_by_tag_and_class(url_tr, GUMBO_TAG_SPAN, "link-text");
+                        if (span_link_text) {
+                             url_text = gumbo_get_text(span_link_text);
+                             // Trim whitespace
+                             url_text.erase(0, url_text.find_first_not_of(" \n\r\t"));
+                             url_text.erase(url_text.find_last_not_of(" \n\r\t") + 1);
+                        }
+                        // Fallback: If span not found, check TDs in that row
+                        else if (url_tr->type == GUMBO_NODE_ELEMENT) {
+                             GumboVector* url_children = &url_tr->v.element.children;
+                             for (unsigned int j = 0; j < url_children->length; ++j) {
+                                 GumboNode* td_node = static_cast<GumboNode*>(url_children->data[j]);
+                                 // Check if td_node exists, is an element, and is a TD tag
+                                 if (td_node && td_node->type == GUMBO_NODE_ELEMENT && td_node->v.element.tag == GUMBO_TAG_TD) {
+                                     std::string potential_url_text = gumbo_get_text(td_node);
+                                     // Trim whitespace
+                                     potential_url_text.erase(0, potential_url_text.find_first_not_of(" \n\r\t"));
+                                     potential_url_text.erase(potential_url_text.find_last_not_of(" \n\r\t") + 1);
+                                     // Check if it looks like a URL/domain to avoid grabbing other text
+                                     if (!potential_url_text.empty() && (potential_url_text.find('.') != std::string::npos || potential_url_text.find('/') != std::string::npos)) {
+                                         url_text = potential_url_text;
+                                         break; // Take the first suitable TD content
+                                     }
+                                 }
+                             }
+                        }
+                    }
+                } // End URL text extraction
 
-            // --- Extract Displayed URL Text from url_tr ---
-            GumboNode* span_link_text = find_node_by_tag_and_class(url_tr, GUMBO_TAG_SPAN, "link-text");
-            if (span_link_text) {
-                 url_text = gumbo_get_text(span_link_text);
-                 // Trim whitespace
-                 url_text.erase(0, url_text.find_first_not_of(" \n\r\t"));
-                 url_text.erase(url_text.find_last_not_of(" \n\r\t") + 1);
-            }
-
-            // --- Add result if we found the essentials ---
-            // Require at least a title and a valid URL (href)
-            if (!title.empty() && !url.empty()) {
+                // --- Add result ---
+                // Title and URL were already validated when setting is_result_block
                 result += std::to_string(++count) + ". " + title + "\n";
-                if (!snippet.empty()) { // Check snippet is not just whitespace
+                if (!snippet.empty()) { // Only add snippet if found
                     result += "   " + snippet + "\n";
                 }
                 // Display the URL text if found, otherwise use the href URL again
                 std::string display_url = url_text.empty() ? url : url_text;
                 result += "   " + display_url + " [href=" + url + "]\n\n";
-            }
-        } // End for loop iterating through TR blocks
+
+                // Optional: Skip the next two rows since we processed them.
+                // This assumes a structure of Title, Snippet, URL. If spacers exist,
+                // this might skip the next title. It's safer to let the loop continue
+                // and rely on the `is_result_block` check for the next iteration.
+                // i += 2;
+            } // End if(is_result_block)
+        } // End for loop iterating through all TR elements
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } // End if (output && output->root)
