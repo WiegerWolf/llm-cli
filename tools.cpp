@@ -529,10 +529,10 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
              GumboNode* potential_title_tr = elements[i];
              GumboNode* potential_url_tr = elements[i+2];
 
-             if (!potential_title_tr || !potential_url_tr) continue; 
+             if (!potential_title_tr || !potential_url_tr) continue;
 
-             GumboNode* a_tag = find_node_by_tag(potential_title_tr, GUMBO_TAG_A);
-             GumboNode* span_link_text = find_node_by_tag_and_class(potential_url_tr, GUMBO_TAG_SPAN, "link-text");
+             GumboNode* a_tag = find_node_by_tag(potential_title_tr, GUMBO_TAG_A); // Pass enum directly
+             GumboNode* span_link_text = find_node_by_tag_and_class(potential_url_tr, GUMBO_TAG_SPAN, "link-text"); // Pass enum directly
 
              if (a_tag && span_link_text) {
                  start_index = i;
@@ -575,10 +575,10 @@ std::string ToolManager::parse_ddg_html(const std::string& html) {
                          url_text = gumbo_get_text(span_link_text);
                          url_text.erase(0, url_text.find_first_not_of(" \n\r\t"));
                          url_text.erase(url_text.find_last_not_of(" \n\r\t") + 1);
-                    } 
+                    }
 
                     // Removed count < 5 limit
-                    if (!url_text.empty()) { 
+                    if (!url_text.empty()) {
                         result += std::to_string(++count) + ". " + title + "\n";
                         if (!snippet.empty() && snippet.find_first_not_of(" \n\r\t") != std::string::npos) {
                             result += "   " + snippet + "\n";
