@@ -45,7 +45,7 @@ private:
     std::string perform_deep_research(PersistenceManager& db, ChatClient& client, const std::string& goal);
 
     // HTML parsing helpers (moved from main.cpp)
-    std::string parse_ddg_html(const std::string& html);
+    std::string parse_search_results_html(const std::string& html); // Renamed from parse_ddg_html
     std::string gumbo_get_text(GumboNode* node); // Use GumboNode directly (no struct keyword needed)
     // Static helpers can remain static or become private members
     static GumboNode* find_node_by_tag(GumboNode* node, GumboTag tag); // Use GumboTag directly

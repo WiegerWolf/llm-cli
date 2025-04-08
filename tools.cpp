@@ -538,163 +538,116 @@ std::string ToolManager::perform_deep_research(PersistenceManager& db, ChatClien
 
 // --- Tool Implementations (Moved from main.cpp) ---
 
-std::string ToolManager::parse_ddg_html(const std::string& html) {
+// Renamed from parse_ddg_html to parse the html.duckduckgo.com/html/ structure
+std::string ToolManager::parse_search_results_html(const std::string& html) {
     GumboOutput* output = gumbo_parse(html.c_str());
     std::string result = "Web results:\n\n";
     int count = 0;
 
-    std::vector<GumboNode*> elements;
-    std::function<void(GumboNode*)> find_tr_elements = [&](GumboNode* node) {
-        if (!node || node->type != GUMBO_NODE_ELEMENT) return; // Add null check
-        
-        if (node->v.element.tag == GUMBO_TAG_TR) {
-            elements.push_back(node);
+    std::vector<GumboNode*> result_divs;
+    std::function<void(GumboNode*)> find_result_divs = 
+        [&](GumboNode* node) {
+        if (!node || node->type != GUMBO_NODE_ELEMENT) return;
+
+        // Check if the node is a DIV with class containing "result"
+        if (node->v.element.tag == GUMBO_TAG_DIV) {
+            GumboAttribute* class_attr = gumbo_get_attribute(&node->v.element.attributes, "class");
+            // Check if class exists and contains "result" as a word
+            if (class_attr && class_attr->value) {
+                 std::string classes = " " + std::string(class_attr->value) + " ";
+                 if (classes.find(" result ") != std::string::npos) {
+                     result_divs.push_back(node);
+                     // Don't recurse further into a result div to avoid nested results if any
+                     return; 
+                 }
+            }
         }
 
+        // Recurse into children if not a result div
         GumboVector* children = &node->v.element.children;
         for (unsigned int i = 0; i < children->length; ++i) {
-            find_tr_elements(static_cast<GumboNode*>(children->data[i]));
+            find_result_divs(static_cast<GumboNode*>(children->data[i]));
         }
     };
 
-    if (output && output->root) { // Added null check for output->root
-        find_tr_elements(output->root);
-        std::cerr << "DEBUG: parse_ddg_html: Found " << elements.size() << " <tr> elements." << std::endl;
+    if (output && output->root) {
+        find_result_divs(output->root);
+        std::cerr << "DEBUG: parse_search_results_html: Found " << result_divs.size() << " result divs." << std::endl;
 
-        // Iterate through all found TR elements
-        for (size_t i = 0; i < elements.size(); ++i) {
-            GumboNode* potential_title_tr = elements[i];
-            if (!potential_title_tr) continue;
-            // std::cerr << "DEBUG: parse_ddg_html: Processing TR index " << i << std::endl; // Can be very verbose
-
+        for (GumboNode* result_div : result_divs) {
             std::string title;
             std::string url;
             std::string snippet;
-            std::string url_text;
-            bool is_result_block = false;
+            std::string display_url_text; // The visible URL text
 
-            // --- Check if this TR is a title row ---
-            GumboNode* a_tag = find_node_by_tag(potential_title_tr, GUMBO_TAG_A);
-            if (a_tag) {
-                GumboAttribute* href = gumbo_get_attribute(&a_tag->v.element.attributes, "href");
-                // Ensure href and its value exist
+            // Find Title and URL (usually within h2 > a.result__a)
+            GumboNode* title_h2 = find_node_by_tag(result_div, GUMBO_TAG_H2);
+            GumboNode* title_a = title_h2 ? find_node_by_tag_and_class(title_h2, GUMBO_TAG_A, "result__a") : nullptr;
+            
+            if (title_a) {
+                GumboAttribute* href = gumbo_get_attribute(&title_a->v.element.attributes, "href");
                 if (href && href->value) {
                     url = href->value;
-                    // Basic check for common non-result links to skip (e.g., related searches, JS links)
-                    if (url.find("duckduckgo.com/y.js") != std::string::npos ||
-                        url.find("duckduckgo.com/l/") != std::string::npos ||
-                        url.find("javascript:") == 0 ||
-                        url.empty()) // Skip if URL is empty
-                    {
-                         continue; // Skip likely non-result links
-                    }
-
-                    title = gumbo_get_text(a_tag);
-                    // Trim whitespace
-                    title.erase(0, title.find_first_not_of(" \n\r\t"));
-                    title.erase(title.find_last_not_of(" \n\r\t") + 1);
-
-                    // Check if we actually got a title and a non-empty, non-skipped URL
-                    if (!title.empty() && !url.empty()) {
-                         is_result_block = true; // Found a potential result title/URL
-                         std::cerr << "DEBUG: parse_ddg_html: Potential result found at TR index " << i << ": Title='" << title << "', URL='" << url << "'" << std::endl;
+                    // DDG often uses redirection links, try to decode them if needed
+                    // Example: /l/?kh=-1&uddg=https%3A%2F%2Fwww.example.com
+                    size_t uddg_pos = url.find("uddg=");
+                    if (uddg_pos != std::string::npos) {
+                        std::string encoded_url = url.substr(uddg_pos + 5); // Length of "uddg="
+                        CURL* temp_curl = curl_easy_init(); // Need curl for URL decoding
+                        if (temp_curl) {
+                            int outlength;
+                            char* decoded = curl_easy_unescape(temp_curl, encoded_url.c_str(), encoded_url.length(), &outlength);
+                            if (decoded) {
+                                url = std::string(decoded, outlength);
+                                curl_free(decoded);
+                            }
+                            curl_easy_cleanup(temp_curl);
+                        }
                     }
                 }
+                title = gumbo_get_text(title_a);
+                title.erase(0, title.find_first_not_of(" \n\r\t"));
+                title.erase(title.find_last_not_of(" \n\r\t") + 1);
             }
 
-            // If this looks like a result block's title row, try parsing subsequent rows
-            if (is_result_block) {
-                std::cerr << "DEBUG: parse_ddg_html: --- Processing potential result block starting at TR " << i << " ---" << std::endl;
-                // --- Try to extract Snippet from the *next* TR (i+1) ---
-                if (i + 1 < elements.size()) {
-                    GumboNode* snippet_tr = elements[i+1];
-                    // Check if snippet_tr exists and is an element
-                    if (snippet_tr && snippet_tr->type == GUMBO_NODE_ELEMENT) {
-                         GumboVector* snippet_children = &snippet_tr->v.element.children;
-                         for (unsigned int j = 0; j < snippet_children->length; ++j) {
-                             GumboNode* td_node = static_cast<GumboNode*>(snippet_children->data[j]);
-                             // Check if td_node exists, is an element, and is a TD tag
-                             if (td_node && td_node->type == GUMBO_NODE_ELEMENT && td_node->v.element.tag == GUMBO_TAG_TD) {
-                                 std::string potential_snippet = gumbo_get_text(td_node);
-                                 // Trim whitespace
-                                 potential_snippet.erase(0, potential_snippet.find_first_not_of(" \n\r\t"));
-                                 potential_snippet.erase(potential_snippet.find_last_not_of(" \n\r\t") + 1);
-                                 // Check if it's non-empty and doesn't look like a URL itself
-                                 if (!potential_snippet.empty() && potential_snippet.rfind("http", 0) != 0) {
-                                     snippet = potential_snippet;
-                                     break; // Take the first suitable TD content as snippet
-                                 }
-                             }
-                         }
-                    }
-                    std::cerr << "DEBUG: parse_ddg_html:   Extracted Snippet (TR " << i+1 << "): '" << snippet << "'" << std::endl;
-                } else {
-                     std::cerr << "DEBUG: parse_ddg_html:   No TR found at index " << i+1 << " for snippet." << std::endl;
-                } // End snippet extraction
+            // Find Snippet (usually within a.result__snippet)
+            GumboNode* snippet_a = find_node_by_tag_and_class(result_div, GUMBO_TAG_A, "result__snippet");
+            if (snippet_a) {
+                snippet = gumbo_get_text(snippet_a);
+                snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
+                snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
+            }
 
-                // --- Try to extract Displayed URL Text from the TR after snippet (i+2) ---
-                if (i + 2 < elements.size()) {
-                    GumboNode* url_tr = elements[i+2];
-                    if (url_tr) { // Check if url_tr exists
-                        // First, try the specific span class
-                        GumboNode* span_link_text = find_node_by_tag_and_class(url_tr, GUMBO_TAG_SPAN, "link-text");
-                        if (span_link_text) {
-                             url_text = gumbo_get_text(span_link_text);
-                             // Trim whitespace
-                             url_text.erase(0, url_text.find_first_not_of(" \n\r\t"));
-                             url_text.erase(url_text.find_last_not_of(" \n\r\t") + 1);
-                        }
-                        // Fallback: If span not found, check TDs in that row
-                        else if (url_tr->type == GUMBO_NODE_ELEMENT) {
-                             GumboVector* url_children = &url_tr->v.element.children;
-                             for (unsigned int j = 0; j < url_children->length; ++j) {
-                                 GumboNode* td_node = static_cast<GumboNode*>(url_children->data[j]);
-                                 // Check if td_node exists, is an element, and is a TD tag
-                                 if (td_node && td_node->type == GUMBO_NODE_ELEMENT && td_node->v.element.tag == GUMBO_TAG_TD) {
-                                     std::string potential_url_text = gumbo_get_text(td_node);
-                                     // Trim whitespace
-                                     potential_url_text.erase(0, potential_url_text.find_first_not_of(" \n\r\t"));
-                                     potential_url_text.erase(potential_url_text.find_last_not_of(" \n\r\t") + 1);
-                                     // Check if it looks like a URL/domain to avoid grabbing other text
-                                     if (!potential_url_text.empty() && (potential_url_text.find('.') != std::string::npos || potential_url_text.find('/') != std::string::npos)) {
-                                         url_text = potential_url_text;
-                                         break; // Take the first suitable TD content
-                                     }
-                                 }
-                             }
-                        }
-                    }
-                     std::cerr << "DEBUG: parse_ddg_html:   Extracted URL Text (TR " << i+2 << "): '" << url_text << "'" << std::endl;
-                } else {
-                     std::cerr << "DEBUG: parse_ddg_html:   No TR found at index " << i+2 << " for URL text." << std::endl;
-                } // End URL text extraction
+            // Find Display URL (usually within a.result__url)
+            GumboNode* url_a = find_node_by_tag_and_class(result_div, GUMBO_TAG_A, "result__url");
+            if (url_a) {
+                display_url_text = gumbo_get_text(url_a);
+                display_url_text.erase(0, display_url_text.find_first_not_of(" \n\r\t"));
+                display_url_text.erase(display_url_text.find_last_not_of(" \n\r\t") + 1);
+            }
 
-                // --- Add result ---
-                // Title and URL were already validated when setting is_result_block
-                std::cerr << "DEBUG: parse_ddg_html:   Adding result #" << (count + 1) << " to output." << std::endl;
+            // Add result if we found the essentials (title and actual URL)
+            if (!title.empty() && !url.empty()) {
+                 std::cerr << "DEBUG: parse_search_results_html:   Adding result #" << (count + 1) << ": Title='" << title << "', URL='" << url << "', Snippet='" << snippet.substr(0, 50) << "...', DisplayURL='" << display_url_text << "'" << std::endl;
                 result += std::to_string(++count) + ". " + title + "\n";
-                if (!snippet.empty()) { // Only add snippet if found
+                if (!snippet.empty()) {
                     result += "   " + snippet + "\n";
                 }
-                // Display the URL text if found, otherwise use the href URL again
-                std::string display_url = url_text.empty() ? url : url_text;
+                // Use the display URL text if available, otherwise fallback to the actual URL
+                std::string display_url = display_url_text.empty() ? url : display_url_text;
                 result += "   " + display_url + " [href=" + url + "]\n\n";
-
-                // Optional: Skip the next two rows since we processed them.
-                // This assumes a structure of Title, Snippet, URL. If spacers exist,
-                // this might skip the next title. It's safer to let the loop continue
-                // and rely on the `is_result_block` check for the next iteration.
-                // i += 2;
-            } // End if(is_result_block)
-        } // End for loop iterating through all TR elements
+            } else {
+                 std::cerr << "DEBUG: parse_search_results_html:   Skipping div - missing title or URL." << std::endl;
+            }
+        } // End loop through result divs
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } else {
-         std::cerr << "DEBUG: parse_ddg_html: Gumbo output or root node was null." << std::endl;
-    } // End if (output && output->root)
+        std::cerr << "DEBUG: parse_search_results_html: Gumbo output or root node was null." << std::endl;
+    }
 
     std::string final_result = count > 0 ? result : "No results found or failed to parse results page.";
-    std::cerr << "DEBUG: parse_ddg_html: Final result string (first 200 chars): " << final_result.substr(0, 200) << "..." << std::endl;
+    std::cerr << "DEBUG: parse_search_results_html: Final result string (first 200 chars): " << final_result.substr(0, 200) << "..." << std::endl;
     return final_result;
 }
 
@@ -777,14 +730,14 @@ std::string ToolManager::search_web(const std::string& query) {
         curl_easy_cleanup(curl);
         throw std::runtime_error("Failed to URL-encode search query");
     }
-    // Construct URL with GET parameters
-    std::string url = "https://lite.duckduckgo.com/lite/?q=" + std::string(escaped_query) + "&kl=wt-wt&df=";
+    // Construct URL with GET parameters for the HTML endpoint
+    std::string url = "https://html.duckduckgo.com/html/?q=" + std::string(escaped_query); // Removed other params like kl, df
     curl_free(escaped_query); // Free the escaped string
     
     struct curl_slist* headers = nullptr;
-    // Keep User-Agent and Referer, remove POST-specific headers
+    // Keep User-Agent, Referer is less critical for this endpoint but doesn't hurt
     headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0");
-    headers = curl_slist_append(headers, "Referer: https://lite.duckduckgo.com/");
+    headers = curl_slist_append(headers, "Referer: https://html.duckduckgo.com/"); // Update Referer
     // Removed Origin header
     // Removed Content-Type header
 
@@ -825,10 +778,9 @@ std::string ToolManager::search_web(const std::string& query) {
     // Optionally log a snippet of the response
     std::cerr << "DEBUG: search_web: Raw response snippet (first 500 chars): " << response.substr(0, 500) << "..." << std::endl;
 
-    std::string parsed_result = parse_ddg_html(response);
-    std::cerr << "DEBUG: search_web: Result from parse_ddg_html: " << parsed_result.substr(0, 200) << "..." << std::endl;
+    std::string parsed_result = parse_search_results_html(response); // Use renamed function
+    std::cerr << "DEBUG: search_web: Result from parse_search_results_html: " << parsed_result.substr(0, 200) << "..." << std::endl; // Update debug message
     return parsed_result;
-    // debug_file.close();
 
     return parse_ddg_html(response);
 }
