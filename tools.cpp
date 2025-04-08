@@ -749,7 +749,9 @@ std::string ToolManager::search_web(const std::string& query) {
     // Keep User-Agent, Referer is less critical for this endpoint but doesn't hurt
     // headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0");
     headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"); // Try a common Chrome UA
-    headers = curl_slist_append(headers, "Referer: https://html.duckduckgo.com/"); // Update Referer
+    // headers = curl_slist_append(headers, "Referer: https://html.duckduckgo.com/"); // Remove Referer for now
+    headers = curl_slist_append(headers, "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"); // Add Accept header
+    headers = curl_slist_append(headers, "Accept-Language: en-US,en;q=0.5"); // Add Accept-Language header
     // Removed Origin header
     // Removed Content-Type header
 
