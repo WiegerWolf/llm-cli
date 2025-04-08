@@ -436,7 +436,14 @@ void ChatClient::run() {
                             }
                         }
                     }
-
+ 
+                    // *** FIX: Handle web_research fallback using 'query' instead of 'topic' ***
+                    if (function_name == "web_research" && function_args.contains("query") && !function_args.contains("topic")) {
+                        std::cout << "[Fallback parser: Renaming 'query' to 'topic' for web_research]\n"; std::cout.flush();
+                        function_args["topic"] = function_args["query"];
+                        function_args.erase("query");
+                    }
+ 
                     if (!function_name.empty() && parsed_args_or_no_args_needed) {
                         // If args are empty, try to recover by parsing the first {...} block inside the tag
                         if (function_args.empty()) {
