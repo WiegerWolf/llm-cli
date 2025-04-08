@@ -4,9 +4,10 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 #include "database.h" // Needed for read_history tool context
+#include <gumbo.h>    // Include the full Gumbo header here
 
 // Forward declaration if needed, or include necessary headers
-class PersistenceManager; 
+class PersistenceManager;
 
 class ToolManager {
 public:
@@ -38,10 +39,10 @@ private:
 
     // HTML parsing helpers (moved from main.cpp)
     std::string parse_ddg_html(const std::string& html);
-    std::string gumbo_get_text(struct GumboNode* node); 
+    std::string gumbo_get_text(GumboNode* node); // Use GumboNode directly (no struct keyword needed)
     // Static helpers can remain static or become private members
-    static struct GumboNode* find_node_by_tag(struct GumboNode* node, int tag); // GumboTag is an enum (int)
-    static struct GumboNode* find_node_by_tag_and_class(struct GumboNode* node, int tag, const std::string& class_name);
+    static GumboNode* find_node_by_tag(GumboNode* node, int tag); // Use GumboNode directly
+    static GumboNode* find_node_by_tag_and_class(GumboNode* node, int tag, const std::string& class_name); // Use GumboNode directly
 
     // CURL write callback (can be static or moved if only used here)
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output);

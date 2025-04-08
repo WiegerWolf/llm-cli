@@ -12,14 +12,11 @@
 #include <ctime>     // For get_current_datetime formatting
 #include <iomanip>   // For get_current_datetime formatting
 
-// Define GumboTag enum values if not directly accessible or redefine locally
-#ifndef GUMBO_TAG_ENUMS_DEFINED
-#define GUMBO_TAG_ENUMS_DEFINED
-// Add necessary GumboTag enum values used (e.g., TR, A, SPAN, BODY)
-// This avoids needing to include gumbo.h in tools.h if possible
-// Alternatively, include gumbo.h here and adjust find_node_by_tag signatures
-#include <gumbo.h> // Include gumbo here for GumboTag definitions
-#endif
+// Gumbo header is now included via tools.h, remove redundant include and guards
+// #ifndef GUMBO_TAG_ENUMS_DEFINED
+// #define GUMBO_TAG_ENUMS_DEFINED
+// #include <gumbo.h> 
+// #endif
 
 
 // --- Static Helper Implementations ---
