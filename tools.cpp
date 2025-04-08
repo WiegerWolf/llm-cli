@@ -538,28 +538,27 @@ std::string ToolManager::perform_deep_research(PersistenceManager& db, ChatClien
 
 // --- Tool Implementations (Moved from main.cpp) ---
 
-// Renamed from parse_ddg_html to parse the html.duckduckgo.com/html/ structure
-std::string ToolManager::parse_search_results_html(const std::string& html) {
+// Parses HTML from search.brave.com/search
+std::string ToolManager::parse_brave_search_html(const std::string& html) {
     GumboOutput* output = gumbo_parse(html.c_str());
     std::string result = "Web results:\n\n";
     int count = 0;
 
     std::vector<GumboNode*> result_divs;
-    std::function<void(GumboNode*)> find_result_divs = 
+    std::function<void(GumboNode*)> find_result_divs =
         [&](GumboNode* node) {
         if (!node || node->type != GUMBO_NODE_ELEMENT) return;
 
-        // Check if the node is a DIV with class containing "result"
+        // Brave Search: Look for DIVs with class "snippet"
         if (node->v.element.tag == GUMBO_TAG_DIV) {
             GumboAttribute* class_attr = gumbo_get_attribute(&node->v.element.attributes, "class");
-            // Check if class exists and contains "result" as a word
             if (class_attr && class_attr->value) {
-                 std::string classes = " " + std::string(class_attr->value) + " ";
-                 if (classes.find(" result ") != std::string::npos) {
-                     result_divs.push_back(node);
-                     // Don't recurse further into a result div to avoid nested results if any
-                     return; 
-                 }
+                std::string classes = " " + std::string(class_attr->value) + " ";
+                // Check for " snippet " (with spaces) to ensure it's the exact class
+                if (classes.find(" snippet ") != std::string::npos) {
+                    result_divs.push_back(node);
+                    return; // Don't recurse into result divs
+                }
             }
         }
 
@@ -572,73 +571,64 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
 
     if (output && output->root) {
         find_result_divs(output->root);
-        std::cerr << "DEBUG: parse_search_results_html: Found " << result_divs.size() << " potential result divs." << std::endl; // Re-add count log
+        std::cerr << "DEBUG: parse_brave_search_html: Found " << result_divs.size() << " potential result divs." << std::endl;
 
-        int div_index = 0; // Add index for logging
+        int div_index = 0;
         for (GumboNode* result_div : result_divs) {
-            std::cerr << "DEBUG: parse_search_results_html: --- Processing potential result div #" << ++div_index << " ---" << std::endl;
+            std::cerr << "DEBUG: parse_brave_search_html: --- Processing potential result div #" << ++div_index << " ---" << std::endl;
             std::string title;
             std::string url;
             std::string snippet;
-            std::string display_url_text; // The visible URL text
+            std::string display_url_text;
 
-            // Find Title and URL (usually within h2 > a.result__a)
-            GumboNode* title_h2 = find_node_by_tag(result_div, GUMBO_TAG_H2);
-            std::cerr << "DEBUG: parse_search_results_html:   Found H2 tag? " << (title_h2 ? "Yes" : "No") << std::endl;
-            GumboNode* title_a = title_h2 ? find_node_by_tag_and_class(title_h2, GUMBO_TAG_A, "result__a") : nullptr;
-            std::cerr << "DEBUG: parse_search_results_html:   Found A tag with class 'result__a' inside H2? " << (title_a ? "Yes" : "No") << std::endl;
-            
+            // Find Title and URL (often within div.heading > a)
+            GumboNode* heading_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "heading");
+            std::cerr << "DEBUG: parse_brave_search_html:   Found DIV with class 'heading'? " << (heading_div ? "Yes" : "No") << std::endl;
+            GumboNode* title_a = heading_div ? find_node_by_tag(heading_div, GUMBO_TAG_A) : nullptr;
+            std::cerr << "DEBUG: parse_brave_search_html:   Found A tag inside heading? " << (title_a ? "Yes" : "No") << std::endl;
+
             if (title_a) {
                 GumboAttribute* href = gumbo_get_attribute(&title_a->v.element.attributes, "href");
                 if (href && href->value) {
                     url = href->value;
-                    // DDG often uses redirection links, try to decode them if needed
-                    // Example: /l/?kh=-1&uddg=https%3A%2F%2Fwww.example.com
-                    size_t uddg_pos = url.find("uddg=");
-                    if (uddg_pos != std::string::npos) {
-                        std::string encoded_url = url.substr(uddg_pos + 5); // Length of "uddg="
-                        CURL* temp_curl = curl_easy_init(); // Need curl for URL decoding
-                        if (temp_curl) {
-                            int outlength;
-                            char* decoded = curl_easy_unescape(temp_curl, encoded_url.c_str(), encoded_url.length(), &outlength);
-                            if (decoded) {
-                                url = std::string(decoded, outlength);
-                                curl_free(decoded);
-                            }
-                            curl_easy_cleanup(temp_curl);
-                        }
-                    }
+                    // Brave URLs seem direct, no decoding needed currently
                 }
                 title = gumbo_get_text(title_a);
                 title.erase(0, title.find_first_not_of(" \n\r\t"));
                 title.erase(title.find_last_not_of(" \n\r\t") + 1);
             }
-            std::cerr << "DEBUG: parse_search_results_html:   Extracted Title: '" << title << "'" << std::endl;
-            std::cerr << "DEBUG: parse_search_results_html:   Extracted URL: '" << url << "'" << std::endl;
+            std::cerr << "DEBUG: parse_brave_search_html:   Extracted Title: '" << title << "'" << std::endl;
+            std::cerr << "DEBUG: parse_brave_search_html:   Extracted URL: '" << url << "'" << std::endl;
 
-            // Find Snippet (usually within a.result__snippet)
-            GumboNode* snippet_a = find_node_by_tag_and_class(result_div, GUMBO_TAG_A, "result__snippet");
-            std::cerr << "DEBUG: parse_search_results_html:   Found A tag with class 'result__snippet'? " << (snippet_a ? "Yes" : "No") << std::endl;
-            if (snippet_a) {
-                snippet = gumbo_get_text(snippet_a);
+            // Find Snippet (often within div.snippet-content > p)
+            GumboNode* snippet_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "snippet-content");
+             std::cerr << "DEBUG: parse_brave_search_html:   Found DIV with class 'snippet-content'? " << (snippet_div ? "Yes" : "No") << std::endl;
+            GumboNode* snippet_p = snippet_div ? find_node_by_tag(snippet_div, GUMBO_TAG_P) : nullptr;
+             std::cerr << "DEBUG: parse_brave_search_html:   Found P tag inside snippet-content? " << (snippet_p ? "Yes" : "No") << std::endl;
+            if (snippet_p) {
+                snippet = gumbo_get_text(snippet_p);
                 snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
                 snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
+            } else if (snippet_div) { // Fallback: get text directly from snippet_div if no <p>
+                 snippet = gumbo_get_text(snippet_div);
+                 snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
+                 snippet.erase(snippet.find_last_not_of(" \n\r\t") + 1);
             }
-             std::cerr << "DEBUG: parse_search_results_html:   Extracted Snippet: '" << snippet.substr(0, 70) << "...'" << std::endl;
+            std::cerr << "DEBUG: parse_brave_search_html:   Extracted Snippet: '" << snippet.substr(0, 70) << "...'" << std::endl;
 
-            // Find Display URL (usually within a.result__url)
-            GumboNode* url_a = find_node_by_tag_and_class(result_div, GUMBO_TAG_A, "result__url");
-            std::cerr << "DEBUG: parse_search_results_html:   Found A tag with class 'result__url'? " << (url_a ? "Yes" : "No") << std::endl;
-            if (url_a) {
-                display_url_text = gumbo_get_text(url_a);
+            // Find Display URL (often within div.url)
+            GumboNode* url_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "url");
+            std::cerr << "DEBUG: parse_brave_search_html:   Found DIV with class 'url'? " << (url_div ? "Yes" : "No") << std::endl;
+            if (url_div) {
+                display_url_text = gumbo_get_text(url_div);
                 display_url_text.erase(0, display_url_text.find_first_not_of(" \n\r\t"));
                 display_url_text.erase(display_url_text.find_last_not_of(" \n\r\t") + 1);
             }
-            std::cerr << "DEBUG: parse_search_results_html:   Extracted Display URL: '" << display_url_text << "'" << std::endl;
+            std::cerr << "DEBUG: parse_brave_search_html:   Extracted Display URL: '" << display_url_text << "'" << std::endl;
 
             // Add result if we found the essentials (title and actual URL)
             if (!title.empty() && !url.empty()) {
-                 std::cerr << "DEBUG: parse_search_results_html:   -> Adding result #" << (count + 1) << " to output." << std::endl; // Re-add adding log
+                std::cerr << "DEBUG: parse_brave_search_html:   -> Adding result #" << (count + 1) << " to output." << std::endl;
                 result += std::to_string(++count) + ". " + title + "\n";
                 if (!snippet.empty()) {
                     result += "   " + snippet + "\n";
@@ -647,17 +637,17 @@ std::string ToolManager::parse_search_results_html(const std::string& html) {
                 std::string display_url = display_url_text.empty() ? url : display_url_text;
                 result += "   " + display_url + " [href=" + url + "]\n\n";
             } else {
-                 std::cerr << "DEBUG: parse_search_results_html:   -> Skipping div - missing title or URL." << std::endl; // Re-add skipping log
+                 std::cerr << "DEBUG: parse_brave_search_html:   -> Skipping div - missing title or URL." << std::endl;
             }
         } // End loop through result divs
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } else {
-        std::cerr << "DEBUG: parse_search_results_html: Gumbo output or root node was null." << std::endl; // Re-add null output log
+        std::cerr << "DEBUG: parse_brave_search_html: Gumbo output or root node was null." << std::endl;
     }
 
     std::string final_result = count > 0 ? result : "No results found or failed to parse results page.";
-    std::cerr << "DEBUG: parse_search_results_html: Final result string (first 200 chars): " << final_result.substr(0, 200) << "..." << std::endl; // Re-add final result log
+    std::cerr << "DEBUG: parse_brave_search_html: Final result string (first 200 chars): " << final_result.substr(0, 200) << "..." << std::endl;
     return final_result;
 }
 
@@ -740,9 +730,8 @@ std::string ToolManager::search_web(const std::string& query) {
         curl_easy_cleanup(curl);
         throw std::runtime_error("Failed to URL-encode search query");
     }
-    // Construct URL with GET parameters for the HTML endpoint
-    // std::string url = "https://html.duckduckgo.com/html/?q=" + std::string(escaped_query); // Removed other params like kl, df
-    std::string url = "https://html.duckduckgo.com/html/?q=" + std::string(escaped_query) + "&kl=us-en"; // Add region parameter
+    // Construct URL for Brave Search
+    std::string url = "https://search.brave.com/search?q=" + std::string(escaped_query);
     curl_free(escaped_query); // Free the escaped string
     
     struct curl_slist* headers = nullptr;
@@ -795,11 +784,10 @@ std::string ToolManager::search_web(const std::string& query) {
     // Re-add logging for raw response snippet
     std::cerr << "DEBUG: search_web: Raw response snippet (first 500 chars): " << response.substr(0, 500) << "..." << std::endl;
 
-    std::string parsed_result = parse_search_results_html(response); // Use renamed function
+    std::string parsed_result = parse_brave_search_html(response); // Use Brave parsing function
     // Re-add logging for parsed result
-    std::cerr << "DEBUG: search_web: Result from parse_search_results_html (first 200 chars): " << parsed_result.substr(0, 200) << "..." << std::endl; 
+    std::cerr << "DEBUG: search_web: Result from parse_brave_search_html (first 200 chars): " << parsed_result.substr(0, 200) << "..." << std::endl;
     return parsed_result;
-    // Removed unreachable: return parse_ddg_html(response); 
 }
 
 std::string ToolManager::get_current_datetime() {
