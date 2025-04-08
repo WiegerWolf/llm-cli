@@ -480,25 +480,53 @@ std::string ToolManager::perform_deep_research(PersistenceManager& db, ChatClien
         std::cout << "  [Deep Research Step 1: Generated " << sub_queries.size() << " sub-queries.]\n"; std::cout.flush();
 
 
-        // Step 2: Execute web_research for each Sub-Query
-        std::cout << "  [Deep Research Step 2: Executing web_research for sub-queries...]\n"; std::cout.flush();
-        for (size_t i = 0; i < sub_queries.size(); ++i) {
-            const std::string& sub_query = sub_queries[i];
-            std::cout << "    [Deep Research Sub-step " << (i+1) << "/" << sub_queries.size() << ": Researching '" << sub_query << "'...]\n"; std::cout.flush();
+        // Step 2: Execute web_research for each Sub-Query in Parallel
+        std::cout << "  [Deep Research Step 2: Launching parallel web_research for " << sub_queries.size() << " sub-queries...]\n"; std::cout.flush();
+        std::vector<std::future<std::pair<std::string, std::string>>> research_futures;
+        std::mutex results_mutex; // Mutex to protect aggregated_results
+
+        for (const std::string& sub_query : sub_queries) {
+            research_futures.push_back(std::async(std::launch::async,
+                [&db, &client, &sub_query, this]() -> std::pair<std::string, std::string> {
+                std::cout << "    [Starting research for: '" << sub_query << "']\n"; std::cout.flush();
+                try {
+                    std::string result = perform_web_research(db, client, sub_query);
+                    std::cout << "    [Finished research for: '" << sub_query << "']\n"; std::cout.flush();
+                    return {sub_query, result};
+                } catch (const std::exception& e) {
+                    std::cerr << "    [Error researching '" << sub_query << "']: " << e.what() << "\n";
+                    std::cout << "    [Finished research (with error) for: '" << sub_query << "']\n"; std::cout.flush();
+                    return {sub_query, "Error during web_research: " + std::string(e.what())};
+                }
+            }));
+        }
+
+        // Wait for all research tasks to complete and aggregate results
+        std::cout << "  [Deep Research Step 2: Waiting for parallel research tasks to complete...]\n"; std::cout.flush();
+        for (size_t i = 0; i < research_futures.size(); ++i) {
             try {
-                // Call perform_web_research directly
-                std::string research_result = perform_web_research(db, client, sub_query);
-                aggregated_results += "--- Results for Sub-query: \"" + sub_query + "\" ---\n";
-                aggregated_results += research_result;
-                aggregated_results += "\n--- End Results for Sub-query ---\n\n";
+                std::pair<std::string, std::string> result_pair = research_futures[i].get(); // Blocks until ready
+                const std::string& sub_query = result_pair.first;
+                const std::string& research_result_or_error = result_pair.second;
+
+                std::lock_guard<std::mutex> lock(results_mutex); // Lock before modifying shared string
+                if (research_result_or_error.rfind("Error during web_research:", 0) == 0) {
+                    aggregated_results += "--- Error researching Sub-query: \"" + sub_query + "\" ---\n";
+                    aggregated_results += research_result_or_error; // Already contains "Error: ..."
+                    aggregated_results += "\n--- End Error Report ---\n\n";
+                } else {
+                    aggregated_results += "--- Results for Sub-query: \"" + sub_query + "\" ---\n";
+                    aggregated_results += research_result_or_error;
+                    aggregated_results += "\n--- End Results for Sub-query ---\n\n";
+                }
             } catch (const std::exception& e) {
-                std::cerr << "Error during web_research for sub-query '" << sub_query << "': " << e.what() << "\n";
-                aggregated_results += "--- Error researching Sub-query: \"" + sub_query + "\" ---\n";
-                aggregated_results += "Error: " + std::string(e.what());
-                aggregated_results += "\n--- End Error Report ---\n\n";
+                // Handle potential errors retrieving the future's result itself
+                std::lock_guard<std::mutex> lock(results_mutex);
+                // We don't know which sub-query this future belonged to without more complex tracking
+                aggregated_results += "--- Error retrieving result from research future: " + std::string(e.what()) + " ---\n\n";
             }
         }
-         std::cout << "  [Deep Research Step 2: Finished executing web_research.]\n"; std::cout.flush();
+        std::cout << "  [Deep Research Step 2: All parallel research tasks finished.]\n"; std::cout.flush();
 
 
         // Step 3: Synthesize Final Report using LLM
