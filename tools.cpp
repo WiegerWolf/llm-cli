@@ -599,12 +599,9 @@ std::string ToolManager::parse_brave_search_html(const std::string& html) {
                 title.erase(0, title.find_first_not_of(" \n\r\t"));
                 title.erase(title.find_last_not_of(" \n\r\t") + 1);
             }
-            std::cerr << "DEBUG: parse_brave_search_html:   Extracted Title: '" << title << "'" << std::endl;
-            std::cerr << "DEBUG: parse_brave_search_html:   Extracted URL: '" << url << "'" << std::endl;
 
             // Find Snippet (often within div.snippet-description)
             GumboNode* snippet_div = find_node_by_tag_and_class(result_div, GUMBO_TAG_DIV, "snippet-description");
-            std::cerr << "DEBUG: parse_brave_search_html:   Found DIV with class 'snippet-description'? " << (snippet_div ? "Yes" : "No") << std::endl;
             if (snippet_div) {
                 snippet = gumbo_get_text(snippet_div);
                 snippet.erase(0, snippet.find_first_not_of(" \n\r\t"));
