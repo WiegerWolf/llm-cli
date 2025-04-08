@@ -571,11 +571,11 @@ std::string ToolManager::parse_brave_search_html(const std::string& html) {
 
     if (output && output->root) {
         find_result_divs(output->root);
-        std::cerr << "DEBUG: parse_brave_search_html: Found " << result_divs.size() << " potential result divs." << std::endl;
+        // std::cerr << "DEBUG: parse_brave_search_html: Found " << result_divs.size() << " potential result divs." << std::endl; // Removed debug
 
         int div_index = 0;
         for (GumboNode* result_div : result_divs) {
-            std::cerr << "DEBUG: parse_brave_search_html: --- Processing potential result div #" << ++div_index << " ---" << std::endl;
+            // std::cerr << "DEBUG: parse_brave_search_html: --- Processing potential result div #" << ++div_index << " ---" << std::endl; // Removed debug
             std::string title;
             std::string url;
             std::string snippet;
