@@ -254,12 +254,28 @@ void ChatClient::run() {
             // --- Path 2: Fallback <function> parsing ---
             } else if (response_message.contains("content") && response_message["content"].is_string()) {
                 std::string content_str = response_message["content"];
-                // Look for <function>NAME</function> or <function>NAME{ARGS}</function> format
-                size_t func_start = content_str.find("<function>");
+                // Look for <function>...</function> or <function=...</function> format
+                size_t func_start = std::string::npos;
+                size_t name_start = std::string::npos;
+                const std::string start_tag1 = "<function>";
+                const std::string start_tag2 = "<function=";
+
+                size_t start_pos1 = content_str.find(start_tag1);
+                size_t start_pos2 = content_str.find(start_tag2);
+
+                // Choose the earliest valid start tag
+                if (start_pos1 != std::string::npos && (start_pos2 == std::string::npos || start_pos1 < start_pos2)) {
+                    func_start = start_pos1;
+                    name_start = func_start + start_tag1.length();
+                } else if (start_pos2 != std::string::npos) {
+                    func_start = start_pos2;
+                    name_start = func_start + start_tag2.length();
+                }
+
                 size_t func_end = content_str.rfind("</function>");
 
-                if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start) {
-                    size_t name_start = func_start + 10; // After "<function>"
+                if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start && name_start != std::string::npos) {
+                    // name_start is already calculated based on the found tag
                     size_t args_start = content_str.find('{', name_start);
                     // Ensure args_start is before the closing tag if it exists
                     if (args_start != std::string::npos && args_start >= func_end) {
