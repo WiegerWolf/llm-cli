@@ -345,7 +345,18 @@ void ChatClient::run() {
                             if (args_end != std::string::npos && args_end > args_delimiter_start) {
                                 std::string args_str = content_str.substr(args_delimiter_start, args_end - args_delimiter_start + 1);
                                 try {
-                                    function_args = nlohmann::json::parse(args_str);
+                                    std::string trimmed_args = args_str;
+                                    // Trim whitespace
+                                    trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
+                                    trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
+                                    // If wrapped in parentheses, strip them
+                                    if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
+                                        trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
+                                        // Also trim again after removing parentheses
+                                        trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
+                                        trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
+                                    }
+                                    function_args = nlohmann::json::parse(trimmed_args);
                                     parsed_args_or_no_args_needed = true;
                                 } catch (const nlohmann::json::parse_error& e) {
                                     std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
