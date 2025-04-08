@@ -296,63 +296,62 @@ void ChatClient::run() {
                 }
             // --- Path 2: Fallback <function> parsing (Now uses potential_fallback_content) ---
             } else if (!potential_fallback_content.empty()) {
-                std::string content_str = potential_fallback_content; // Use the extracted content or failed_generation string
-                // Look for <function>...</function> or <function=...</function> format
-                size_t func_start = std::string::npos;
-                size_t name_start = std::string::npos;
-                const std::string start_tag1 = "<function>";
-                const std::string start_tag2 = "<function=";
+                std::string content_str = potential_fallback_content;
+                size_t search_pos = 0;
+                bool any_function_executed = false;
 
-                size_t start_pos1 = content_str.find(start_tag1);
-                size_t start_pos2 = content_str.find(start_tag2);
+                while (true) {
+                    size_t func_start = std::string::npos;
+                    size_t name_start = std::string::npos;
+                    const std::string start_tag1 = "<function>";
+                    const std::string start_tag2 = "<function=";
 
-                // Choose the earliest valid start tag
-                if (start_pos1 != std::string::npos && (start_pos2 == std::string::npos || start_pos1 < start_pos2)) {
-                    func_start = start_pos1;
-                    name_start = func_start + start_tag1.length();
-                } else if (start_pos2 != std::string::npos) {
-                    func_start = start_pos2;
-                    name_start = func_start + start_tag2.length();
-                }
+                    size_t start_pos1 = content_str.find(start_tag1, search_pos);
+                    size_t start_pos2 = content_str.find(start_tag2, search_pos);
 
-                size_t func_end = content_str.rfind("</function>");
+                    if (start_pos1 != std::string::npos && (start_pos2 == std::string::npos || start_pos1 < start_pos2)) {
+                        func_start = start_pos1;
+                        name_start = func_start + start_tag1.length();
+                    } else if (start_pos2 != std::string::npos) {
+                        func_start = start_pos2;
+                        name_start = func_start + start_tag2.length();
+                    } else {
+                        break; // No more function tags found
+                    }
 
-                if (func_start != std::string::npos && func_end != std::string::npos && func_end > func_start && name_start != std::string::npos) {
+                    size_t func_end = content_str.find("</function>", name_start);
+                    if (func_end == std::string::npos) {
+                        break; // No closing tag found, stop
+                    }
+
                     // Find the start of arguments: either '{', '(', OR ','
                     size_t args_delimiter_start = content_str.find_first_of("{(,", name_start);
 
-                    // Ensure the delimiter is before the closing tag if it exists
                     if (args_delimiter_start != std::string::npos && args_delimiter_start >= func_end) {
-                        args_delimiter_start = std::string::npos; // Treat as if no delimiter found before end tag
+                        args_delimiter_start = std::string::npos; // Treat as no delimiter before end tag
                     }
 
                     std::string function_name;
-                    nlohmann::json function_args = nlohmann::json::object(); // Default to empty object
-                    bool parsed_args_or_no_args_needed = false; // Flag to indicate success
+                    nlohmann::json function_args = nlohmann::json::object();
+                    bool parsed_args_or_no_args_needed = false;
 
-                    // Case 1: Argument delimiter '{', '(', or ',' found before the end tag
                     if (args_delimiter_start != std::string::npos) {
-                        function_name = content_str.substr(name_start, args_delimiter_start - name_start); // Extract name before delimiter
+                        function_name = content_str.substr(name_start, args_delimiter_start - name_start);
                         char open_delim = content_str[args_delimiter_start];
 
-                        // Handle different delimiters
                         if (open_delim == '{' || open_delim == '(') {
-                            // Logic for {} and () enclosed arguments (existing logic)
                             char close_delim = (open_delim == '{') ? '}' : ')';
-                            size_t search_end_pos = (func_end > args_delimiter_start) ? func_end - 1 : args_delimiter_start;
+                            size_t search_end_pos = func_end - 1;
                             size_t args_end = content_str.rfind(close_delim, search_end_pos);
 
                             if (args_end != std::string::npos && args_end > args_delimiter_start) {
                                 std::string args_str = content_str.substr(args_delimiter_start, args_end - args_delimiter_start + 1);
                                 try {
                                     std::string trimmed_args = args_str;
-                                    // Trim whitespace
                                     trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
                                     trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
-                                    // If wrapped in parentheses, strip them
                                     if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
                                         trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
-                                        // Also trim again after removing parentheses
                                         trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
                                         trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
                                     }
@@ -367,10 +366,8 @@ void ChatClient::run() {
                                 std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n";
                             }
                         } else if (open_delim == ',') {
-                            // Logic for comma-separated arguments (new logic for failed_generation)
-                            // Assume args JSON runs from after the comma to just before </function>
-                            size_t args_start_pos = args_delimiter_start + 1; // Start after the comma
-                            size_t args_end_pos = func_end; // End before </function>
+                            size_t args_start_pos = args_delimiter_start + 1;
+                            size_t args_end_pos = func_end;
                             if (args_end_pos > args_start_pos) {
                                 std::string args_str = content_str.substr(args_start_pos, args_end_pos - args_start_pos);
                                 try {
@@ -379,58 +376,45 @@ void ChatClient::run() {
                                 } catch (const nlohmann::json::parse_error& e) {
                                     std::cerr << "Warning: Failed to parse arguments JSON after comma in <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
                                     function_args = nlohmann::json::object();
-                                    parsed_args_or_no_args_needed = true; // Still proceed, but with empty args
+                                    parsed_args_or_no_args_needed = true;
                                 }
                             } else {
-                                // Comma found, but nothing between it and </function>
                                 std::cerr << "Warning: Found comma delimiter but no arguments before </function>.\n";
-                                function_args = nlohmann::json::object(); // Treat as empty args
+                                function_args = nlohmann::json::object();
                                 parsed_args_or_no_args_needed = true;
                             }
                         }
-                    }
-                    // Case 2: No argument delimiter '{', '(', or ',' found before the end tag
-                    else {
-                        function_name = content_str.substr(name_start, func_end - name_start); // Extract name up to </function>
-                        // function_args is already {}
-                        parsed_args_or_no_args_needed = true; // Treat as success, args are empty object {}
+                    } else {
+                        function_name = content_str.substr(name_start, func_end - name_start);
+                        parsed_args_or_no_args_needed = true;
                     }
 
-                    // Trim whitespace from function name if extracted
                     if (!function_name.empty()) {
                         function_name.erase(0, function_name.find_first_not_of(" \n\r\t"));
                         function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
                     }
 
-                    // If we successfully extracted a function name AND (parsed args OR determined no args were needed)
                     if (!function_name.empty() && parsed_args_or_no_args_needed) {
-                        // Save the original assistant message containing <function=...>
-                        db.saveAssistantMessage(content_str);
-                        context = db.getContextHistory(); // Reload context
+                        std::string function_block = content_str.substr(func_start, func_end + 11 - func_start);
+                        db.saveAssistantMessage(function_block);
+                        context = db.getContextHistory();
 
-                        // Generate synthetic ID
                         std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
 
-                        std::cout << "[Executing function from content: " << function_name << "]\n"; // User feedback
+                        std::cout << "[Executing function from content: " << function_name << "]\n";
                         std::cout.flush();
 
-                        // Call the helper function
                         if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
-                            tool_call_flow_completed = true; // Mark success
-                        } else {
-                            // Error handled by helper or execute_tool
+                            any_function_executed = true;
                         }
-                    } else {
-                        // Malformed name or args JSON, or structure error.
-                        // Do nothing here; let the final block handle printing if needed.
-                        // tool_call_flow_completed remains false.
                     }
-                } else {
-                    // <function> tags not found or malformed.
-                    // Do nothing here; let the final block handle printing if needed.
-                    // tool_call_flow_completed remains false.
+
+                    search_pos = func_end + 11; // Move past this </function>
                 }
-                // tool_call_flow_completed is set above ONLY if the function was successfully handled.
+
+                if (any_function_executed) {
+                    tool_call_flow_completed = true;
+                }
             }
             // Note: The original Path 3 logic is now merged into the final block below.
 
