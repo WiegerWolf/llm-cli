@@ -238,6 +238,16 @@ void ChatClient::run() {
                      // Fall through to the fallback parsing logic below
                  }
                  // Else: Content is null or not a string, will be handled by the final block
+            } else if (first_api_response.contains("error") &&
+                       first_api_response["error"].contains("code") &&
+                       first_api_response["error"]["code"] == "tool_use_failed" &&
+                       first_api_response["error"].contains("failed_generation") &&
+                       first_api_response["error"]["failed_generation"].is_string()) {
+                // Additional fallback: handle tool_use_failed error with failed_generation string
+                potential_fallback_content = first_api_response["error"]["failed_generation"];
+                std::cout << "[API returned tool_use_failed with failed_generation fallback string, attempting fallback parsing...]\n";
+                std::cout.flush();
+                // Fall through to the fallback parsing logic below
             } else {
                  // Unexpected response structure
                  std::cerr << "Error: Invalid API response structure (First Response).\nResponse was: " << first_api_response_str << "\n";
