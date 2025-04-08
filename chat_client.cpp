@@ -84,7 +84,6 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     }
 
     std::string json_payload = payload.dump();
-    // std::cout << "DEBUG: Payload: " << json_payload << std::endl; // Uncomment for debugging API payload
     std::string response;
 
     curl_easy_setopt(curl, CURLOPT_URL, api_base.c_str());
