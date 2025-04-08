@@ -30,7 +30,8 @@ private:
     const nlohmann::json get_current_datetime_tool;
     const nlohmann::json visit_url_tool;
     const nlohmann::json read_history_tool;
-    const nlohmann::json web_research_tool; // Added declaration
+    const nlohmann::json web_research_tool;
+    const nlohmann::json deep_research_tool; // Added declaration
 
     // Tool implementations (moved from main.cpp)
     std::string search_web(const std::string& query);
@@ -40,6 +41,8 @@ private:
     std::string read_history(PersistenceManager& db, const std::string& start_time, const std::string& end_time, size_t limit);
     // Internal implementation for web research logic
     std::string perform_web_research(PersistenceManager& db, ChatClient& client, const std::string& topic);
+    // Internal implementation for deep research logic
+    std::string perform_deep_research(PersistenceManager& db, ChatClient& client, const std::string& goal);
 
     // HTML parsing helpers (moved from main.cpp)
     std::string parse_ddg_html(const std::string& html);

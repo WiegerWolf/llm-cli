@@ -195,6 +195,25 @@ ToolManager::ToolManager() :
                 {"required", {"topic"}}
             }}
         }}
+    }),
+    deep_research_tool({ // Added definition
+        {"type", "function"},
+        {"function", {
+            {"name", "deep_research"},
+            {"description",
+             "Performs in-depth research on a complex topic or goal. This tool autonomously breaks down the goal into multiple sub-topics, performs web research ('web_research' tool) for each sub-topic, and then synthesizes the findings into a comprehensive final report. Use this for broad questions requiring multi-faceted investigation beyond a single web search."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {
+                    {"goal", {
+                        {"type", "string"},
+                        {"description", "The main research goal or complex question to investigate."}
+                    }}
+                    // Note: The tool itself will generate specific queries for internal 'web_research' calls.
+                }},
+                {"required", {"goal"}}
+            }}
+        }}
     })
 {} // End Constructor
 
@@ -203,7 +222,7 @@ ToolManager::ToolManager() :
 
 nlohmann::json ToolManager::get_tool_definitions() const {
     // Return all defined tools in a JSON array
-    return nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool, read_history_tool, web_research_tool}); // Added web_research_tool
+    return nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool, read_history_tool, web_research_tool, deep_research_tool}); // Added deep_research_tool
 }
 
 // Added ChatClient& client parameter
@@ -270,6 +289,15 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         std::cout.flush();
         // Call the dedicated internal method
         return perform_web_research(db, client, topic);
+    } else if (tool_name == "deep_research") {
+        std::string goal = args.value("goal", "");
+        if (goal.empty()) {
+            throw std::runtime_error("'goal' argument missing or empty for deep_research tool.");
+        }
+        std::cout << "[Performing deep research for: " << goal << "]\n";
+        std::cout.flush();
+        // Call the dedicated internal method
+        return perform_deep_research(db, client, goal);
     } else {
         std::cerr << "Error: Unknown tool requested: " << tool_name << "\n";
         throw std::runtime_error("Unknown tool requested: " + tool_name);
@@ -363,6 +391,111 @@ std::string ToolManager::perform_web_research(PersistenceManager& db, ChatClient
     } catch (const std::exception& e) {
         std::cerr << "Web research failed during execution: " << e.what() << "\n";
         return "Error performing web research: " + std::string(e.what());
+    }
+}
+
+
+// --- Internal Implementation for Deep Research ---
+
+std::string ToolManager::perform_deep_research(PersistenceManager& db, ChatClient& client, const std::string& goal) {
+    std::string aggregated_results = "Deep Research Results for: " + goal + "\n\n";
+    std::vector<std::string> sub_queries;
+
+    try {
+        // Step 1: Generate Sub-Queries using LLM
+        std::cout << "  [Deep Research Step 1: Generating sub-queries...]\n"; std::cout.flush();
+        std::vector<Message> subquery_context;
+        subquery_context.push_back({"system", "You are an AI assistant helping with research planning. Given a research goal, break it down into 3-5 specific, actionable sub-topics suitable for individual web research. Output *only* a JSON array of strings, where each string is a sub-topic. Example: [\"sub-topic 1\", \"sub-topic 2\", \"sub-topic 3\"]"});
+        subquery_context.push_back({"user", "Research Goal: " + goal});
+
+        std::string subquery_response_str = client.makeApiCall(subquery_context, false); // No tools needed here
+        nlohmann::json subquery_response_json;
+        try {
+            subquery_response_json = nlohmann::json::parse(subquery_response_str);
+        } catch (const nlohmann::json::parse_error& e) {
+            std::cerr << "JSON Parsing Error (Sub-query Generation): " << e.what() << "\nResponse was: " << subquery_response_str << "\n";
+            return "Error: Failed to parse sub-query list from LLM.";
+        }
+
+        if (!subquery_response_json.contains("choices") || subquery_response_json["choices"].empty() || !subquery_response_json["choices"][0].contains("message") || !subquery_response_json["choices"][0]["message"].contains("content")) {
+            std::cerr << "Error: Invalid API response structure (Sub-query Generation).\nResponse was: " << subquery_response_str << "\n";
+            return "Error: Invalid response structure from LLM during sub-query generation.";
+        }
+
+        std::string subquery_content_str = subquery_response_json["choices"][0]["message"]["content"];
+        try {
+            nlohmann::json subquery_list_json = nlohmann::json::parse(subquery_content_str);
+            if (subquery_list_json.is_array()) {
+                for (const auto& item : subquery_list_json) {
+                    if (item.is_string()) {
+                        sub_queries.push_back(item.get<std::string>());
+                    }
+                }
+            } else {
+                 throw std::runtime_error("LLM did not return a JSON array for sub-queries.");
+            }
+        } catch (const std::exception& e) { // Catch parsing or type errors
+            std::cerr << "Error processing sub-query list: " << e.what() << "\nContent was: " << subquery_content_str << "\n";
+            return "Error: Failed to process sub-query list generated by LLM.";
+        }
+
+        if (sub_queries.empty()) {
+            return "Error: LLM failed to generate any valid sub-queries for the research goal.";
+        }
+        std::cout << "  [Deep Research Step 1: Generated " << sub_queries.size() << " sub-queries.]\n"; std::cout.flush();
+
+
+        // Step 2: Execute web_research for each Sub-Query
+        std::cout << "  [Deep Research Step 2: Executing web_research for sub-queries...]\n"; std::cout.flush();
+        for (size_t i = 0; i < sub_queries.size(); ++i) {
+            const std::string& sub_query = sub_queries[i];
+            std::cout << "    [Deep Research Sub-step " << (i+1) << "/" << sub_queries.size() << ": Researching '" << sub_query << "'...]\n"; std::cout.flush();
+            try {
+                // Call perform_web_research directly
+                std::string research_result = perform_web_research(db, client, sub_query);
+                aggregated_results += "--- Results for Sub-query: \"" + sub_query + "\" ---\n";
+                aggregated_results += research_result;
+                aggregated_results += "\n--- End Results for Sub-query ---\n\n";
+            } catch (const std::exception& e) {
+                std::cerr << "Error during web_research for sub-query '" << sub_query << "': " << e.what() << "\n";
+                aggregated_results += "--- Error researching Sub-query: \"" + sub_query + "\" ---\n";
+                aggregated_results += "Error: " + std::string(e.what());
+                aggregated_results += "\n--- End Error Report ---\n\n";
+            }
+        }
+         std::cout << "  [Deep Research Step 2: Finished executing web_research.]\n"; std::cout.flush();
+
+
+        // Step 3: Synthesize Final Report using LLM
+        std::cout << "  [Deep Research Step 3: Synthesizing final report...]\n"; std::cout.flush();
+        std::vector<Message> synthesis_context;
+        synthesis_context.push_back({"system", "You are a research assistant. Based *only* on the provided research goal and the aggregated results from multiple web research sub-queries, synthesize a comprehensive final report that directly addresses the original goal. Integrate the findings smoothly. Do not add any preamble like 'Based on the provided text...'."});
+        synthesis_context.push_back({"user", "Original Research Goal: " + goal + "\n\nAggregated Research Findings:\n" + aggregated_results});
+
+        std::string final_response_str = client.makeApiCall(synthesis_context, false); // No tools needed here
+        nlohmann::json final_response_json;
+        try {
+            final_response_json = nlohmann::json::parse(final_response_str);
+        } catch (const nlohmann::json::parse_error& e) {
+            std::cerr << "JSON Parsing Error (Final Synthesis): " << e.what() << "\nResponse was: " << final_response_str << "\n";
+            // Return the aggregated results instead of a synthesis error, as they might still be useful
+            return "Error: Failed to parse final synthesis response from LLM. Raw aggregated results follow:\n\n" + aggregated_results;
+        }
+
+        if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message") || !final_response_json["choices"][0]["message"].contains("content")) {
+            std::cerr << "Error: Invalid API response structure (Final Synthesis).\nResponse was: " << final_response_str << "\n";
+             // Return the aggregated results instead of a synthesis error
+            return "Error: Invalid response structure from LLM during final synthesis. Raw aggregated results follow:\n\n" + aggregated_results;
+        }
+
+        std::string final_report = final_response_json["choices"][0]["message"]["content"];
+        std::cout << "[Deep research complete for: " << goal << "]\n"; std::cout.flush();
+        return final_report; // Return the synthesized report
+
+    } catch (const std::exception& e) {
+        std::cerr << "Deep research failed during execution: " << e.what() << "\n";
+        // Return aggregated results gathered so far, plus the error
+        return "Error performing deep research: " + std::string(e.what()) + "\n\nPartial results gathered:\n" + aggregated_results;
     }
 }
 
