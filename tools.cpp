@@ -781,8 +781,7 @@ std::string ToolManager::search_web(const std::string& query) {
     std::string parsed_result = parse_search_results_html(response); // Use renamed function
     std::cerr << "DEBUG: search_web: Result from parse_search_results_html: " << parsed_result.substr(0, 200) << "..." << std::endl; // Update debug message
     return parsed_result;
-
-    return parse_ddg_html(response);
+    // Removed unreachable: return parse_ddg_html(response); 
 }
 
 std::string ToolManager::get_current_datetime() {
