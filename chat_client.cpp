@@ -300,31 +300,29 @@ void ChatClient::run() {
                             // Error handled by helper or execute_tool
                         }
                     } else {
-                         // Malformed name or args JSON, treat as regular message below
-                         db.saveAssistantMessage(content_str); // Save the message as is
-                         std::cout << content_str << "\n\n";
-                         std::cout.flush();
+                         // Malformed name or args JSON.
+                         // Do nothing here; let the final block handle printing if needed.
+                         // tool_call_flow_completed remains false.
                     }
                 } else {
-                    // Pattern not found or malformed, treat as regular message
+                    // Pattern not found or malformed.
+                    // Do nothing here; let the final block handle printing if needed.
+                    // tool_call_flow_completed remains false.
+                }
+                // tool_call_flow_completed is set above ONLY if the function was successfully handled.
+            } 
+            // Note: The original Path 3 logic is now merged into the final block below.
+
+
+            // --- Final Handling: Print regular content or handle errors IF no tool flow completed ---
+            if (!tool_call_flow_completed) { 
+                if (response_message.contains("content") && response_message["content"].is_string()) {
+                    // This covers regular messages without tool calls AND Path 2 (<function>) failures.
+                    std::string content_str = response_message["content"];
                     db.saveAssistantMessage(content_str);
                     std::cout << content_str << "\n\n";
                     std::cout.flush();
-                }
-                // tool_call_flow_completed is set above if the function was handled
-
-            // --- Path 3: Regular Response (No tool calls, no <function>) ---
-            // } else if (response_message.contains("content") && response_message["content"].is_string()) { // This condition is now part of Path 2 check
-            //     // This path is taken if the response message does NOT contain 'tool_calls'
-            //     std::string content_str = response_message["content"];
-            //     db.saveAssistantMessage(content_str);
-                std::cout << content_str << "\n\n";
-                std::cout.flush();
-                tool_call_flow_completed = false; // Explicitly mark that no tool flow happened
-
-            // --- Path 3: Handle Error Cases (No tool calls, content is null or not string) ---
-            } else if (!tool_call_flow_completed) { // Only enter if tool_calls didn't happen
-                if (response_message.contains("content") && !response_message["content"].is_null()) {
+                } else if (response_message.contains("content") && !response_message["content"].is_null()) {
                      // Content exists but isn't a string (unlikely but handled)
                      std::string non_string_content = response_message["content"].dump();
                      db.saveAssistantMessage(non_string_content);
