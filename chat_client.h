@@ -14,8 +14,8 @@ class ChatClient {
 private:
     PersistenceManager db;
     ToolManager toolManager; 
-    std::string api_base = "https://api.groq.com/openai/v1/chat/completions";
-    std::string model_name = "llama-3.3-70b-versatile"; 
+    std::string api_base = "https://openrouter.ai/api/v1/chat/completions";
+    std::string model_name = "openai/gpt-4.1-nano"; 
 
     // Helper function for tool execution flow
     bool handleToolExecutionAndFinalResponse(

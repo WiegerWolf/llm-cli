@@ -100,8 +100,8 @@ target_link_libraries(llm PRIVATE
 # Ensure Gumbo includes are available (already present, just confirming)
 target_include_directories(llm PRIVATE ${GUMBO_INCLUDE_DIRS} ${CMAKE_BINARY_DIR})
 
-# Add option for GROQ_API_KEY
-option(GROQ_API_KEY "Groq LLM API Key to embed at compile time" "")
+# Add option for OPENROUTER_API_KEY
+option(OPENROUTER_API_KEY "OpenRouter LLM API Key to embed at compile time" "")
 
 # Configure config.h for compile-time API key embedding
 configure_file(

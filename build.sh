@@ -10,13 +10,13 @@ if [ -f .env ]; then
   set +a
 fi
 
-# Prepare GROQ_API_KEY cmake flag if set
-CMAKE_GROQ_API_KEY=""
-if [ ! -z "$GROQ_API_KEY" ]; then
-  CMAKE_GROQ_API_KEY="-DGROQ_API_KEY=$GROQ_API_KEY"
+# Prepare OPENROUTER_API_KEY cmake flag if set
+CMAKE_OPENROUTER_API_KEY=""
+if [ ! -z "$OPENROUTER_API_KEY" ]; then
+  CMAKE_OPENROUTER_API_KEY="-DOPENROUTER_API_KEY=$OPENROUTER_API_KEY"
 fi
 
 mkdir -p build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE $CMAKE_GROQ_API_KEY
+cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE $CMAKE_OPENROUTER_API_KEY
 make
