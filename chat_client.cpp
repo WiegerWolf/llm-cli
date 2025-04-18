@@ -10,6 +10,7 @@
 #include <readline/history.h>
 #include "database.h" // For PersistenceManager and Message
 #include "tools.h"    // For ToolManager
+#include "config.h"   // For GROQ_API_KEY
 
 // Bring WriteCallback here as it's used by makeApiCall
 // Alternatively, make it a static member of ChatClient or move to a utility file
@@ -19,6 +20,17 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::stri
     return total_size;
 }
 
+std::string get_groq_api_key() {
+    constexpr const char* compiled_key = GROQ_API_KEY;
+    if (compiled_key[0] != '\0' && std::string(compiled_key) != "@GROQ_API_KEY@") {
+        return std::string(compiled_key);
+    }
+    const char* env_key = std::getenv("GROQ_API_KEY");
+    if (env_key) {
+        return std::string(env_key);
+    }
+    throw std::runtime_error("GROQ_API_KEY not set at compile time or in environment");
+}
 
 // --- ChatClient Method Implementations ---
 
@@ -28,13 +40,10 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
         throw std::runtime_error("Failed to initialize CURL");
     }
 
-    const char* api_key = getenv("GROQ_API_KEY");
-    if (!api_key) {
-        throw std::runtime_error("GROQ_API_KEY environment variable not set!");
-    }
+    std::string api_key = get_groq_api_key();
 
     struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + std::string(api_key)).c_str());
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
     headers = curl_slist_append(headers, "Content-Type: application/json");
 
     nlohmann::json payload;

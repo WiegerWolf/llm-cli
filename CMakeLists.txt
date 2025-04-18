@@ -100,6 +100,16 @@ target_link_libraries(llm PRIVATE
 # Ensure Gumbo includes are available (already present, just confirming)
 target_include_directories(llm PRIVATE ${GUMBO_INCLUDE_DIRS}) 
 
+# Add option for GROQ_API_KEY
+option(GROQ_API_KEY "Groq LLM API Key to embed at compile time" "")
+
+# Configure config.h for compile-time API key embedding
+configure_file(
+  ${CMAKE_SOURCE_DIR}/config.h.in
+  ${CMAKE_BINARY_DIR}/config.h
+  @ONLY
+)
+
 # Installation setup
 install(TARGETS llm
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
