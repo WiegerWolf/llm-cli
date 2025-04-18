@@ -98,7 +98,7 @@ target_link_libraries(llm PRIVATE
 )
 
 # Ensure Gumbo includes are available (already present, just confirming)
-target_include_directories(llm PRIVATE ${GUMBO_INCLUDE_DIRS}) 
+target_include_directories(llm PRIVATE ${GUMBO_INCLUDE_DIRS} ${CMAKE_BINARY_DIR})
 
 # Add option for GROQ_API_KEY
 option(GROQ_API_KEY "Groq LLM API Key to embed at compile time" "")
