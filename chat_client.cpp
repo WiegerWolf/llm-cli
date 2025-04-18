@@ -45,6 +45,8 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
     headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "HTTP-Referer: https://llm-cli.tsatsin.com");
+    headers = curl_slist_append(headers, "X-Title: LLM-cli");
 
     nlohmann::json payload;
     payload["model"] = this->model_name; // Use member variable
