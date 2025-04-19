@@ -127,7 +127,14 @@ ToolManager::ToolManager() :
             {"description", "Get the current date and time."},
             {"parameters", { // No parameters needed
                 {"type", "object"},
-                {"properties", {}}
+                {"properties", {
+                    {"format", {
+                        {"type", "string"},
+                        {"description", "The format of the date and time to return."},
+                        {"default", "%Y-%m-%d %H:%M:%S"} // Default format
+                    }}
+                }},
+                {"additionalProperties", false} // No additional properties allowed
             }}
         }}
     }),
