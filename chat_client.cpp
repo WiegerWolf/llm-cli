@@ -174,20 +174,60 @@ bool ChatClient::handleToolExecutionAndFinalResponse(
     context = db.getContextHistory(); // Reload context
 
     // Make the second API call (tools are never needed for the final response)
-    std::string final_response_str = makeApiCall(context, false);
-    nlohmann::json final_response_json;
-     try {
-        final_response_json = nlohmann::json::parse(final_response_str);
-    } catch (const nlohmann::json::parse_error& e) {
-        std::cerr << "JSON Parsing Error (Second Response): " << e.what() << "\nResponse was: " << final_response_str << "\n";
-        return false; // Indicate failure
-    }
+    // Try up to 3 times if we keep getting tool calls
+    std::string final_content;
+    bool final_response_success = false;
+    
+    for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
+        // On subsequent attempts, add a system message to explicitly prevent tool usage
+        if (attempt > 0) {
+            // Add a system message at the end of context to override tool usage
+            context.push_back({"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."});
+        }
+        
+        std::string final_response_str = makeApiCall(context, false);
+        nlohmann::json final_response_json;
+        try {
+            final_response_json = nlohmann::json::parse(final_response_str);
+        } catch (const nlohmann::json::parse_error& e) {
+            std::cerr << "JSON Parsing Error (Second Response): " << e.what() << "\nResponse was: " << final_response_str << "\n";
+            if (attempt == 2) return false; // Indicate failure on last attempt
+            continue; // Try again
+        }
 
-    if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message") || !final_response_json["choices"][0]["message"].contains("content")) {
-        std::cerr << "Error: Invalid API response structure (Second Response).\nResponse was: " << final_response_str << "\n";
-        return false; // Indicate failure
+        // Check if we have a valid response with choices
+        if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || 
+            !final_response_json["choices"][0].contains("message")) {
+            std::cerr << "Error: Invalid API response structure (Second Response).\nResponse was: " << final_response_str << "\n";
+            if (attempt == 2) return false; // Indicate failure on last attempt
+            continue; // Try again
+        }
+        
+        auto& message = final_response_json["choices"][0]["message"];
+        
+        // Check if the message contains tool_calls
+        if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
+            std::cerr << "Warning: Final response contains tool_calls. Retrying with explicit instruction to avoid tools.\n";
+            continue; // Try again with stronger instructions
+        }
+        
+        // If we have content, we're good
+        if (message.contains("content") && message["content"].is_string()) {
+            final_content = message["content"];
+            final_response_success = true;
+            break;
+        } else {
+            std::cerr << "Error: Final response message missing content field.\nResponse was: " << final_response_str << "\n";
+            if (attempt == 2) return false; // Indicate failure on last attempt
+            continue; // Try again
+        }
     }
-    std::string final_content = final_response_json["choices"][0]["message"]["content"];
+    
+    // If all attempts failed, return failure
+    if (!final_response_success) {
+        std::cerr << "Error: Failed to get a valid final response after 3 attempts.\n";
+        return false;
+    }
 
     // Save the final assistant response
     db.saveAssistantMessage(final_content);

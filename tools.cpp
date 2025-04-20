@@ -412,20 +412,61 @@ std::string ToolManager::perform_web_research(PersistenceManager& db, ChatClient
         synthesis_messages.push_back({"user", "Original research topic: " + topic + "\n\nProvided research context:\n" + synthesis_context});
 
         // Step 5: Make internal API call for synthesis (no tools needed for this call)
-        std::string synthesis_response_str = client.makeApiCall(synthesis_messages, false); // Use the passed client object
-        nlohmann::json synthesis_response_json;
-        try {
-            synthesis_response_json = nlohmann::json::parse(synthesis_response_str);
-        } catch (const nlohmann::json::parse_error& e) {
-             std::cerr << "JSON Parsing Error (Synthesis Response): " << e.what() << "\nResponse was: " << synthesis_response_str << "\n";
-             return "Error: Failed to parse synthesis response from LLM.";
-        }
+        // Add a stronger system message to prevent tool usage in synthesis
+        synthesis_messages[0].content = "You are a research assistant. Based *only* on the provided text which contains web search results and content from visited web pages, synthesize a comprehensive answer to the original research topic. DO NOT USE ANY TOOLS OR FUNCTIONS. Do not add any preamble like 'Based on the provided text...'";
+        
+        // Try up to 3 times with increasingly strict instructions if we keep getting tool calls
+        std::string final_synthesized_content;
+        bool synthesis_success = false;
+        
+        for (int attempt = 0; attempt < 3 && !synthesis_success; attempt++) {
+            if (attempt > 0) {
+                // Add even stronger instructions on retry
+                synthesis_messages[0].content = "CRITICAL INSTRUCTION: You are a research assistant. Your ONLY task is to write a plain text summary based on the provided research. DO NOT USE ANY TOOLS OR FUNCTIONS WHATSOEVER. DO NOT INCLUDE ANY <function> TAGS OR TOOL CALLS. Just write normal text.";
+            }
+            
+            std::string synthesis_response_str = client.makeApiCall(synthesis_messages, false); // Use the passed client object
+            nlohmann::json synthesis_response_json;
+            try {
+                synthesis_response_json = nlohmann::json::parse(synthesis_response_str);
+            } catch (const nlohmann::json::parse_error& e) {
+                std::cerr << "JSON Parsing Error (Synthesis Response): " << e.what() << "\nResponse was: " << synthesis_response_str << "\n";
+                if (attempt == 2) return "Error: Failed to parse synthesis response from LLM.";
+                continue; // Try again
+            }
 
-        if (!synthesis_response_json.contains("choices") || synthesis_response_json["choices"].empty() || !synthesis_response_json["choices"][0].contains("message") || !synthesis_response_json["choices"][0]["message"].contains("content")) {
-            std::cerr << "Error: Invalid API response structure (Synthesis Response).\nResponse was: " << synthesis_response_str << "\n";
-            return "Error: Invalid response structure from LLM during synthesis.";
+            // Check for tool_calls in the response - if present, we need to retry
+            if (synthesis_response_json.contains("choices") && 
+                !synthesis_response_json["choices"].empty() && 
+                synthesis_response_json["choices"][0].contains("message")) {
+                
+                auto message = synthesis_response_json["choices"][0]["message"];
+                
+                // Check if the message contains tool_calls
+                if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
+                    std::cerr << "Warning: Synthesis response contains tool_calls. Retrying with stronger instructions.\n";
+                    continue; // Try again with stronger instructions
+                }
+                
+                // If we have content, we're good
+                if (message.contains("content") && message["content"].is_string()) {
+                    final_synthesized_content = message["content"];
+                    synthesis_success = true;
+                    break;
+                }
+            }
+            
+            // If we get here without setting synthesis_success, there was a problem with the response structure
+            if (attempt == 2) {
+                std::cerr << "Error: Invalid API response structure (Synthesis Response).\nResponse was: " << synthesis_response_str << "\n";
+                return "Error: Invalid response structure from LLM during synthesis.";
+            }
         }
-        std::string final_synthesized_content = synthesis_response_json["choices"][0]["message"]["content"];
+        
+        // If all attempts failed, return a fallback message
+        if (!synthesis_success) {
+            return "I researched information about '" + topic + "' but encountered technical difficulties synthesizing the results. The search found relevant information, but I was unable to properly summarize it due to API limitations.";
+        }
 
         std::cout << "[Web research complete for: " << topic << "]\n"; std::cout.flush();
         return final_synthesized_content; // Return the synthesized answer
@@ -539,26 +580,65 @@ std::string ToolManager::perform_deep_research(PersistenceManager& db, ChatClien
         // Step 3: Synthesize Final Report using LLM
         std::cout << "  [Deep Research Step 3: Synthesizing final report...]\n"; std::cout.flush();
         std::vector<Message> synthesis_context;
-        synthesis_context.push_back({"system", "You are a research assistant. Based *only* on the provided research goal and the aggregated results from multiple web research sub-queries, synthesize a comprehensive final report that directly addresses the original goal. Integrate the findings smoothly. Do not add any preamble like 'Based on the provided text...'."});
+        synthesis_context.push_back({"system", "You are a research assistant. Based *only* on the provided research goal and the aggregated results from multiple web research sub-queries, synthesize a comprehensive final report that directly addresses the original goal. Integrate the findings smoothly. DO NOT USE ANY TOOLS OR FUNCTIONS. Do not add any preamble like 'Based on the provided text...'."});
         synthesis_context.push_back({"user", "Original Research Goal: " + goal + "\n\nAggregated Research Findings:\n" + aggregated_results});
 
-        std::string final_response_str = client.makeApiCall(synthesis_context, false); // No tools needed here
-        nlohmann::json final_response_json;
-        try {
-            final_response_json = nlohmann::json::parse(final_response_str);
-        } catch (const nlohmann::json::parse_error& e) {
-            std::cerr << "JSON Parsing Error (Final Synthesis): " << e.what() << "\nResponse was: " << final_response_str << "\n";
-            // Return the aggregated results instead of a synthesis error, as they might still be useful
-            return "Error: Failed to parse final synthesis response from LLM. Raw aggregated results follow:\n\n" + aggregated_results;
-        }
+        // Try up to 3 times with increasingly strict instructions if we keep getting tool calls
+        std::string final_report;
+        bool synthesis_success = false;
+        
+        for (int attempt = 0; attempt < 3 && !synthesis_success; attempt++) {
+            if (attempt > 0) {
+                // Add even stronger instructions on retry
+                synthesis_context[0].content = "CRITICAL INSTRUCTION: You are a research assistant. Your ONLY task is to write a plain text report based on the provided research. DO NOT USE ANY TOOLS OR FUNCTIONS WHATSOEVER. DO NOT INCLUDE ANY <function> TAGS OR TOOL CALLS. Just write normal text.";
+            }
+            
+            std::string final_response_str = client.makeApiCall(synthesis_context, false); // No tools needed here
+            nlohmann::json final_response_json;
+            try {
+                final_response_json = nlohmann::json::parse(final_response_str);
+            } catch (const nlohmann::json::parse_error& e) {
+                std::cerr << "JSON Parsing Error (Final Synthesis): " << e.what() << "\nResponse was: " << final_response_str << "\n";
+                if (attempt == 2) {
+                    // Return the aggregated results instead of a synthesis error, as they might still be useful
+                    return "Error: Failed to parse final synthesis response from LLM. Raw aggregated results follow:\n\n" + aggregated_results;
+                }
+                continue; // Try again
+            }
 
-        if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message") || !final_response_json["choices"][0]["message"].contains("content")) {
-            std::cerr << "Error: Invalid API response structure (Final Synthesis).\nResponse was: " << final_response_str << "\n";
-             // Return the aggregated results instead of a synthesis error
-            return "Error: Invalid response structure from LLM during final synthesis. Raw aggregated results follow:\n\n" + aggregated_results;
+            // Check for tool_calls in the response - if present, we need to retry
+            if (final_response_json.contains("choices") && 
+                !final_response_json["choices"].empty() && 
+                final_response_json["choices"][0].contains("message")) {
+                
+                auto message = final_response_json["choices"][0]["message"];
+                
+                // Check if the message contains tool_calls
+                if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
+                    std::cerr << "Warning: Final synthesis response contains tool_calls. Retrying with stronger instructions.\n";
+                    continue; // Try again with stronger instructions
+                }
+                
+                // If we have content, we're good
+                if (message.contains("content") && message["content"].is_string()) {
+                    final_report = message["content"];
+                    synthesis_success = true;
+                    break;
+                }
+            }
+            
+            // If we get here without setting synthesis_success, there was a problem with the response structure
+            if (attempt == 2) {
+                std::cerr << "Error: Invalid API response structure (Final Synthesis).\nResponse was: " << final_response_str << "\n";
+                // Return the aggregated results instead of a synthesis error
+                return "Error: Invalid response structure from LLM during final synthesis. Raw aggregated results follow:\n\n" + aggregated_results;
+            }
         }
-
-        std::string final_report = final_response_json["choices"][0]["message"]["content"];
+        
+        // If all attempts failed, return a fallback with the raw results
+        if (!synthesis_success) {
+            return "I conducted deep research on '" + goal + "' but encountered technical difficulties synthesizing the final report. Here are the raw research findings:\n\n" + aggregated_results;
+        }
         std::cout << "[Deep research complete for: " << goal << "]\n"; std::cout.flush();
         return final_report; // Return the synthesized report
 
