@@ -91,37 +91,87 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
     }
 }
 
+// Add a function to clean up orphaned tool messages
+void PersistenceManager::cleanupOrphanedToolMessages() {
+    // This query finds tool messages that don't have a preceding assistant message with tool_calls
+    const char* sql = R"(
+        DELETE FROM messages 
+        WHERE role = 'tool' 
+        AND id NOT IN (
+            SELECT t.id FROM messages t
+            JOIN messages a ON a.id < t.id
+            WHERE t.role = 'tool'
+            AND a.role = 'assistant'
+            AND a.content LIKE '%"tool_calls"%'
+            AND (
+                SELECT COUNT(*) FROM messages 
+                WHERE id > a.id AND id < t.id AND role = 'assistant'
+            ) = 0
+        )
+    )";
+    
+    try {
+        impl->exec("BEGIN");
+        impl->exec(sql);
+        impl->exec("COMMIT");
+        std::cerr << "Cleaned up orphaned tool messages from database" << std::endl;
+    } catch (const std::exception& e) {
+        impl->exec("ROLLBACK");
+        std::cerr << "Error cleaning up orphaned tool messages: " << e.what() << std::endl;
+    }
+}
+
 // Removed duplicate definition of saveToolMessage
 
 std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
-    const std::string sql = R"(
-        WITH system_msg AS (
-            SELECT * FROM messages WHERE role='system' ORDER BY id DESC LIMIT 1
-        ),
-        recent_msgs AS (
+    // First, get the most recent system message (if any)
+    const std::string system_sql = "SELECT id, role, content, timestamp FROM messages WHERE role='system' ORDER BY id DESC LIMIT 1";
+    
+    sqlite3_stmt* system_stmt;
+    sqlite3_prepare_v2(impl->db, system_sql.c_str(), -1, &system_stmt, nullptr);
+    
+    std::vector<Message> history;
+    if (sqlite3_step(system_stmt) == SQLITE_ROW) {
+        Message system_msg;
+        system_msg.id = sqlite3_column_int(system_stmt, 0);
+        system_msg.role = reinterpret_cast<const char*>(sqlite3_column_text(system_stmt, 1));
+        system_msg.content = reinterpret_cast<const char*>(sqlite3_column_text(system_stmt, 2));
+        const unsigned char* ts = sqlite3_column_text(system_stmt, 3);
+        system_msg.timestamp = ts ? reinterpret_cast<const char*>(ts) : "";
+        history.push_back(system_msg);
+    }
+    sqlite3_finalize(system_stmt);
+    
+    // Now get recent messages in chronological order
+    const std::string msgs_sql = R"(
+        WITH recent_msgs AS (
             SELECT * FROM messages 
-            WHERE role IN ('user','assistant', 'tool') -- Include 'tool' role here
+            WHERE role IN ('user','assistant', 'tool')
             ORDER BY id DESC 
             LIMIT ?
         )
-        SELECT id, role, content FROM system_msg
-        UNION ALL
-        SELECT id, role, content FROM recent_msgs ORDER BY id ASC
+        SELECT id, role, content, timestamp FROM recent_msgs ORDER BY id ASC
     )";
 
-    sqlite3_stmt* stmt;
-    sqlite3_prepare_v2(impl->db, sql.c_str(), -1, &stmt, nullptr);
-    sqlite3_bind_int(stmt, 1, max_pairs * 2); // 2 messages per pair
+    sqlite3_stmt* msgs_stmt;
+    sqlite3_prepare_v2(impl->db, msgs_sql.c_str(), -1, &msgs_stmt, nullptr);
+    sqlite3_bind_int(msgs_stmt, 1, max_pairs * 2); // 2 messages per pair
     
-    std::vector<Message> history;
-    while(sqlite3_step(stmt) == SQLITE_ROW) {
-        history.push_back({
-            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)),
-            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)),
-            sqlite3_column_int(stmt, 0)
-        });
+    // Process the messages to ensure tool messages only follow tool_calls
+    std::vector<Message> recent_messages;
+    while(sqlite3_step(msgs_stmt) == SQLITE_ROW) {
+        Message msg;
+        msg.id = sqlite3_column_int(msgs_stmt, 0);
+        msg.role = reinterpret_cast<const char*>(sqlite3_column_text(msgs_stmt, 1));
+        msg.content = reinterpret_cast<const char*>(sqlite3_column_text(msgs_stmt, 2));
+        const unsigned char* ts = sqlite3_column_text(msgs_stmt, 3);
+        msg.timestamp = ts ? reinterpret_cast<const char*>(ts) : "";
+        recent_messages.push_back(msg);
     }
-    sqlite3_finalize(stmt);
+    sqlite3_finalize(msgs_stmt);
+    
+    // Add recent messages to history
+    history.insert(history.end(), recent_messages.begin(), recent_messages.end());
     
     // Add default system message if history is empty
     if (history.empty()) {

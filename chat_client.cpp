@@ -52,6 +52,9 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     payload["model"] = this->model_name; // Use member variable
     payload["messages"] = nlohmann::json::array();
     
+    // Track if we've seen a tool_calls message to validate tool responses
+    bool has_tool_calls = false;
+    
     // Add conversation history
     for (const auto& msg : context) {
         // Handle different message structures (simple content vs. tool calls/responses)
@@ -61,12 +64,20 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
                 auto content_json = nlohmann::json::parse(msg.content);
                 if (content_json.contains("tool_calls")) {
                      payload["messages"].push_back({{"role", msg.role}, {"content", nullptr}, {"tool_calls", content_json["tool_calls"]}});
+                     has_tool_calls = true; // Mark that we've seen a tool_calls message
                      continue; // Skip adding simple content if tool_calls are present
                 }
             } catch (const nlohmann::json::parse_error& e) {
                 // Not valid JSON or doesn't contain tool_calls, treat as regular content
             }
         } else if (msg.role == "tool") {
+             // Skip tool messages if we haven't seen a tool_calls message
+             if (!has_tool_calls) {
+                 std::cerr << "Warning: Skipping 'tool' message with ID " << msg.id 
+                           << " because there's no preceding message with tool_calls" << std::endl;
+                 continue;
+             }
+             
              try {
                 // The content is expected to be a JSON string like:
                 // {"tool_call_id": "...", "name": "...", "content": "..."}
@@ -81,6 +92,7 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
              } catch (const nlohmann::json::parse_error& e) {
                  // Handle potential error or malformed tool message content
                  std::cerr << "Warning: Could not parse tool message content for ID " << msg.id << std::endl;
+                 continue; // Skip this malformed tool message
              }
         }
         // Default handling for user messages and simple assistant messages
@@ -179,6 +191,9 @@ bool ChatClient::handleToolExecutionAndFinalResponse(
 
 
 void ChatClient::run() {
+    // Clean up any orphaned tool messages on startup
+    db.cleanupOrphanedToolMessages();
+    
     std::cout << "Chatting with " << this->model_name << " - Type your message (Ctrl+D to exit)\n"; // Updated greeting
     static int synthetic_tool_call_counter = 0; // Counter for synthetic IDs (though fallback parsing removed)
     
