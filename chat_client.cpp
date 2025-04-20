@@ -169,6 +169,9 @@ bool ChatClient::handleToolExecutionAndFinalResponse(
 
     // Save the tool's response message using the dedicated function
     db.saveToolMessage(tool_result_content.dump());
+    
+    // Log the tool result length for debugging
+    std::cerr << "Tool result length: " << tool_result_str.length() << " characters" << std::endl;
 
     // Reload context INCLUDING the tool result
     context = db.getContextHistory(); // Reload context

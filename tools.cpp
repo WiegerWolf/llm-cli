@@ -823,9 +823,13 @@ std::string ToolManager::visit_url(const std::string& url_str) {
 
     gumbo_destroy_output(&kGumboDefaultOptions, output);
 
-    // No longer truncating the content to allow full page capture
-
-    return extracted_text.empty() ? "No text content found." : extracted_text;
+    // Ensure we're returning the full page content without any truncation
+    std::string result = extracted_text.empty() ? "No text content found." : extracted_text;
+    
+    // Log the content length to help with debugging
+    std::cerr << "URL content length: " << result.length() << " characters" << std::endl;
+    
+    return result;
 }
 
 
