@@ -81,6 +81,20 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
     // Note: The 'content' here is expected to be a JSON string containing
     // tool_call_id, name, and the actual tool result content.
     // The role is hardcoded as "tool".
+    
+    // Validate that the content is proper JSON with required fields
+    try {
+        auto json_content = nlohmann::json::parse(content);
+        if (!json_content.contains("tool_call_id") || 
+            !json_content.contains("name") || 
+            !json_content.contains("content")) {
+            throw std::runtime_error("Tool message missing required fields");
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Invalid tool message content: " << e.what() << std::endl;
+        // Continue anyway to maintain backward compatibility
+    }
+    
     impl->exec("BEGIN");
     try {
         impl->insertMessage({"tool", content});
@@ -102,7 +116,7 @@ void PersistenceManager::cleanupOrphanedToolMessages() {
             JOIN messages a ON a.id < t.id
             WHERE t.role = 'tool'
             AND a.role = 'assistant'
-            AND a.content LIKE '%"tool_calls"%'
+            AND (a.content LIKE '%"tool_calls"%' OR a.content LIKE '%<function>%')
             AND (
                 SELECT COUNT(*) FROM messages 
                 WHERE id > a.id AND id < t.id AND role = 'assistant'

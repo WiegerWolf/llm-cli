@@ -82,12 +82,21 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
                 // The content is expected to be a JSON string like:
                 // {"tool_call_id": "...", "name": "...", "content": "..."}
                 auto content_json = nlohmann::json::parse(msg.content);
-                payload["messages"].push_back({
-                    {"role", msg.role}, 
-                    {"tool_call_id", content_json["tool_call_id"]}, 
-                    {"name", content_json["name"]},
-                    {"content", content_json["content"]} // The actual tool result string
-                });
+                // Make sure all required fields exist before using them
+                if (content_json.contains("tool_call_id") && 
+                    content_json.contains("name") && 
+                    content_json.contains("content")) {
+                    payload["messages"].push_back({
+                        {"role", msg.role}, 
+                        {"tool_call_id", content_json["tool_call_id"]}, 
+                        {"name", content_json["name"]},
+                        {"content", content_json["content"]} // The actual tool result string
+                    });
+                } else {
+                    std::cerr << "Warning: Tool message with ID " << msg.id 
+                              << " is missing required fields (tool_call_id, name, or content)" << std::endl;
+                    continue; // Skip this malformed tool message
+                }
                 continue; // Skip default content handling
              } catch (const nlohmann::json::parse_error& e) {
                  // Handle potential error or malformed tool message content
