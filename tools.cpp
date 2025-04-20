@@ -823,10 +823,7 @@ std::string ToolManager::visit_url(const std::string& url_str) {
 
     gumbo_destroy_output(&kGumboDefaultOptions, output);
 
-    const size_t max_len = 4000; 
-    if (extracted_text.length() > max_len) {
-        extracted_text = extracted_text.substr(0, max_len) + "... [truncated]";
-    }
+    // No longer truncating the content to allow full page capture
 
     return extracted_text.empty() ? "No text content found." : extracted_text;
 }
