@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <cstdlib>
+#include <nlohmann/json.hpp>
 
 struct PersistenceManager::Impl {
     sqlite3* db;
