@@ -87,6 +87,12 @@ add_executable(llm
     database.h
     tools.cpp   
     tools.h     
+    tools_impl/search_web_tool.cpp
+    tools_impl/visit_url_tool.cpp
+    tools_impl/datetime_tool.cpp
+    tools_impl/read_history_tool.cpp
+    tools_impl/web_research_tool.cpp
+    tools_impl/deep_research_tool.cpp
 )
 target_link_libraries(llm PRIVATE 
     ${CURL_LIBRARIES} 
