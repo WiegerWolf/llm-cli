@@ -24,14 +24,13 @@ public:
     // Needs ChatClient for tools like web_research that need to make internal API calls
     std::string execute_tool(PersistenceManager& db, class ChatClient& client, const std::string& tool_name, const nlohmann::json& args);
 
-private:
-    // Tool definitions (moved from main.cpp)
-    const nlohmann::json search_web_tool;
-    const nlohmann::json get_current_datetime_tool;
-    const nlohmann::json visit_url_tool;
-    const nlohmann::json read_history_tool;
-    const nlohmann::json web_research_tool;
-    const nlohmann::json deep_research_tool; // Added declaration
+// Tool definitions (moved from main.cpp)
+nlohmann::json search_web_tool;
+nlohmann::json get_current_datetime_tool;
+nlohmann::json visit_url_tool;
+nlohmann::json read_history_tool;
+nlohmann::json web_research_tool;
+nlohmann::json deep_research_tool; // Added declaration
 };
 
 // Tool implementations (free functions)
