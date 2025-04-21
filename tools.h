@@ -32,11 +32,12 @@ private:
     const nlohmann::json read_history_tool;
     const nlohmann::json web_research_tool;
     const nlohmann::json deep_research_tool; // Added declaration
+};
 
+// Tool implementations (free functions)
 #include "tools_impl/search_web_tool.h"
 #include "tools_impl/visit_url_tool.h"
 #include "tools_impl/datetime_tool.h"
 #include "tools_impl/read_history_tool.h"
 #include "tools_impl/web_research_tool.h"
 #include "tools_impl/deep_research_tool.h"
-};
