@@ -33,24 +33,10 @@ private:
     const nlohmann::json web_research_tool;
     const nlohmann::json deep_research_tool; // Added declaration
 
-    // Tool implementations (moved from main.cpp)
-    std::string search_web(const std::string& query);
-    std::string visit_url(const std::string& url_str);
-    std::string get_current_datetime();
-    // Takes PersistenceManager reference now
-    std::string read_history(PersistenceManager& db, const std::string& start_time, const std::string& end_time, size_t limit);
-    // Internal implementation for web research logic
-    std::string perform_web_research(PersistenceManager& db, ChatClient& client, const std::string& topic);
-    // Internal implementation for deep research logic
-    std::string perform_deep_research(PersistenceManager& db, ChatClient& client, const std::string& goal);
-
-    // HTML parsing helpers (moved from main.cpp)
-    std::string parse_brave_search_html(const std::string& html); // Parses Brave Search results
-    std::string gumbo_get_text(GumboNode* node); // Use GumboNode directly (no struct keyword needed)
-    // Static helpers can remain static or become private members
-    static GumboNode* find_node_by_tag(GumboNode* node, GumboTag tag); // Use GumboTag directly
-    static GumboNode* find_node_by_tag_and_class(GumboNode* node, GumboTag tag, const std::string& class_name); // Use GumboTag directly
-
-    // CURL write callback (can be static or moved if only used here)
-    static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output);
+#include "tools_impl/search_web_tool.h"
+#include "tools_impl/visit_url_tool.h"
+#include "tools_impl/datetime_tool.h"
+#include "tools_impl/read_history_tool.h"
+#include "tools_impl/web_research_tool.h"
+#include "tools_impl/deep_research_tool.h"
 };
