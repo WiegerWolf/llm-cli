@@ -87,6 +87,12 @@ add_executable(llm
     database.h
     tools.cpp   
     tools.h     
+    tools_impl/search_web_tool.cpp
+    tools_impl/visit_url_tool.cpp
+    tools_impl/datetime_tool.cpp
+    tools_impl/read_history_tool.cpp
+    tools_impl/web_research_tool.cpp
+    tools_impl/deep_research_tool.cpp
 )
 target_link_libraries(llm PRIVATE 
     ${CURL_LIBRARIES} 
@@ -98,7 +104,11 @@ target_link_libraries(llm PRIVATE
 )
 
 # Ensure Gumbo includes are available (already present, just confirming)
-target_include_directories(llm PRIVATE ${GUMBO_INCLUDE_DIRS} ${CMAKE_BINARY_DIR})
+target_include_directories(llm PRIVATE
+    ${GUMBO_INCLUDE_DIRS}
+    ${CMAKE_BINARY_DIR}
+    ${PROJECT_SOURCE_DIR}
+)
 
 # Add option for OPENROUTER_API_KEY
 option(OPENROUTER_API_KEY "OpenRouter LLM API Key to embed at compile time" "")
