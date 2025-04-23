@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -16,6 +17,9 @@ private:
     ToolManager toolManager; 
     std::string api_base = "https://openrouter.ai/api/v1/chat/completions";
     std::string model_name = "openai/gpt-4.1-nano"; 
+
+    std::optional<std::string> promptUserInput();   // lee línea o devuelve nullopt para salir
+    void processTurn(const std::string& user_input); // maneja todo el flujo de la conversación para un turno
 
     // Helper function for tool execution flow
     bool handleToolExecutionAndFinalResponse(
