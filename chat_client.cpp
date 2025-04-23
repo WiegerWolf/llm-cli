@@ -265,324 +265,337 @@ std::optional<std::string> ChatClient::promptUserInput() {
     return input;
 }
 
-void ChatClient::processTurn(const std::string& input) {
-    try {
-        db.saveUserMessage(input);
-        auto context = db.getContextHistory();
+void ChatClient::saveUserInput(const std::string& input) {
+    db.saveUserMessage(input);
+}
 
-        std::string first_api_response_str = makeApiCall(context, true);
-        nlohmann::json first_api_response = nlohmann::json::parse(first_api_response_str);
-
-        // --- Check for API Errors first ---
-        bool tool_call_flow_completed = false; // Flag to track if tool flow happened
-        nlohmann::json response_message; // Will hold the message object or be empty on error
-        std::string potential_fallback_content; // Holds content for fallback parsing
-
-        if (first_api_response.contains("error")) {
-            std::cerr << "API Error Received: " << first_api_response["error"].dump(2) << std::endl;
-            // Check for the specific recoverable error
-            if (first_api_response["error"].contains("code") &&
-                first_api_response["error"]["code"] == "tool_use_failed" &&
-                first_api_response["error"].contains("failed_generation") &&
-                first_api_response["error"]["failed_generation"].is_string())
-            {
-                potential_fallback_content = first_api_response["error"]["failed_generation"];
-                std::cout << "[API reported tool_use_failed, attempting fallback parsing on failed_generation...]\n";
-                std::cout.flush();
-                // Fall through to the fallback parsing logic below
-            } else {
-                // Unrecoverable API error, skip processing this turn
-                return;
-            }
-        // --- Check for standard successful response ---
-        } else if (first_api_response.contains("choices") && !first_api_response["choices"].empty() && first_api_response["choices"][0].contains("message")) {
-             response_message = first_api_response["choices"][0]["message"];
-             // Check for standard tool calls first
-             if (response_message.contains("tool_calls") && !response_message["tool_calls"].is_null()) {
-                // Proceed to Path 1: Standard Tool Calls
-             }
-             // Check for content that might contain fallback syntax
-             else if (response_message.contains("content") && response_message["content"].is_string()) {
-                 potential_fallback_content = response_message["content"];
-                 // Fall through to the fallback parsing logic below
-             }
-             // Else: Content is null or not a string, will be handled by the final block
-        } else if (first_api_response.contains("error") &&
-                   first_api_response["error"].contains("code") &&
-                   first_api_response["error"]["code"] == "tool_use_failed" &&
-                   first_api_response["error"].contains("failed_generation") &&
-                   first_api_response["error"]["failed_generation"].is_string()) {
-            // Additional fallback: handle tool_use_failed error with failed_generation string
-            potential_fallback_content = first_api_response["error"]["failed_generation"];
-            std::cout << "[API returned tool_use_failed with failed_generation fallback string, attempting fallback parsing...]\n";
+/* ======== API‑error & fallback ======== */
+bool ChatClient::handleApiError(const nlohmann::json& api_response,
+                                std::string& fallback_content,
+                                nlohmann::json& response_message)
+{
+    // --- Check for API Errors first ---
+    if (api_response.contains("error")) {
+        std::cerr << "API Error Received: " << api_response["error"].dump(2) << std::endl;
+        // Check for the specific recoverable error
+        if (api_response["error"].contains("code") &&
+            api_response["error"]["code"] == "tool_use_failed" &&
+            api_response["error"].contains("failed_generation") &&
+            api_response["error"]["failed_generation"].is_string())
+        {
+            fallback_content = api_response["error"]["failed_generation"];
+            std::cout << "[API reported tool_use_failed, attempting fallback parsing on failed_generation...]\n";
             std::cout.flush();
             // Fall through to the fallback parsing logic below
         } else {
-             // Unexpected response structure
-             std::cerr << "Error: Invalid API response structure (First Response).\nResponse was: " << first_api_response_str << "\n";
-             return;
+            // Unrecoverable API error, skip processing this turn
+            return true;
+        }
+    // --- Check for standard successful response ---
+    } else if (api_response.contains("choices") && !api_response["choices"].empty() && api_response["choices"][0].contains("message")) {
+         response_message = api_response["choices"][0]["message"];
+         // Check for standard tool calls first
+         if (response_message.contains("tool_calls") && !response_message["tool_calls"].is_null()) {
+            // Proceed to Path 1: Standard Tool Calls
+         }
+         // Check for content that might contain fallback syntax
+         else if (response_message.contains("content") && response_message["content"].is_string()) {
+             fallback_content = response_message["content"];
+             // Fall through to the fallback parsing logic below
+         }
+         // Else: Content is null or not a string, will be handled by the final block
+    } else if (api_response.contains("error") &&
+               api_response["error"].contains("code") &&
+               api_response["error"]["code"] == "tool_use_failed" &&
+               api_response["error"].contains("failed_generation") &&
+               api_response["error"]["failed_generation"].is_string()) {
+        // Additional fallback: handle tool_use_failed error with failed_generation string
+        fallback_content = api_response["error"]["failed_generation"];
+        std::cout << "[API returned tool_use_failed with failed_generation fallback string, attempting fallback parsing...]\n";
+        std::cout.flush();
+        // Fall through to the fallback parsing logic below
+    } else {
+         // Unexpected response structure
+         std::cerr << "Error: Invalid API response structure (First Response).\nResponse was: " << api_response.dump() << "\n";
+         return true;
+    }
+    return false;
+}
+
+/* ======== tool_calls estándar ======== */
+bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message,
+                                          std::vector<Message>& context)
+{
+    bool completed = false;
+    if (!response_message.is_null() && response_message.contains("tool_calls") && !response_message["tool_calls"].is_null()) {
+        // Save the assistant's message requesting tool use
+        // The content should be the raw JSON string of the message object
+        db.saveAssistantMessage(response_message.dump()); 
+        context = db.getContextHistory(); // Reload context including the tool call message
+
+        // Execute tools and get final response via helper
+        for (const auto& tool_call : response_message["tool_calls"]) {
+            if (!tool_call.contains("id") || !tool_call.contains("function") || !tool_call["function"].contains("name") || !tool_call["function"].contains("arguments")) {
+                 std::cerr << "Error: Malformed tool_call object received.\n";
+                 continue; // Skip this tool call
+            }
+            std::string tool_call_id = tool_call["id"];
+            std::string function_name = tool_call["function"]["name"];
+            nlohmann::json function_args;
+            try {
+                 // Arguments are expected to be a JSON string that needs parsing
+                 std::string args_str = tool_call["function"]["arguments"].get<std::string>();
+                 function_args = nlohmann::json::parse(args_str);
+            } catch (const nlohmann::json::parse_error& e) {
+                 std::cerr << "JSON Parsing Error (Tool Arguments): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
+                 continue; // Skip this tool call
+            } catch (const nlohmann::json::type_error& e) {
+                 // Handle cases where arguments might not be a string initially
+                 std::cerr << "JSON Type Error (Tool Arguments): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
+                 continue; // Skip this tool call
+            }
+
+            // Call the helper function, passing the toolManager instance
+            if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
+                 completed = true; // Mark success for at least one tool
+            } else {
+                 // Error was already printed by the helper or execute_tool.
+                 // Decide if we should stop processing further tool calls in this turn? For now, continue.
+            }
+            // Context is updated within the helper after saving tool result
+        }
+    }
+    return completed;              // true si al menos un tool call se procesó
+}
+
+/* ======== parser fallback <function> ======== */
+bool ChatClient::executeFallbackFunctionTags(const std::string& content,
+                                             std::vector<Message>& context)
+{
+    bool any_executed = false;
+    std::string content_str = content;
+    size_t search_pos = 0;
+
+    while (true) {
+        size_t func_start = std::string::npos;
+        size_t name_start = std::string::npos;
+        const std::string start_tag1 = "<function>";
+        const std::string start_tag2 = "<function=";
+
+        size_t start_pos1 = content_str.find(start_tag1, search_pos);
+        size_t start_pos2 = content_str.find(start_tag2, search_pos);
+
+        if (start_pos1 != std::string::npos && (start_pos2 == std::string::npos || start_pos1 < start_pos2)) {
+            func_start = start_pos1;
+            name_start = func_start + start_tag1.length();
+        } else if (start_pos2 != std::string::npos) {
+            func_start = start_pos2;
+            name_start = func_start + start_tag2.length();
+        } else {
+            break; // No more function tags found
         }
 
+        size_t func_end = content_str.find("</function>", name_start);
+        if (func_end == std::string::npos) {
+            break; // No closing tag found, stop
+        }
 
-        // --- Path 1: Standard Tool Calls ---
-        // This block only runs if response_message is valid and contains tool_calls
-        if (!response_message.is_null() && response_message.contains("tool_calls") && !response_message["tool_calls"].is_null()) {
-            // Save the assistant's message requesting tool use
-            // The content should be the raw JSON string of the message object
-            db.saveAssistantMessage(response_message.dump()); 
-            context = db.getContextHistory(); // Reload context including the tool call message
+        // Find the start of arguments: either '{', '(', OR ','
+        size_t args_delimiter_start = content_str.find_first_of("{(,", name_start);
 
-            // Execute tools and get final response via helper
-            for (const auto& tool_call : response_message["tool_calls"]) {
-                if (!tool_call.contains("id") || !tool_call.contains("function") || !tool_call["function"].contains("name") || !tool_call["function"].contains("arguments")) {
-                     std::cerr << "Error: Malformed tool_call object received.\n";
-                     continue; // Skip this tool call
-                }
-                std::string tool_call_id = tool_call["id"];
-                std::string function_name = tool_call["function"]["name"];
-                nlohmann::json function_args;
-                try {
-                     // Arguments are expected to be a JSON string that needs parsing
-                     std::string args_str = tool_call["function"]["arguments"].get<std::string>();
-                     function_args = nlohmann::json::parse(args_str);
-                } catch (const nlohmann::json::parse_error& e) {
-                     std::cerr << "JSON Parsing Error (Tool Arguments): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
-                     continue; // Skip this tool call
-                } catch (const nlohmann::json::type_error& e) {
-                     // Handle cases where arguments might not be a string initially
-                     std::cerr << "JSON Type Error (Tool Arguments): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
-                     continue; // Skip this tool call
-                }
+        if (args_delimiter_start != std::string::npos && args_delimiter_start >= func_end) {
+            args_delimiter_start = std::string::npos; // Treat as no delimiter before end tag
+        }
 
-                // Call the helper function, passing the toolManager instance
-                if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
-                     tool_call_flow_completed = true; // Mark success for at least one tool
-                } else {
-                     // Error was already printed by the helper or execute_tool.
-                     // Decide if we should stop processing further tool calls in this turn? For now, continue.
-                }
-                // Context is updated within the helper after saving tool result
-            }
-        // --- Path 2: Fallback <function> parsing (Now uses potential_fallback_content) ---
-        } else if (!potential_fallback_content.empty()) {
-            std::string content_str = potential_fallback_content;
-            size_t search_pos = 0;
-            bool any_function_executed = false;
+        std::string function_name;
+        nlohmann::json function_args = nlohmann::json::object();
+        bool parsed_args_or_no_args_needed = false;
 
-            while (true) {
-                size_t func_start = std::string::npos;
-                size_t name_start = std::string::npos;
-                const std::string start_tag1 = "<function>";
-                const std::string start_tag2 = "<function=";
+        if (args_delimiter_start != std::string::npos) {
+            function_name = content_str.substr(name_start, args_delimiter_start - name_start);
+            char open_delim = content_str[args_delimiter_start];
 
-                size_t start_pos1 = content_str.find(start_tag1, search_pos);
-                size_t start_pos2 = content_str.find(start_tag2, search_pos);
+            if (open_delim == '{' || open_delim == '(') {
+                char close_delim = (open_delim == '{') ? '}' : ')';
+                size_t search_end_pos = func_end - 1;
+                size_t args_end = content_str.rfind(close_delim, search_end_pos);
 
-                if (start_pos1 != std::string::npos && (start_pos2 == std::string::npos || start_pos1 < start_pos2)) {
-                    func_start = start_pos1;
-                    name_start = func_start + start_tag1.length();
-                } else if (start_pos2 != std::string::npos) {
-                    func_start = start_pos2;
-                    name_start = func_start + start_tag2.length();
-                } else {
-                    break; // No more function tags found
-                }
-
-                size_t func_end = content_str.find("</function>", name_start);
-                if (func_end == std::string::npos) {
-                    break; // No closing tag found, stop
-                }
-
-                // Find the start of arguments: either '{', '(', OR ','
-                size_t args_delimiter_start = content_str.find_first_of("{(,", name_start);
-
-                if (args_delimiter_start != std::string::npos && args_delimiter_start >= func_end) {
-                    args_delimiter_start = std::string::npos; // Treat as no delimiter before end tag
-                }
-
-                std::string function_name;
-                nlohmann::json function_args = nlohmann::json::object();
-                bool parsed_args_or_no_args_needed = false;
-
-                if (args_delimiter_start != std::string::npos) {
-                    function_name = content_str.substr(name_start, args_delimiter_start - name_start);
-                    char open_delim = content_str[args_delimiter_start];
-
-                    if (open_delim == '{' || open_delim == '(') {
-                        char close_delim = (open_delim == '{') ? '}' : ')';
-                        size_t search_end_pos = func_end - 1;
-                        size_t args_end = content_str.rfind(close_delim, search_end_pos);
-
-                        if (args_end != std::string::npos && args_end > args_delimiter_start) {
-                            std::string args_str = content_str.substr(args_delimiter_start, args_end - args_delimiter_start + 1);
-                            try {
-                                std::string trimmed_args = args_str;
-                                trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
-                                trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
-                                if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
-                                    trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
-                                    trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
-                                    trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
-                                }
-                                function_args = nlohmann::json::parse(trimmed_args);
-                                parsed_args_or_no_args_needed = true;
-                            } catch (const nlohmann::json::parse_error& e) {
-                                std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
-                                function_args = nlohmann::json::object();
-                                parsed_args_or_no_args_needed = true;
-                            }
-                        } else {
-                            std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n";
+                if (args_end != std::string::npos && args_end > args_delimiter_start) {
+                    std::string args_str = content_str.substr(args_delimiter_start, args_end - args_delimiter_start + 1);
+                    try {
+                        std::string trimmed_args = args_str;
+                        trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
+                        trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
+                        if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
+                            trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
+                            trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
+                            trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
                         }
-                    } else if (open_delim == ',') {
-                        size_t args_start_pos = args_delimiter_start + 1;
-                        size_t args_end_pos = func_end;
-                        if (args_end_pos > args_start_pos) {
-                            std::string args_str = content_str.substr(args_start_pos, args_end_pos - args_start_pos);
-                            try {
-                                function_args = nlohmann::json::parse(args_str);
-                                parsed_args_or_no_args_needed = true;
-                            } catch (const nlohmann::json::parse_error& e) {
-                                std::cerr << "Warning: Failed to parse arguments JSON after comma in <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
-                                function_args = nlohmann::json::object();
-                                parsed_args_or_no_args_needed = true;
-                            }
-                        } else {
-                            std::cerr << "Warning: Found comma delimiter but no arguments before </function>.\n";
-                            function_args = nlohmann::json::object();
-                            parsed_args_or_no_args_needed = true;
-                        }
-                    }
-                } else {
-                    // No explicit delimiter found, but check for special case:
-                    // function name immediately followed by '(' or '{' (e.g., <function(search_web={"query":...})</function>)
-                    size_t brace_pos = content_str.find_first_of("{(", name_start);
-                    if (brace_pos != std::string::npos && brace_pos < func_end) {
-                        function_name = content_str.substr(name_start, brace_pos - name_start);
-                        char open_delim = content_str[brace_pos];
-                        char close_delim = (open_delim == '{') ? '}' : ')';
-                        size_t search_end_pos = func_end - 1;
-                        size_t args_end = content_str.rfind(close_delim, search_end_pos);
-
-                        if (args_end != std::string::npos && args_end > brace_pos) {
-                            std::string args_str = content_str.substr(brace_pos, args_end - brace_pos + 1);
-                            try {
-                                std::string trimmed_args = args_str;
-                                trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
-                                trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
-                                if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
-                                    trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
-                                    trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
-                                    trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
-                                }
-                                function_args = nlohmann::json::parse(trimmed_args);
-                                parsed_args_or_no_args_needed = true;
-                            } catch (const nlohmann::json::parse_error& e) {
-                                std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
-                                function_args = nlohmann::json::object();
-                                parsed_args_or_no_args_needed = true;
-                            }
-                        } else {
-                            std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n";
-                            parsed_args_or_no_args_needed = true;
-                        }
-                    } else {
-                        function_name = content_str.substr(name_start, func_end - name_start);
+                        function_args = nlohmann::json::parse(trimmed_args);
+                        parsed_args_or_no_args_needed = true;
+                    } catch (const nlohmann::json::parse_error& e) {
+                        std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
+                        function_args = nlohmann::json::object();
                         parsed_args_or_no_args_needed = true;
                     }
+                } else {
+                    std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n";
                 }
-
-                if (!function_name.empty()) {
-                    function_name.erase(0, function_name.find_first_not_of(" \n\r\t"));
-                    function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
-
-                    // Additional cleanup: remove trailing stray characters like '[', '(', '{'
-                    while (!function_name.empty() && 
-                           (function_name.back() == '[' || function_name.back() == '(' || function_name.back() == '{')) {
-                        function_name.pop_back();
-                        // Also trim any whitespace after popping
-                        while (!function_name.empty() && isspace(function_name.back())) {
-                            function_name.pop_back();
-                        }
+            } else if (open_delim == ',') {
+                size_t args_start_pos = args_delimiter_start + 1;
+                size_t args_end_pos = func_end;
+                if (args_end_pos > args_start_pos) {
+                    std::string args_str = content_str.substr(args_start_pos, args_end_pos - args_start_pos);
+                    try {
+                        function_args = nlohmann::json::parse(args_str);
+                        parsed_args_or_no_args_needed = true;
+                    } catch (const nlohmann::json::parse_error& e) {
+                        std::cerr << "Warning: Failed to parse arguments JSON after comma in <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
+                        function_args = nlohmann::json::object();
+                        parsed_args_or_no_args_needed = true;
                     }
+                } else {
+                    std::cerr << "Warning: Found comma delimiter but no arguments before </function>.\n";
+                    function_args = nlohmann::json::object();
+                    parsed_args_or_no_args_needed = true;
                 }
-
-                // *** FIX: Handle web_research fallback using 'query' instead of 'topic' ***
-                if (function_name == "web_research" && function_args.contains("query") && !function_args.contains("topic")) {
-                    std::cout << "[Fallback parser: Renaming 'query' to 'topic' for web_research]\n"; std::cout.flush();
-                    function_args["topic"] = function_args["query"];
-                    function_args.erase("query");
-                }
-
-                if (!function_name.empty() && parsed_args_or_no_args_needed) {
-                    // If args are empty, try to recover by parsing the first {...} block inside the tag
-                    if (function_args.empty()) {
-                        size_t brace_start = content_str.find('{', name_start);
-                        size_t brace_end = content_str.rfind('}', func_end - 1);
-                        if (brace_start != std::string::npos && brace_end != std::string::npos && brace_end > brace_start) {
-                            std::string possible_args = content_str.substr(brace_start, brace_end - brace_start + 1);
-                            try {
-                                nlohmann::json recovered_args = nlohmann::json::parse(possible_args);
-                                function_args = recovered_args;
-                            } catch (...) {
-                                // Ignore parse errors, keep empty args
-                            }
-                        }
-                    }
-
-                    std::string function_block = content_str.substr(func_start, func_end + 11 - func_start);
-                    db.saveAssistantMessage(function_block);
-                    context = db.getContextHistory();
-
-                    std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
-
-                    std::cout << "[Executing function from content: " << function_name << "]\n";
-                    std::cout.flush();
-
-                    if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
-                        any_function_executed = true;
-                    }
-                }
-
-                search_pos = func_end + 11; // Move past this </function>
             }
+        } else {
+            // No explicit delimiter found, but check for special case:
+            // function name immediately followed by '(' or '{' (e.g., <function(search_web={"query":...})</function>)
+            size_t brace_pos = content_str.find_first_of("{(", name_start);
+            if (brace_pos != std::string::npos && brace_pos < func_end) {
+                function_name = content_str.substr(name_start, brace_pos - name_start);
+                char open_delim = content_str[brace_pos];
+                char close_delim = (open_delim == '{') ? '}' : ')';
+                size_t search_end_pos = func_end - 1;
+                size_t args_end = content_str.rfind(close_delim, search_end_pos);
 
-            if (any_function_executed) {
-                tool_call_flow_completed = true;
+                if (args_end != std::string::npos && args_end > brace_pos) {
+                    std::string args_str = content_str.substr(brace_pos, args_end - brace_pos + 1);
+                    try {
+                        std::string trimmed_args = args_str;
+                        trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
+                        trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
+                        if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
+                            trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
+                            trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
+                            trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
+                        }
+                        function_args = nlohmann::json::parse(trimmed_args);
+                        parsed_args_or_no_args_needed = true;
+                    } catch (const nlohmann::json::parse_error& e) {
+                        std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n";
+                        function_args = nlohmann::json::object();
+                        parsed_args_or_no_args_needed = true;
+                    }
+                } else {
+                    std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n";
+                    parsed_args_or_no_args_needed = true;
+                }
+            } else {
+                function_name = content_str.substr(name_start, func_end - name_start);
+                parsed_args_or_no_args_needed = true;
             }
         }
-        // Note: The original Path 3 logic is now merged into the final block below.
 
+        if (!function_name.empty()) {
+            function_name.erase(0, function_name.find_first_not_of(" \n\r\t"));
+            function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
 
-        // --- Final Handling: Print regular content IF no tool flow completed ---
-        // This block now only runs if:
-        // 1. No standard tool_calls were processed (Path 1 didn't run or failed).
-        // 2. No fallback function call was successfully parsed and executed (Path 2 didn't run or failed).
-        // 3. The initial response was not a fatal API error (we didn't 'continue' earlier).
-        if (!tool_call_flow_completed) {
-            // Check if we have a valid message object (i.e., not an initial API error)
-            // AND if that message contains printable content.
-            if (!response_message.is_null() && response_message.contains("content")) {
-                 if (response_message["content"].is_string()) {
-                     // Regular message content
-                     std::string content_str = response_message["content"];
-                     db.saveAssistantMessage(content_str);
-                     std::cout << content_str << "\n\n";
-                     std::cout.flush();
-                 } else if (!response_message["content"].is_null()) {
-                     // Content exists but isn't a string (e.g., null or other type)
-                     std::string non_string_content = response_message["content"].dump();
-                     db.saveAssistantMessage(non_string_content);
-                     std::cout << non_string_content << "\n\n";
-                     std::cout.flush();
-                 }
-                 // If content is null, we don't print or save anything here.
+            // Additional cleanup: remove trailing stray characters like '[', '(', '{'
+            while (!function_name.empty() && 
+                   (function_name.back() == '[' || function_name.back() == '(' || function_name.back() == '{')) {
+                function_name.pop_back();
+                // Also trim any whitespace after popping
+                while (!function_name.empty() && isspace(function_name.back())) {
+                    function_name.pop_back();
+                }
             }
-            // If response_message was null (due to initial API error handled above),
-            // or if content was missing/null, nothing gets printed here, which is correct.
-            // The API error message was already printed when detected.
         }
-        // If tool_call_flow_completed is true, the helper function already printed the final LLM response after tool execution.
+
+        // *** FIX: Handle web_research fallback using 'query' instead of 'topic' ***
+        if (function_name == "web_research" && function_args.contains("query") && !function_args.contains("topic")) {
+            std::cout << "[Fallback parser: Renaming 'query' to 'topic' for web_research]\n"; std::cout.flush();
+            function_args["topic"] = function_args["query"];
+            function_args.erase("query");
+        }
+
+        if (!function_name.empty() && parsed_args_or_no_args_needed) {
+            // If args are empty, try to recover by parsing the first {...} block inside the tag
+            if (function_args.empty()) {
+                size_t brace_start = content_str.find('{', name_start);
+                size_t brace_end = content_str.rfind('}', func_end - 1);
+                if (brace_start != std::string::npos && brace_end != std::string::npos && brace_end > brace_start) {
+                    std::string possible_args = content_str.substr(brace_start, brace_end - brace_start + 1);
+                    try {
+                        nlohmann::json recovered_args = nlohmann::json::parse(possible_args);
+                        function_args = recovered_args;
+                    } catch (...) {
+                        // Ignore parse errors, keep empty args
+                    }
+                }
+            }
+
+            std::string function_block = content_str.substr(func_start, func_end + 11 - func_start);
+            db.saveAssistantMessage(function_block);
+            context = db.getContextHistory();
+
+            std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
+
+            std::cout << "[Executing function from content: " << function_name << "]\n";
+            std::cout.flush();
+
+            if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
+                any_executed = true;
+            }
+        }
+
+        search_pos = func_end + 11; // Move past this </function>
+    }
+
+    return any_executed;
+}
+
+/* ======== print & save assistant ======== */
+void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_message)
+{
+    if (!response_message.is_null() && response_message.contains("content")) {
+        if (response_message["content"].is_string()) {
+            std::string txt = response_message["content"];
+            db.saveAssistantMessage(txt);
+            std::cout << txt << "\n\n";
+        } else if (!response_message["content"].is_null()) {
+            std::string dumped = response_message["content"].dump();
+            db.saveAssistantMessage(dumped);
+            std::cout << dumped << "\n\n";
+        }
+        std::cout.flush();
+    }
+}
+
+void ChatClient::processTurn(const std::string& input) {
+    try {
+        saveUserInput(input);
+        auto context = db.getContextHistory();
+
+        // 1ª llamada al modelo con tools habilitados
+        std::string api_raw   = makeApiCall(context, true);
+        nlohmann::json api_js = nlohmann::json::parse(api_raw);
+
+        std::string  fallback_content;
+        nlohmann::json response_msg;
+
+        if (handleApiError(api_js, fallback_content, response_msg))
+            return;                               // turno terminado por error
+
+        bool tool_done = executeStandardToolCalls(response_msg, context);
+
+        if (!tool_done && !fallback_content.empty())
+            tool_done = executeFallbackFunctionTags(fallback_content, context);
+
+        if (!tool_done)
+            printAndSaveAssistantContent(response_msg);
 
     } catch (const nlohmann::json::parse_error& e) {
         std::cerr << "JSON Parsing Error (Outer Turn): " << e.what() << "\n";

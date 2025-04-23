@@ -30,6 +30,25 @@ private:
         std::vector<Message>& context // Pass context by reference to update it
     );
 
+    /* ------------- helpers extraídos de processTurn ------------- */
+    void saveUserInput(const std::string& input);
+
+    // Devuelve true si la respuesta era un error que obliga a abortar el turno.
+    bool handleApiError(const nlohmann::json& api_response,
+                        std::string& fallback_content,
+                        nlohmann::json& response_message);
+
+    // Devuelve true si se ejecutó al menos un tool_call estándar.
+    bool executeStandardToolCalls(const nlohmann::json& response_message,
+                                  std::vector<Message>& context);
+
+    // Devuelve true si el parser fallback <function> ejecutó algo.
+    bool executeFallbackFunctionTags(const std::string& content,
+                                     std::vector<Message>& context);
+
+    // Imprime y guarda el mensaje assistant “normal”.
+    void printAndSaveAssistantContent(const nlohmann::json& response_message);
+
 public:
     // Constructor (if needed, currently default is fine)
     // ChatClient(); 
