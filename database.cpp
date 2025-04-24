@@ -83,26 +83,31 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
     // tool_call_id, name, and the actual tool result content.
     // The role is hardcoded as "tool".
     
-    // Validate that the content is proper JSON with required fields
+    // Validate that the content is proper JSON with required fields and types
     try {
         auto json_content = nlohmann::json::parse(content);
-        if (!json_content.contains("tool_call_id") || 
-            !json_content.contains("name") || 
-            !json_content.contains("content")) {
-            throw std::runtime_error("Tool message missing required fields");
+        if (!json_content.contains("tool_call_id") || !json_content["tool_call_id"].is_string() ||
+            !json_content.contains("name") || !json_content["name"].is_string() ||
+            !json_content.contains("content")) { // Content can be any JSON type, but must exist
+            // Throw an error if validation fails
+            throw std::runtime_error("Invalid tool message content: missing required fields (tool_call_id, name, content) or incorrect types (id/name must be strings). Content: " + content);
         }
+    } catch (const nlohmann::json::parse_error& e) {
+        // Throw an error if JSON parsing fails
+         throw std::runtime_error("Invalid tool message content: not valid JSON. Parse error: " + std::string(e.what()) + ". Content: " + content);
     } catch (const std::exception& e) {
-        std::cerr << "Warning: Invalid tool message content: " << e.what() << std::endl;
-        // Continue anyway to maintain backward compatibility
+        // Re-throw other validation errors, adding context
+        throw std::runtime_error("Error validating tool message content: " + std::string(e.what()) + ". Content: " + content);
     }
     
+    // If validation passed:
     impl->exec("BEGIN");
     try {
-        impl->insertMessage({"tool", content});
+        impl->insertMessage({"tool", content}); // Save the validated message
         impl->exec("COMMIT");
     } catch(...) {
         impl->exec("ROLLBACK");
-        throw;
+        throw; // Re-throw DB errors
     }
 }
 
