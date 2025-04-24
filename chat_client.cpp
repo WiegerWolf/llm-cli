@@ -95,7 +95,7 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
                                          {"content",nullptr},
                                          {"tool_calls",asst_json["tool_calls"]}});
                     valid_tool_ids.insert(ids.begin(), ids.end());
-                    continue;
+                    continue; // Skip generic handling
                 }
             } catch (...) { /* no es JSON válido, sigue flujo normal */ }
         }
