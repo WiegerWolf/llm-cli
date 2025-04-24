@@ -150,6 +150,8 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     // Return the full response string, not just the content, 
     // as we need to check for tool_calls later.
     return response; 
+} // <-- ADDED MISSING CLOSING BRACE FOR makeApiCall
+
 // Executes a single tool and prepares the JSON string for the tool result message.
 // Does NOT save to DB or make further API calls.
 std::string ChatClient::executeAndPrepareToolResult(
