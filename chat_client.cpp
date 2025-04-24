@@ -335,48 +335,157 @@ bool ChatClient::handleApiError(const nlohmann::json& api_response,
 
 /* ======== tool_calls estándar ======== */
 bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message,
-                                          std::vector<Message>& context)
+                                          std::vector<Message>& context) // context is IN/OUT
 {
-    bool completed = false;
-    if (!response_message.is_null() && response_message.contains("tool_calls") && !response_message["tool_calls"].is_null()) {
-        // Save the assistant's message requesting tool use
-        // The content should be the raw JSON string of the message object
-        db.saveAssistantMessage(response_message.dump()); 
-        context = db.getContextHistory(); // Reload context including the tool call message
+    if (response_message.is_null() || !response_message.contains("tool_calls") || response_message["tool_calls"].is_null()) {
+        return false; // No standard tool calls to execute
+    }
 
-        // Execute tools and get final response via helper
-        for (const auto& tool_call : response_message["tool_calls"]) {
-            if (!tool_call.contains("id") || !tool_call.contains("function") || !tool_call["function"].contains("name") || !tool_call["function"].contains("arguments")) {
-                 std::cerr << "Error: Malformed tool_call object received.\n";
-                 continue; // Skip this tool call
-            }
-            std::string tool_call_id = tool_call["id"];
-            std::string function_name = tool_call["function"]["name"];
-            nlohmann::json function_args;
-            try {
-                 // Arguments are expected to be a JSON string that needs parsing
-                 std::string args_str = tool_call["function"]["arguments"].get<std::string>();
-                 function_args = nlohmann::json::parse(args_str);
-            } catch (const nlohmann::json::parse_error& e) {
-                 std::cerr << "JSON Parsing Error (Tool Arguments): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
-                 continue; // Skip this tool call
-            } catch (const nlohmann::json::type_error& e) {
-                 // Handle cases where arguments might not be a string initially
-                 std::cerr << "JSON Type Error (Tool Arguments): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
-                 continue; // Skip this tool call
-            }
+    // 1. Save the assistant's message requesting tool use
+    // The content should be the raw JSON string of the message object itself
+    db.saveAssistantMessage(response_message.dump());
 
-            // Call the helper function, passing the toolManager instance
-            if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
-                 completed = true; // Mark success for at least one tool
-            } else {
-                 // Error was already printed by the helper or execute_tool.
-                 // Decide if we should stop processing further tool calls in this turn? For now, continue.
-            }
-            // Context is updated within the helper after saving tool result
+    // 2. Execute all tools and collect results (without saving yet)
+    std::vector<std::string> tool_result_messages; // Store JSON strings of tool messages
+    bool any_tool_executed = false;
+
+    for (const auto& tool_call : response_message["tool_calls"]) {
+        if (!tool_call.contains("id") || !tool_call.contains("function") || !tool_call["function"].contains("name") || !tool_call["function"].contains("arguments")) {
+            std::cerr << "Error: Malformed tool_call object received. Skipping.\n";
+            continue; // Skip this malformed tool call
+        }
+        std::string tool_call_id = tool_call["id"];
+        std::string function_name = tool_call["function"]["name"];
+        nlohmann::json function_args;
+        try {
+            // Arguments are expected to be a JSON string that needs parsing
+            std::string args_str = tool_call["function"]["arguments"].get<std::string>();
+            function_args = nlohmann::json::parse(args_str);
+        } catch (const nlohmann::json::parse_error& e) {
+            std::cerr << "JSON Parsing Error (Tool Arguments for " << function_name << "): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
+            // Prepare an error result for this specific tool call
+            nlohmann::json error_result_content;
+            error_result_content["tool_call_id"] = tool_call_id;
+            error_result_content["name"] = function_name;
+            error_result_content["content"] = "Error: Failed to parse arguments JSON: " + std::string(e.what());
+            tool_result_messages.push_back(error_result_content.dump());
+            any_tool_executed = true; // Mark that we attempted execution
+            continue; // Skip normal execution for this tool call
+        } catch (const nlohmann::json::type_error& e) {
+            // Handle cases where arguments might not be a string initially
+            std::cerr << "JSON Type Error (Tool Arguments for " << function_name << "): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n";
+            // Prepare an error result
+            nlohmann::json error_result_content;
+            error_result_content["tool_call_id"] = tool_call_id;
+            error_result_content["name"] = function_name;
+            error_result_content["content"] = "Error: Invalid argument type: " + std::string(e.what());
+            tool_result_messages.push_back(error_result_content.dump());
+            any_tool_executed = true;
+            continue;
+        }
+
+        // Call the helper function to execute the tool and get the result message JSON string
+        std::string result_msg_json = executeAndPrepareToolResult(tool_call_id, function_name, function_args);
+        tool_result_messages.push_back(result_msg_json);
+        any_tool_executed = true;
+    }
+
+    // If no tools were actually executed (e.g., all malformed), return false
+    if (!any_tool_executed) {
+        std::cerr << "Warning: Assistant requested tool calls, but none could be executed.\n";
+        return false;
+    }
+
+    // 3. Save all collected tool results to the database
+    try {
+        // Use a transaction for atomicity if desired (optional but good practice)
+        // db.beginTransaction(); // Assuming a method like this exists or implement exec("BEGIN") etc.
+        for (const auto& msg_json : tool_result_messages) {
+            db.saveToolMessage(msg_json);
+        }
+        // db.commitTransaction(); // Assuming commit
+    } catch (const std::exception& e) {
+        // db.rollbackTransaction(); // Assuming rollback
+        std::cerr << "Error saving tool results to database: " << e.what() << std::endl;
+        // Decide how to proceed. Maybe return false? For now, log and continue.
+        return false; // Indicate failure if DB save fails
+    }
+
+
+    // 4. Reload context INCLUDING the assistant message and ALL tool results
+    context = db.getContextHistory();
+
+    // 5. Make the final API call to get the text response
+    std::string final_content;
+    bool final_response_success = false;
+
+    for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
+        // On subsequent attempts, add a system message to explicitly prevent tool usage
+        if (attempt > 0) {
+            context.push_back({"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."});
+        }
+
+        std::string final_response_str = makeApiCall(context, false); // Tools explicitly disabled
+        nlohmann::json final_response_json;
+        try {
+            final_response_json = nlohmann::json::parse(final_response_str);
+        } catch (const nlohmann::json::parse_error& e) {
+            std::cerr << "JSON Parsing Error (Final Response): " << e.what() << "\nResponse was: " << final_response_str << "\n";
+            if (attempt == 2) break; // Exit loop on last attempt
+            continue; // Try again
+        }
+
+        // Check for API errors in the final response
+        if (final_response_json.contains("error")) {
+             std::cerr << "API Error Received (Final Response): " << final_response_json["error"].dump(2) << std::endl;
+             if (attempt == 2) break;
+             continue; // Try again
+        }
+
+        // Check if we have a valid response structure
+        if (!final_response_json.contains("choices") || final_response_json["choices"].empty() ||
+            !final_response_json["choices"][0].contains("message")) {
+            std::cerr << "Error: Invalid API response structure (Final Response).\nResponse was: " << final_response_str << "\n";
+            if (attempt == 2) break;
+            continue; // Try again
+        }
+
+        auto& message = final_response_json["choices"][0]["message"];
+
+        // Check if the final message *still* contains tool_calls (should be rare now)
+        if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
+            std::cerr << "Warning: Final response unexpectedly contains tool_calls. Retrying with explicit instruction.\n";
+            // Optionally save this unexpected assistant message?
+            // db.saveAssistantMessage(message.dump());
+            if (attempt == 2) break;
+            continue; // Try again with stronger instructions
+        }
+
+        // If we have content, we're good
+        if (message.contains("content") && message["content"].is_string()) {
+            final_content = message["content"];
+            final_response_success = true;
+            break; // Success!
+        } else {
+            std::cerr << "Error: Final response message missing content field.\nResponse was: " << final_response_str << "\n";
+            if (attempt == 2) break;
+            continue; // Try again
         }
     }
-    return completed;              // true si al menos un tool call se procesó
+
+    // 6. Handle the final response
+    if (!final_response_success) {
+        std::cerr << "Error: Failed to get a valid final text response after tool execution and 3 attempts.\n";
+        return false; // Indicate overall failure for this turn's tool path
+    }
+
+    // Save the final assistant response
+    db.saveAssistantMessage(final_content);
+
+    // Display final response
+    std::cout << final_content << "\n\n";
+    std::cout.flush(); // Ensure output is displayed before next prompt
+    return true; // Indicate success for the standard tool call path
 }
 
 /* ======== parser fallback <function> ======== */
@@ -557,15 +666,80 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             std::cout << "[Executing function from content: " << function_name << "]\n";
             std::cout.flush();
 
-            if (handleToolExecutionAndFinalResponse(toolManager, tool_call_id, function_name, function_args, context)) {
-                any_executed = true;
+            // Execute tool and get result JSON string
+            std::string tool_result_msg_json = executeAndPrepareToolResult(tool_call_id, function_name, function_args);
+
+            // Save the tool result
+            try {
+                db.saveToolMessage(tool_result_msg_json);
+            } catch (const std::exception& e) {
+                 std::cerr << "Error saving fallback tool result: " << e.what() << std::endl;
+                 search_pos = func_end + 11; // Move past this tag
+                 continue; // Skip API call for this failed save
+            }
+
+            // Reload context
+            context = db.getContextHistory();
+
+            // Make the final API call (similar logic to executeStandardToolCalls's final step)
+            // Try up to 3 times
+            std::string final_content;
+            bool final_response_success = false;
+            for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
+                 if (attempt > 0) {
+                     context.push_back({"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."});
+                 }
+                 std::string final_response_str = makeApiCall(context, false);
+                 nlohmann::json final_response_json;
+                 try {
+                     final_response_json = nlohmann::json::parse(final_response_str);
+                 } catch (const nlohmann::json::parse_error& e) {
+                     std::cerr << "JSON Parsing Error (Fallback Final Response): " << e.what() << "\nResponse was: " << final_response_str << "\n";
+                     if (attempt == 2) break;
+                     continue;
+                 }
+                 if (final_response_json.contains("error")) {
+                      std::cerr << "API Error Received (Fallback Final Response): " << final_response_json["error"].dump(2) << std::endl;
+                      if (attempt == 2) break;
+                      continue;
+                 }
+                 if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message")) {
+                     std::cerr << "Error: Invalid API response structure (Fallback Final Response).\nResponse was: " << final_response_str << "\n";
+                     if (attempt == 2) break;
+                     continue;
+                 }
+                 auto& message = final_response_json["choices"][0]["message"];
+                 if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
+                     std::cerr << "Warning: Fallback final response unexpectedly contains tool_calls. Retrying.\n";
+                     if (attempt == 2) break;
+                     continue;
+                 }
+                 if (message.contains("content") && message["content"].is_string()) {
+                     final_content = message["content"];
+                     final_response_success = true;
+                     break;
+                 } else {
+                     std::cerr << "Error: Fallback final response message missing content field.\nResponse was: " << final_response_str << "\n";
+                     if (attempt == 2) break;
+                     continue;
+                 }
+            }
+
+            if (final_response_success) {
+                db.saveAssistantMessage(final_content);
+                std::cout << final_content << "\n\n";
+                std::cout.flush();
+                any_executed = true; // Mark success for this fallback path
+            } else {
+                 std::cerr << "Error: Failed to get final response after fallback tool execution.\n";
+                 // Continue searching for other tags, but this one failed
             }
         }
 
         search_pos = func_end + 11; // Move past this </function>
     }
 
-    return any_executed;
+    return any_executed; // True if at least one fallback function led to a final response
 }
 
 /* ======== print & save assistant ======== */

@@ -19,18 +19,16 @@ private:
     std::string model_name = "openai/gpt-4.1-nano"; 
 
     std::optional<std::string> promptUserInput();   // lee línea o devuelve nullopt para salir
-    void processTurn(const std::string& user_input); // maneja todo el flujo de la conversación para un turno
+    void processTurn(const std::string& user_input); // Handles the entire conversation flow for one turn
 
-    // Helper function for tool execution flow
-    bool handleToolExecutionAndFinalResponse(
-        ToolManager& toolMgr, 
+    // Helper function to execute a tool and prepare the result message JSON string
+    std::string executeAndPrepareToolResult(
         const std::string& tool_call_id,
         const std::string& function_name,
-        const nlohmann::json& function_args,
-        std::vector<Message>& context // Pass context by reference to update it
+        const nlohmann::json& function_args
     );
 
-    /* ------------- helpers extraídos de processTurn ------------- */
+    /* ------------- helpers extracted from processTurn ------------- */
     void saveUserInput(const std::string& input);
 
     // Devuelve true si la respuesta era un error que obliga a abortar el turno.
