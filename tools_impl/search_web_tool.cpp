@@ -293,7 +293,7 @@ std::string search_web(const std::string& query) {
     curl = curl_easy_init();
     if (!curl) throw std::runtime_error("Failed to initialize CURL for Brave search");
 
-    std::string response;
+    // Removed redeclaration of response here
 
     char *escaped_query = curl_easy_escape(curl, query.c_str(), query.length());
     if (!escaped_query) {
