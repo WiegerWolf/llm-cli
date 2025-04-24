@@ -150,27 +150,24 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     // Return the full response string, not just the content, 
     // as we need to check for tool_calls later.
     return response; 
-}
-
-
-bool ChatClient::handleToolExecutionAndFinalResponse(
-    ToolManager& toolMgr, // Pass ToolManager by reference
+// Executes a single tool and prepares the JSON string for the tool result message.
+// Does NOT save to DB or make further API calls.
+std::string ChatClient::executeAndPrepareToolResult(
     const std::string& tool_call_id,
     const std::string& function_name,
-    const nlohmann::json& function_args,
-    std::vector<Message>& context // Pass context by reference to update it
+    const nlohmann::json& function_args
 ) {
-    std::string tool_result_str; 
+    std::string tool_result_str;
     try {
-        // Execute the tool using the ToolManager
+        // Execute the tool using the ToolManager instance member
         // Pass the db instance needed by some tools like read_history
         // Pass the ChatClient instance (*this) for tools that need to make API calls (like web_research)
-        tool_result_str = toolMgr.execute_tool(db, *this, function_name, function_args);
+        tool_result_str = toolManager.execute_tool(db, *this, function_name, function_args);
     } catch (const std::exception& e) {
          // Errors during argument validation or unknown tool are caught here
          std::cerr << "Tool execution error for '" << function_name << "': " << e.what() << "\n";
          tool_result_str = "Error executing tool '" + function_name + "': " + e.what();
-         // Continue to save this error as the tool result
+         // Continue to prepare the error as the tool result
     }
     // Note: User feedback like "[Searching web...]" is now handled within toolMgr.execute_tool()
 
@@ -180,78 +177,11 @@ bool ChatClient::handleToolExecutionAndFinalResponse(
     tool_result_content["name"] = function_name;
     tool_result_content["content"] = tool_result_str; // Contains result or error message
 
-    // Save the tool's response message using the dedicated function
-    db.saveToolMessage(tool_result_content.dump());
-    
     // Log the tool result length for debugging
     std::cerr << "Tool result length: " << tool_result_str.length() << " characters" << std::endl;
 
-    // Reload context INCLUDING the tool result
-    context = db.getContextHistory(); // Reload context
-
-    // Make the second API call (tools are never needed for the final response)
-    // Try up to 3 times if we keep getting tool calls
-    std::string final_content;
-    bool final_response_success = false;
-    
-    for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
-        // On subsequent attempts, add a system message to explicitly prevent tool usage
-        if (attempt > 0) {
-            // Add a system message at the end of context to override tool usage
-            context.push_back({"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."});
-        }
-        
-        std::string final_response_str = makeApiCall(context, false);
-        nlohmann::json final_response_json;
-        try {
-            final_response_json = nlohmann::json::parse(final_response_str);
-        } catch (const nlohmann::json::parse_error& e) {
-            std::cerr << "JSON Parsing Error (Second Response): " << e.what() << "\nResponse was: " << final_response_str << "\n";
-            if (attempt == 2) return false; // Indicate failure on last attempt
-            continue; // Try again
-        }
-
-        // Check if we have a valid response with choices
-        if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || 
-            !final_response_json["choices"][0].contains("message")) {
-            std::cerr << "Error: Invalid API response structure (Second Response).\nResponse was: " << final_response_str << "\n";
-            if (attempt == 2) return false; // Indicate failure on last attempt
-            continue; // Try again
-        }
-        
-        auto& message = final_response_json["choices"][0]["message"];
-        
-        // Check if the message contains tool_calls
-        if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-            std::cerr << "Warning: Final response contains tool_calls. Retrying with explicit instruction to avoid tools.\n";
-            continue; // Try again with stronger instructions
-        }
-        
-        // If we have content, we're good
-        if (message.contains("content") && message["content"].is_string()) {
-            final_content = message["content"];
-            final_response_success = true;
-            break;
-        } else {
-            std::cerr << "Error: Final response message missing content field.\nResponse was: " << final_response_str << "\n";
-            if (attempt == 2) return false; // Indicate failure on last attempt
-            continue; // Try again
-        }
-    }
-    
-    // If all attempts failed, return failure
-    if (!final_response_success) {
-        std::cerr << "Error: Failed to get a valid final response after 3 attempts.\n";
-        return false;
-    }
-
-    // Save the final assistant response
-    db.saveAssistantMessage(final_content);
-
-    // Display final response
-    std::cout << final_content << "\n\n";
-    std::cout.flush(); // Ensure output is displayed before next prompt
-    return true; // Indicate success
+    // Return the JSON string representation of the tool result message
+    return tool_result_content.dump();
 }
 
 
