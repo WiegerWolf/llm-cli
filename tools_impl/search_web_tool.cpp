@@ -272,7 +272,7 @@ std::string parse_ddg_html(const std::string& html) {
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
     } else {
-         std::cerr << "DEBUG: parse_ddg_html: Gumbo output or root node was null." << std::endl;
+         // std::cerr << "DEBUG: parse_ddg_html: Gumbo output or root node was null." << std::endl; // Debug removed
     }
 
     std::string final_result = count > 0 ? result : "No results found or failed to parse results page (DuckDuckGo)."; // Indicate source on failure too
@@ -289,7 +289,7 @@ std::string search_web(const std::string& query) {
     long http_code = 0;
 
     // --- Attempt 1: Brave Search ---
-    std::cerr << "Attempting search with Brave Search..." << std::endl;
+    // std::cerr << "Attempting search with Brave Search..." << std::endl; // Status removed
     curl = curl_easy_init();
     if (!curl) throw std::runtime_error("Failed to initialize CURL for Brave search");
 
@@ -318,9 +318,9 @@ std::string search_web(const std::string& query) {
     http_code = 0;
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        std::cerr << "DEBUG: Brave Search HTTP status code: " << http_code << std::endl;
+        // std::cerr << "DEBUG: Brave Search HTTP status code: " << http_code << std::endl; // Debug removed
         if (http_code == 202) {
-            std::cerr << "WARNING: Brave Search: Received HTTP 202 Accepted." << std::endl;
+            // std::cerr << "WARNING: Brave Search: Received HTTP 202 Accepted." << std::endl; // Warning removed
         }
     }
 
@@ -332,14 +332,14 @@ std::string search_web(const std::string& query) {
         parsed_result = parse_brave_search_html(response);
         // Check if Brave search returned actual results (contains links)
         if (parsed_result.find("[href=") != std::string::npos) {
-            std::cerr << "Brave Search successful." << std::endl;
+            // std::cerr << "Brave Search successful." << std::endl; // Status removed
             return parsed_result; // Return Brave results
         } else {
-            std::cerr << "Brave Search returned no results, falling back to DuckDuckGo..." << std::endl;
+            // std::cerr << "Brave Search returned no results, falling back to DuckDuckGo..." << std::endl; // Status removed
         }
     } else {
-        std::cerr << "Brave Search failed (CURL error: " << curl_easy_strerror(res)
-                  << ", HTTP code: " << http_code << "), falling back to DuckDuckGo..." << std::endl;
+        // std::cerr << "Brave Search failed (CURL error: " << curl_easy_strerror(res)
+        //           << ", HTTP code: " << http_code << "), falling back to DuckDuckGo..." << std::endl; // Status removed
     }
 
     // --- Attempt 2: DuckDuckGo HTML Search (Fallback) ---
@@ -366,15 +366,15 @@ std::string search_web(const std::string& query) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
 
-    std::cerr << "DEBUG: DDG Search: Requesting URL (GET): " << ddg_url << std::endl;
+    // std::cerr << "DEBUG: DDG Search: Requesting URL (GET): " << ddg_url << std::endl; // Debug removed
 
     res = curl_easy_perform(curl);
     http_code = 0;
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        std::cerr << "DEBUG: DDG Search: Received HTTP status code: " << http_code << std::endl;
+        // std::cerr << "DEBUG: DDG Search: Received HTTP status code: " << http_code << std::endl; // Debug removed
         if (http_code == 202) {
-             std::cerr << "WARNING: DDG Search: Received HTTP 202 Accepted." << std::endl;
+             // std::cerr << "WARNING: DDG Search: Received HTTP 202 Accepted." << std::endl; // Warning removed
         }
     }
 
@@ -382,7 +382,7 @@ std::string search_web(const std::string& query) {
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
-        std::cerr << "DDG Search also failed: " << curl_easy_strerror(res) << std::endl;
+        // std::cerr << "DDG Search also failed: " << curl_easy_strerror(res) << std::endl; // Status removed
         // Return the error message from the *first* failure (Brave) or a generic one if Brave didn't even run
         // For simplicity, let's throw a new error indicating both failed.
         throw std::runtime_error("Both Brave and DuckDuckGo search attempts failed.");
@@ -390,6 +390,6 @@ std::string search_web(const std::string& query) {
 
     // Parse DDG results regardless of HTTP code for now, parser handles "no results"
     parsed_result = parse_ddg_html(response);
-    std::cerr << "DuckDuckGo Search finished." << std::endl;
+    // std::cerr << "DuckDuckGo Search finished." << std::endl; // Status removed
     return parsed_result; // Return DDG results (could be "no results found")
 }
