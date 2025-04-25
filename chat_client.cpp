@@ -179,9 +179,6 @@ std::string ChatClient::executeAndPrepareToolResult(
     tool_result_content["name"] = function_name;
     tool_result_content["content"] = tool_result_str; // Contains result or error message
 
-    // Log the tool result length for debugging
-    // std::cerr << "Tool result length: " << tool_result_str.length() << " characters" << std::endl; // Debug removed
-
     // Return the JSON string representation of the tool result message
     return tool_result_content.dump();
 }
