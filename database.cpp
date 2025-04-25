@@ -134,10 +134,10 @@ void PersistenceManager::cleanupOrphanedToolMessages() {
         impl->exec("BEGIN");
         impl->exec(sql);
         impl->exec("COMMIT");
-        std::cerr << "Cleaned up orphaned tool messages from database" << std::endl;
+        // std::cerr << "Cleaned up orphaned tool messages from database" << std::endl; // Debug removed
     } catch (const std::exception& e) {
         impl->exec("ROLLBACK");
-        std::cerr << "Error cleaning up orphaned tool messages: " << e.what() << std::endl;
+        // std::cerr << "Error cleaning up orphaned tool messages: " << e.what() << std::endl; // Debug removed
     }
 }
 
@@ -232,7 +232,7 @@ std::vector<Message> PersistenceManager::getHistoryRange(const std::string& star
         }
         sqlite3_finalize(stmt);
     } else {
-        std::cerr << "Warning: Failed to prepare statement for history range query: " << sqlite3_errmsg(impl->db) << std::endl;
+        // std::cerr << "Warning: Failed to prepare statement for history range query: " << sqlite3_errmsg(impl->db) << std::endl; // Debug removed
         // Consider throwing an exception
     }
     return history_range;

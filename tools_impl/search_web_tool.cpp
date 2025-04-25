@@ -204,7 +204,7 @@ std::string parse_ddg_html(const std::string& html) {
 
     if (output && output->root) {
         find_result_divs(output->root);
-        std::cerr << "DEBUG: parse_ddg_html: Found " << result_divs.size() << " potential result divs." << std::endl;
+        // std::cerr << "DEBUG: parse_ddg_html: Found " << result_divs.size() << " potential result divs." << std::endl; // Debug removed
 
         for (GumboNode* result_div : result_divs) {
             std::string title;

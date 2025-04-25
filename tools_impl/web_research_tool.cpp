@@ -11,7 +11,7 @@
 
 std::string perform_web_research(PersistenceManager& db, ChatClient& client, const std::string& topic) {
     try {
-        std::cout << "  [Research Step 1: Searching web...]\n"; std::cout.flush();
+        // std::cout << "  [Research Step 1: Searching web...]\n"; std::cout.flush(); // Status removed
         std::string search_query = topic;
         std::string search_results_raw = search_web(search_query);
 

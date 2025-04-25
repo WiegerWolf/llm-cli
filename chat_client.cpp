@@ -167,7 +167,7 @@ std::string ChatClient::executeAndPrepareToolResult(
         tool_result_str = toolManager.execute_tool(db, *this, function_name, function_args);
     } catch (const std::exception& e) {
          // Errors during argument validation or unknown tool are caught here
-         std::cerr << "Tool execution error for '" << function_name << "': " << e.what() << "\n";
+         // std::cerr << "Tool execution error for '" << function_name << "': " << e.what() << "\n"; // Debug removed
          tool_result_str = "Error executing tool '" + function_name + "': " + e.what();
          // Continue to prepare the error as the tool result
     }
@@ -180,7 +180,7 @@ std::string ChatClient::executeAndPrepareToolResult(
     tool_result_content["content"] = tool_result_str; // Contains result or error message
 
     // Log the tool result length for debugging
-    std::cerr << "Tool result length: " << tool_result_str.length() << " characters" << std::endl;
+    // std::cerr << "Tool result length: " << tool_result_str.length() << " characters" << std::endl; // Debug removed
 
     // Return the JSON string representation of the tool result message
     return tool_result_content.dump();
@@ -219,7 +219,7 @@ bool ChatClient::handleApiError(const nlohmann::json& api_response,
 {
     // --- Check for API Errors first ---
     if (api_response.contains("error")) {
-        std::cerr << "API Error Received: " << api_response["error"].dump(2) << std::endl;
+        // std::cerr << "API Error Received: " << api_response["error"].dump(2) << std::endl; // Debug removed
         // Check for the specific recoverable error
         if (api_response["error"].contains("code") &&
             api_response["error"]["code"] == "tool_use_failed" &&

@@ -109,7 +109,7 @@ std::string visit_url(const std::string& url_str) {
 
     std::string result = extracted_text.empty() ? "No text content found." : extracted_text;
 
-    std::cerr << "URL content length: " << result.length() << " characters" << std::endl;
+    // std::cerr << "URL content length: " << result.length() << " characters" << std::endl; // Debug removed
 
     return result;
 }

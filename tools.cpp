@@ -156,21 +156,21 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         if (query.empty()) {
             throw std::runtime_error("'query' argument missing or empty for search_web tool.");
         }
-        std::cout << "[Searching web for: " << query << "]\n";
-        std::cout.flush();
+        // std::cout << "[Searching web for: " << query << "]\n"; // Status removed
+        // std::cout.flush();
         try {
             return search_web(query);
         } catch (const std::exception& e) {
-            std::cerr << "Web search failed: " << e.what() << "\n";
+            // std::cerr << "Web search failed: " << e.what() << "\n"; // Debug removed
             return "Error performing web search: " + std::string(e.what());
         }
     } else if (tool_name == "get_current_datetime") {
-        std::cout << "[Getting current date and time]\n";
-        std::cout.flush();
+        // std::cout << "[Getting current date and time]\n"; // Status removed
+        // std::cout.flush();
         try {
             return get_current_datetime();
         } catch (const std::exception& e) {
-            std::cerr << "Getting date/time failed: " << e.what() << "\n";
+            // std::cerr << "Getting date/time failed: " << e.what() << "\n"; // Debug removed
             return "Error getting current date and time.";
         }
     } else if (tool_name == "visit_url") {
@@ -178,12 +178,12 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         if (url_to_visit.empty()) {
             throw std::runtime_error("'url' argument missing or empty for visit_url tool.");
         }
-        std::cout << "[Visiting URL: " << url_to_visit << "]\n";
-        std::cout.flush();
+        // std::cout << "[Visiting URL: " << url_to_visit << "]\n"; // Status removed
+        // std::cout.flush();
         try {
             return visit_url(url_to_visit);
         } catch (const std::exception& e) {
-            std::cerr << "URL visit failed: " << e.what() << "\n";
+            // std::cerr << "URL visit failed: " << e.what() << "\n"; // Debug removed
             return "Error visiting URL: " + std::string(e.what());
         }
     } else if (tool_name == "read_history") {
@@ -194,12 +194,12 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         if (start_time.empty() || end_time.empty()) {
             throw std::runtime_error("'start_time' or 'end_time' missing for read_history tool.");
         }
-        std::cout << "[Reading history (" << start_time << " to " << end_time << ", Limit: " << limit << ")]\n";
-        std::cout.flush();
+        // std::cout << "[Reading history (" << start_time << " to " << end_time << ", Limit: " << limit << ")]\n"; // Status removed
+        // std::cout.flush();
         try {
             return read_history(db, start_time, end_time, limit);
         } catch (const std::exception& e) {
-            std::cerr << "History read failed: " << e.what() << "\n";
+            // std::cerr << "History read failed: " << e.what() << "\n"; // Debug removed
             return "Error reading history: " + std::string(e.what());
         }
     } else if (tool_name == "web_research") {
@@ -207,19 +207,19 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         if (topic.empty()) {
             throw std::runtime_error("'topic' argument missing or empty for web_research tool.");
         }
-        std::cout << "[Performing web research on: " << topic << "]\n";
-        std::cout.flush();
+        // std::cout << "[Performing web research on: " << topic << "]\n"; // Status removed
+        // std::cout.flush();
         return perform_web_research(db, client, topic);
     } else if (tool_name == "deep_research") {
         std::string goal = args.value("goal", "");
         if (goal.empty()) {
             throw std::runtime_error("'goal' argument missing or empty for deep_research tool.");
         }
-        std::cout << "[Performing deep research for: " << goal << "]\n";
-        std::cout.flush();
+        // std::cout << "[Performing deep research for: " << goal << "]\n"; // Status removed
+        // std::cout.flush();
         return perform_deep_research(db, client, goal);
     } else {
-        std::cerr << "Error: Unknown tool requested: " << tool_name << "\n";
+        // std::cerr << "Error: Unknown tool requested: " << tool_name << "\n"; // Debug removed
         throw std::runtime_error("Unknown tool requested: " + tool_name);
     }
 }
