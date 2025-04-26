@@ -347,14 +347,19 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     // 5. Make the final API call to get the text response
     std::string final_content;
     bool final_response_success = false;
+    std::string final_response_str; // Declare outside the loop
 
     for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
-        // On subsequent attempts, add a system message to explicitly prevent tool usage
+        // On subsequent attempts, temporarily add a system message to explicitly prevent tool usage
         if (attempt > 0) {
-            context.push_back({"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."});
+            Message no_tool_msg{"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
+            context.push_back(no_tool_msg);
+            final_response_str = makeApiCall(context, /*use_tools=*/false); // Tools explicitly disabled
+            context.pop_back(); // Remove the temporary message
+        } else {
+            final_response_str = makeApiCall(context, /*use_tools=*/false); // Tools explicitly disabled on first attempt too
         }
 
-        std::string final_response_str = makeApiCall(context, false); // Tools explicitly disabled
         nlohmann::json final_response_json;
         try {
             final_response_json = nlohmann::json::parse(final_response_str);
@@ -614,11 +619,18 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             // Try up to 3 times
             std::string final_content;
             bool final_response_success = false;
+            std::string final_response_str; // Declare outside the loop
             for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
+                 // On subsequent attempts, temporarily add a system message to explicitly prevent tool usage
                  if (attempt > 0) {
-                     context.push_back({"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."});
+                     Message no_tool_msg{"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
+                     context.push_back(no_tool_msg);
+                     final_response_str = makeApiCall(context, /*use_tools=*/false);
+                     context.pop_back(); // Remove the temporary message
+                 } else {
+                     final_response_str = makeApiCall(context, /*use_tools=*/false); // Tools explicitly disabled on first attempt too
                  }
-                 std::string final_response_str = makeApiCall(context, false);
+
                  nlohmann::json final_response_json;
                  try {
                      final_response_json = nlohmann::json::parse(final_response_str);
