@@ -1,5 +1,4 @@
 #pragma once
-#pragma once
 #include <string>
 
 std::string search_web(const std::string& query);
