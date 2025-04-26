@@ -175,6 +175,7 @@ std::string ChatClient::executeAndPrepareToolResult(
 
     // Prepare tool result message content as JSON string
     nlohmann::json tool_result_content;
+    tool_result_content["role"] = "tool"; // Explicitly add role
     tool_result_content["tool_call_id"] = tool_call_id;
     tool_result_content["name"] = function_name;
     tool_result_content["content"] = tool_result_str; // Contains result or error message
