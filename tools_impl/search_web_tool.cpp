@@ -225,15 +225,21 @@ std::string parse_ddg_html(const std::string& html) {
                     size_t uddg_pos = url.find("uddg=");
                     if (uddg_pos != std::string::npos) {
                         std::string encoded_url = url.substr(uddg_pos + 5); // Length of "uddg="
-                        CURL* temp_curl = curl_easy_init(); // Need curl for URL decoding
-                        if (temp_curl) {
+                        // Use a static handle for efficiency, initialized only once.
+                        // Note: This handle is intentionally not cleaned up; it persists for the application's lifetime.
+                        // For a CLI tool, this is generally acceptable.
+                        static CURL* unescape_handle = curl_easy_init();
+                        if (unescape_handle) {
                             int outlength;
-                            char* decoded = curl_easy_unescape(temp_curl, encoded_url.c_str(), encoded_url.length(), &outlength);
+                            char* decoded = curl_easy_unescape(unescape_handle, encoded_url.c_str(), encoded_url.length(), &outlength);
                             if (decoded) {
                                 url = std::string(decoded, outlength);
                                 curl_free(decoded);
                             }
-                            curl_easy_cleanup(temp_curl);
+                            // Do not call curl_easy_cleanup here; the handle is static.
+                        } else {
+                            // Handle error: static handle initialization failed (should be rare)
+                            std::cerr << "Warning: Failed to initialize static CURL handle for URL unescaping." << std::endl;
                         }
                     }
                 }
