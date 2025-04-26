@@ -274,6 +274,16 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     std::vector<std::string> tool_result_messages; // Store JSON strings of tool messages
     bool any_tool_executed = false;
 
+    // Helper lambda to build and store argument error messages
+    auto buildArgError = [&](const std::string& tool_call_id, const std::string& function_name, const std::string& error_msg) {
+        nlohmann::json err;
+        err["tool_call_id"] = tool_call_id;
+        err["name"]         = function_name;
+        err["content"]      = error_msg;
+        tool_result_messages.push_back(err.dump());
+        any_tool_executed = true; // Mark that we attempted execution even if args failed
+    };
+
     for (const auto& tool_call : response_message["tool_calls"]) {
         if (!tool_call.contains("id") || !tool_call.contains("function") || !tool_call["function"].contains("name") || !tool_call["function"].contains("arguments")) {
             // std::cerr << "Error: Malformed tool_call object received. Skipping.\n"; // Warning removed
@@ -287,25 +297,11 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
             std::string args_str = tool_call["function"]["arguments"].get<std::string>();
             function_args = nlohmann::json::parse(args_str);
         } catch (const nlohmann::json::parse_error& e) {
-            // std::cerr << "JSON Parsing Error (Tool Arguments for " << function_name << "): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n"; // Error removed (handled by returning error message)
-            // Prepare an error result for this specific tool call
-            nlohmann::json error_result_content;
-            error_result_content["tool_call_id"] = tool_call_id;
-            error_result_content["name"] = function_name;
-            error_result_content["content"] = "Error: Failed to parse arguments JSON: " + std::string(e.what());
-            tool_result_messages.push_back(error_result_content.dump());
-            any_tool_executed = true; // Mark that we attempted execution
+            buildArgError(tool_call_id, function_name, "Error: Failed to parse arguments JSON: " + std::string(e.what()));
             continue; // Skip normal execution for this tool call
         } catch (const nlohmann::json::type_error& e) {
             // Handle cases where arguments might not be a string initially
-            // std::cerr << "JSON Type Error (Tool Arguments for " << function_name << "): " << e.what() << "\nArgs JSON was: " << tool_call["function"]["arguments"].dump() << "\n"; // Error removed (handled by returning error message)
-            // Prepare an error result
-            nlohmann::json error_result_content;
-            error_result_content["tool_call_id"] = tool_call_id;
-            error_result_content["name"] = function_name;
-            error_result_content["content"] = "Error: Invalid argument type: " + std::string(e.what());
-            tool_result_messages.push_back(error_result_content.dump());
-            any_tool_executed = true;
+            buildArgError(tool_call_id, function_name, "Error: Invalid argument type: " + std::string(e.what()));
             continue;
         }
 
