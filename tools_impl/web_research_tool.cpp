@@ -28,7 +28,9 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
                     if (extracted_url.rfind("http", 0) == 0 || extracted_url.rfind("https", 0) == 0) {
                         urls.push_back(extracted_url);
                     } else {
-                        // std::cerr << "Warning: Skipping non-absolute URL found in search results: " << extracted_url << std::endl; // Warning removed
+#ifdef VERBOSE_LOGGING
+                        std::cerr << "[web_research] skipped non-absolute URL: " << extracted_url << '\n';
+#endif
                     }
                 }
             }
