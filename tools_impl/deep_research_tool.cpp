@@ -67,7 +67,9 @@ std::string perform_deep_research(PersistenceManager& db, ChatClient& client, co
                     // std::cout << "    [Finished research for: '" << sub_query << "']\n"; std::cout.flush(); // Status removed
                     return {sub_query, result};
                 } catch (const std::exception& e) {
-                    // std::cerr << "    [Error researching '" << sub_query << "']: " << e.what() << "\n"; // Error removed
+                    #ifdef VERBOSE_LOGGING
+                    std::cerr << "[deep_research] sub-query \"" << sub_query << "\" failed: " << e.what() << '\n';
+                    #endif
                     // std::cout << "    [Finished research (with error) for: '" << sub_query << "']\n"; std::cout.flush(); // Status removed
                     return {sub_query, "Error during web_research: " + std::string(e.what())};
                 }
