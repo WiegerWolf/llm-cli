@@ -66,6 +66,43 @@ static std::string gumbo_get_text(GumboNode* node) {
     return result;
 }
 
+// --- Helper function for setting up CURL for search ---
+static CURL* setup_search_curl(const std::string& base_url, const std::string& query,
+                               std::string& response, struct curl_slist** headers) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return nullptr;
+
+    char *escaped_query = curl_easy_escape(curl, query.c_str(), query.length());
+    if (!escaped_query) {
+        curl_easy_cleanup(curl);
+        return nullptr;
+    }
+    // Construct the full URL
+    std::string url = base_url;
+    // Check if base_url already contains query parameters
+    if (base_url.find('?') == std::string::npos) {
+        url += "?q=";
+    } else {
+        url += "&q="; // Append if other parameters exist
+    }
+    url += escaped_query;
+    curl_free(escaped_query);
+
+    // Append User-Agent header (caller manages the list lifecycle)
+    *headers = curl_slist_append(*headers, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, *headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+
+    return curl;
+}
+
+
 // --- Implementation of parse_brave_search_html ---
 std::string parse_brave_search_html(const std::string& html) {
     GumboOutput* output = gumbo_parse(html.c_str());
@@ -292,33 +329,16 @@ std::string search_web(const std::string& query) {
     long http_code = 0;
 
     // --- Attempt 1: Brave Search ---
-    // std::cerr << "Attempting search with Brave Search..." << std::endl; // Status removed
-    curl = curl_easy_init();
-    if (!curl) throw std::runtime_error("Failed to initialize CURL for Brave search");
-
-    // Removed redeclaration of response here
-
-    char *escaped_query = curl_easy_escape(curl, query.c_str(), query.length());
-    if (!escaped_query) {
-        curl_easy_cleanup(curl);
-        throw std::runtime_error("Failed to URL-encode search query");
-    }
-    std::string brave_url = "https://search.brave.com/search?q=" + std::string(escaped_query);
-    curl_free(escaped_query);
-
     struct curl_slist* brave_headers = nullptr;
-    brave_headers = curl_slist_append(brave_headers, ("User-Agent: " + std::string(kUserAgent)).c_str());
-
-    curl_easy_setopt(curl, CURLOPT_URL, brave_url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, brave_headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl = setup_search_curl("https://search.brave.com/search", query, response, &brave_headers);
+    if (!curl) {
+        // Cleanup headers if allocated by helper before failure
+        if (brave_headers) curl_slist_free_all(brave_headers);
+        throw std::runtime_error("Failed to setup CURL for Brave search");
+    }
 
     res = curl_easy_perform(curl);
-    http_code = 0;
+    http_code = 0; // Reset http_code before checking
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
         // std::cerr << "DEBUG: Brave Search HTTP status code: " << http_code << std::endl; // Debug removed
@@ -327,9 +347,10 @@ std::string search_web(const std::string& query) {
         }
     }
 
+    // Cleanup Brave resources
     curl_slist_free_all(brave_headers);
     curl_easy_cleanup(curl);
-    curl = nullptr; // Reset curl handle
+    curl = nullptr; // Reset curl handle for safety
 
     if (res == CURLE_OK && http_code >= 200 && http_code < 300) {
         parsed_result = parse_brave_search_html(response);
@@ -347,32 +368,20 @@ std::string search_web(const std::string& query) {
 
     // --- Attempt 2: DuckDuckGo HTML Search (Fallback) ---
     response.clear(); // Clear previous response
-    curl = curl_easy_init();
-    if (!curl) throw std::runtime_error("Failed to initialize CURL for DDG search");
-
-    escaped_query = curl_easy_escape(curl, query.c_str(), query.length());
-    if (!escaped_query) {
-        curl_easy_cleanup(curl);
-        throw std::runtime_error("Failed to URL-encode search query for DDG");
-    }
-    std::string ddg_url = "https://html.duckduckgo.com/html/?q=" + std::string(escaped_query) + "&kl=us-en"; // Add region parameter
-    curl_free(escaped_query);
-
     struct curl_slist* ddg_headers = nullptr;
-    ddg_headers = curl_slist_append(ddg_headers, ("User-Agent: " + std::string(kUserAgent)).c_str());
+    // Note: DDG URL needs extra params, so we pass the base URL with them
+    curl = setup_search_curl("https://html.duckduckgo.com/html/?kl=us-en", query, response, &ddg_headers);
+    if (!curl) {
+        // Cleanup headers if allocated by helper before failure
+        if (ddg_headers) curl_slist_free_all(ddg_headers);
+        // If Brave failed, this means both failed.
+        throw std::runtime_error("Failed to setup CURL for DDG search (after Brave failure)");
+    }
 
-    curl_easy_setopt(curl, CURLOPT_URL, ddg_url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, ddg_headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
-
-    // std::cerr << "DEBUG: DDG Search: Requesting URL (GET): " << ddg_url << std::endl; // Debug removed
+    // std::cerr << "DEBUG: DDG Search: Requesting URL (GET): " << /* Need to reconstruct URL if debugging */ << std::endl; // Debug removed
 
     res = curl_easy_perform(curl);
-    http_code = 0;
+    http_code = 0; // Reset http_code before checking
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
         // std::cerr << "DEBUG: DDG Search: Received HTTP status code: " << http_code << std::endl; // Debug removed
@@ -381,8 +390,10 @@ std::string search_web(const std::string& query) {
         }
     }
 
+    // Cleanup DDG resources
     curl_slist_free_all(ddg_headers);
     curl_easy_cleanup(curl);
+    curl = nullptr; // Reset curl handle for safety
 
     if (res != CURLE_OK) {
         // std::cerr << "DDG Search also failed: " << curl_easy_strerror(res) << std::endl; // Status removed
