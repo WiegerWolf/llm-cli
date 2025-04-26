@@ -4,6 +4,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include "curl_utils.h" // Include the shared callback
 
 // --- Gumbo helpers (static) ---
 static GumboNode* find_node_by_tag(GumboNode* node, GumboTag tag) {
@@ -43,12 +44,7 @@ static std::string gumbo_get_text(GumboNode* node) {
     return result;
 }
 
-// --- CURL WriteCallback (static) ---
-static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
-    size_t total_size = size * nmemb;
-    output->append((char*)contents, total_size);
-    return total_size;
-}
+// WriteCallback moved to curl_utils.h
 
 // --- Implementation of visit_url ---
 std::string visit_url(const std::string& url_str) {

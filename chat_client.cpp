@@ -12,16 +12,11 @@
 #include "database.h" // For PersistenceManager and Message
 #include "tools.h"    // For ToolManager
 #include "config.h"   // For OPENROUTER_API_KEY
+#include "curl_utils.h" // Include the shared callback
 
 static int synthetic_tool_call_counter = 0;
 
-// Bring WriteCallback here as it's used by makeApiCall
-// Alternatively, make it a static member of ChatClient or move to a utility file
-static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
-    size_t total_size = size * nmemb;
-    output->append((char*)contents, total_size);
-    return total_size;
-}
+// WriteCallback moved to curl_utils.h
 
 std::string get_openrouter_api_key() {
     constexpr const char* compiled_key = OPENROUTER_API_KEY;

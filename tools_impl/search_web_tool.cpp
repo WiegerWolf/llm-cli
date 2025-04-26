@@ -6,6 +6,7 @@
 #include <vector>
 #include <functional>
 #include <iostream>
+#include "curl_utils.h" // Include the shared callback
 
 // --- Gumbo helpers (static) ---
 static GumboNode* find_node_by_tag(GumboNode* node, GumboTag tag) {
@@ -63,13 +64,6 @@ static std::string gumbo_get_text(GumboNode* node) {
         result += gumbo_get_text(child);
     }
     return result;
-}
-
-// --- CURL WriteCallback (static) ---
-static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
-    size_t total_size = size * nmemb;
-    output->append((char*)contents, total_size);
-    return total_size;
 }
 
 // --- Implementation of parse_brave_search_html ---
@@ -286,6 +280,9 @@ std::string parse_ddg_html(const std::string& html) {
 }
 
 
+// --- Constants ---
+constexpr const char* kUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36";
+
 // --- Implementation of search_web ---
 std::string search_web(const std::string& query) {
     CURL* curl = nullptr; // Initialize later
@@ -310,7 +307,7 @@ std::string search_web(const std::string& query) {
     curl_free(escaped_query);
 
     struct curl_slist* brave_headers = nullptr;
-    brave_headers = curl_slist_append(brave_headers, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36");
+    brave_headers = curl_slist_append(brave_headers, ("User-Agent: " + std::string(kUserAgent)).c_str());
 
     curl_easy_setopt(curl, CURLOPT_URL, brave_url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, brave_headers);
@@ -362,7 +359,7 @@ std::string search_web(const std::string& query) {
     curl_free(escaped_query);
 
     struct curl_slist* ddg_headers = nullptr;
-    ddg_headers = curl_slist_append(ddg_headers, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36");
+    ddg_headers = curl_slist_append(ddg_headers, ("User-Agent: " + std::string(kUserAgent)).c_str());
 
     curl_easy_setopt(curl, CURLOPT_URL, ddg_url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, ddg_headers);
