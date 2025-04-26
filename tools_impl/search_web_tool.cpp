@@ -201,6 +201,8 @@ std::string parse_brave_search_html(const std::string& html) {
 
 // --- Implementation of parse_ddg_html (adapted from user provided code) ---
 // Parses the html.duckduckgo.com/html/ structure
+// Note: This function uses a static CURL handle for URL decoding to improve performance.
+// The handle is intentionally never cleaned up as it exists for the lifetime of the application.
 std::string parse_ddg_html(const std::string& html) {
     GumboOutput* output = gumbo_parse(html.c_str());
     std::string result = "Web results (from DuckDuckGo):\n\n"; // Indicate source
