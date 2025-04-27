@@ -11,7 +11,7 @@
 
 std::string perform_web_research(PersistenceManager& db, ChatClient& client, const std::string& topic) {
     try {
-        std::cout << "  [Research Step 1: Searching web...]\n"; std::cout.flush();
+        std::cout << "  [Research Step 1: Searching web...]\n"; std::cout.flush(); // Keep this status
         std::string search_query = topic;
         std::string search_results_raw = search_web(search_query);
 
@@ -28,7 +28,9 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
                     if (extracted_url.rfind("http", 0) == 0 || extracted_url.rfind("https", 0) == 0) {
                         urls.push_back(extracted_url);
                     } else {
-                        std::cerr << "Warning: Skipping non-absolute URL found in search results: " << extracted_url << std::endl;
+#ifdef VERBOSE_LOGGING
+                        std::cerr << "[web_research] skipped non-absolute URL: " << extracted_url << '\n';
+#endif
                     }
                 }
             }
@@ -42,7 +44,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
             visited_content_summary += "No relevant URLs found in search results to visit.\n";
         } else {
             std::vector<std::future<std::pair<std::string, std::string>>> futures;
-            std::cout << "  [Research Step 3: Launching " << urls.size() << " parallel URL visits...]\n"; std::cout.flush();
+            // std::cout << "  [Research Step 3: Launching " << urls.size() << " parallel URL visits...]\n"; std::cout.flush(); // Status removed
 
             for (const std::string& url : urls) {
                 futures.push_back(std::async(std::launch::async, [url]() {
@@ -75,10 +77,10 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
                     visited_content_summary += "\n--- Error retrieving result from future: " + std::string(e.what()) + " ---\n";
                 }
             }
-            std::cout << "  [Research Step 3: All URL visits completed.]\n"; std::cout.flush();
+            // std::cout << "  [Research Step 3: All URL visits completed.]\n"; std::cout.flush(); // Status removed
         }
 
-        std::cout << "  [Research Step 4: Synthesizing results...]\n"; std::cout.flush();
+        std::cout << "  [Research Step 4: Synthesizing results...]\n"; std::cout.flush(); // Keep this status
         std::string synthesis_context = "Web search results for '" + topic + "':\n" + search_results_raw + visited_content_summary;
 
         std::vector<Message> synthesis_messages;
@@ -100,7 +102,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
             try {
                 synthesis_response_json = nlohmann::json::parse(synthesis_response_str);
             } catch (const nlohmann::json::parse_error& e) {
-                std::cerr << "JSON Parsing Error (Synthesis Response): " << e.what() << "\nResponse was: " << synthesis_response_str << "\n";
+                // std::cerr << "JSON Parsing Error (Synthesis Response): " << e.what() << "\nResponse was: " << synthesis_response_str << "\n"; // Error removed
                 if (attempt == 2) return "Error: Failed to parse synthesis response from LLM.";
                 continue;
             }
@@ -112,7 +114,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
                 auto message = synthesis_response_json["choices"][0]["message"];
 
                 if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-                    std::cerr << "Warning: Synthesis response contains tool_calls. Retrying with stronger instructions.\n";
+                    // std::cerr << "Warning: Synthesis response contains tool_calls. Retrying with stronger instructions.\n"; // Warning removed
                     continue;
                 }
 
@@ -124,7 +126,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
             }
 
             if (attempt == 2) {
-                std::cerr << "Error: Invalid API response structure (Synthesis Response).\nResponse was: " << synthesis_response_str << "\n";
+                // std::cerr << "Error: Invalid API response structure (Synthesis Response).\nResponse was: " << synthesis_response_str << "\n"; // Error removed
                 return "Error: Invalid response structure from LLM during synthesis.";
             }
         }

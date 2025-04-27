@@ -79,13 +79,14 @@ else()
 endif()
 
 # Add executable and link libraries
-add_executable(llm 
+add_executable(llm
     main.cpp
-    chat_client.cpp # Add new source file
-    chat_client.h   # Add new header file
+    chat_client.cpp
+    chat_client.h
+    curl_utils.h    # Add new header file
     database.cpp
     database.h
-    tools.cpp   
+    tools.cpp
     tools.h     
     tools_impl/search_web_tool.cpp
     tools_impl/visit_url_tool.cpp
