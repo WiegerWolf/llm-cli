@@ -66,6 +66,9 @@ static std::string gumbo_get_text(GumboNode* node) {
     return result;
 }
 
+// --- Constants ---
+constexpr const char* kUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36";
+
 // --- Helper function for setting up CURL for search ---
 static CURL* setup_search_curl(const std::string& base_url, const std::string& query,
                                std::string& response, struct curl_slist** headers) {
@@ -318,9 +321,6 @@ std::string parse_ddg_html(const std::string& html) {
     return final_result;
 }
 
-
-// --- Constants ---
-constexpr const char* kUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36";
 
 // --- Implementation of search_web ---
 std::string search_web(const std::string& query) {
