@@ -89,7 +89,7 @@ static CURL* setup_search_curl(const std::string& base_url, const std::string& q
     curl_free(escaped_query);
 
     // Append User-Agent header (caller manages the list lifecycle)
-    *headers = curl_slist_append(*headers, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36");
+    *headers = curl_slist_append(*headers, std::string("User-Agent: ").append(kUserAgent).c_str());
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, *headers);
