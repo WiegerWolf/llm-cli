@@ -331,8 +331,10 @@ std::string parse_ddg_html(const std::string& html) {
 // Function to get the Brave Search API key (similar to OpenRouter key retrieval)
 std::string get_brave_api_key() {
     constexpr const char* compiled_key = BRAVE_SEARCH_API_KEY;
-    // Check if the key was set at compile time and is not the placeholder
-    if (compiled_key[0] != '\0' && std::string(compiled_key) != "@BRAVE_SEARCH_API_KEY@") {
+    // Check if the key was set at compile time and is not the placeholder or the CMake default "OFF"
+    if (compiled_key[0] != '\0' &&
+        std::string(compiled_key) != "@BRAVE_SEARCH_API_KEY@" &&
+        std::string(compiled_key) != "OFF") { // CMake option() defaults to OFF
         return std::string(compiled_key);
     }
     // If not compiled, check the environment variable
