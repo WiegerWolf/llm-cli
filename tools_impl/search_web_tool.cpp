@@ -460,6 +460,8 @@ std::string search_web(const std::string& query) {
     std::string response;
     std::string parsed_result;
     long http_code = 0;
+    std::string brave_html_error_reason = "Unknown"; // Store failure reason
+    std::string ddg_html_error_reason = "Unknown";   // Store failure reason
 
     // --- Attempt 1: Brave Search ---
     struct curl_slist* brave_headers = nullptr;
@@ -562,8 +564,9 @@ std::string search_web(const std::string& query) {
         return parsed_result;
     } catch (const std::exception& e) {
         // std::cerr << "Brave Search API failed: " << e.what() << std::endl; // Status removed
-        // Return the last result we had before attempting the API (DDG's "no results")
-        // Or return a more specific error message:
-        return "All search methods (Brave HTML, DDG HTML, Brave API) failed. Last error: " + std::string(e.what());
+        // Return the detailed error message including reasons for each failure
+        return "All search methods failed. Brave HTML: " + brave_html_error_reason +
+               ", DDG HTML: " + ddg_html_error_reason +
+               ", Brave API: " + std::string(e.what());
     }
 }
