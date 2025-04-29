@@ -6,7 +6,11 @@
 #include <vector>
 #include <functional>
 #include <iostream>
+#include <stdexcept> // For runtime_error
+#include <cstdlib>   // For getenv
+#include <nlohmann/json.hpp> // For JSON parsing
 #include "curl_utils.h" // Include the shared callback
+#include "config.h"     // For BRAVE_SEARCH_API_KEY
 
 // --- Gumbo helpers (static) ---
 static GumboNode* find_node_by_tag(GumboNode* node, GumboTag tag) {
@@ -322,13 +326,142 @@ std::string parse_ddg_html(const std::string& html) {
 }
 
 
+// --- Brave Search API Helpers ---
+
+// Function to get the Brave Search API key (similar to OpenRouter key retrieval)
+std::string get_brave_api_key() {
+    constexpr const char* compiled_key = BRAVE_SEARCH_API_KEY;
+    // Check if the key was set at compile time and is not the placeholder or the CMake default "OFF"
+    if (compiled_key[0] != '\0' &&
+        std::string(compiled_key) != "@BRAVE_SEARCH_API_KEY@" &&
+        std::string(compiled_key) != "OFF") { // CMake option() defaults to OFF
+        return std::string(compiled_key);
+    }
+    // If not compiled, check the environment variable
+    const char* env_key = std::getenv("BRAVE_SEARCH_API_KEY");
+    if (env_key) {
+        return std::string(env_key);
+    }
+    // If neither is set, return an empty string to indicate failure
+    return "";
+}
+
+// Function to call the Brave Search API
+std::string call_brave_search_api(const std::string& query, const std::string& api_key) {
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        throw std::runtime_error("Failed to initialize CURL for Brave API search");
+    }
+
+    std::string response_string;
+    std::string url = "https://api.search.brave.com/res/v1/web/search";
+    char *escaped_query = curl_easy_escape(curl, query.c_str(), query.length());
+    if (!escaped_query) {
+        curl_easy_cleanup(curl);
+        throw std::runtime_error("Failed to escape query for Brave API search");
+    }
+    url += "?q=" + std::string(escaped_query);
+    curl_free(escaped_query);
+
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Accept: application/json");
+    // Note: Accept-Encoding is handled by CURLOPT_ACCEPT_ENCODING below
+    headers = curl_slist_append(headers, ("X-Subscription-Token: " + api_key).c_str());
+    // Add User-Agent (optional but good practice)
+    headers = curl_slist_append(headers, std::string("User-Agent: ").append(kUserAgent).c_str());
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L); // Follow redirects
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L); // Slightly longer timeout for API call
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    // Enable automatic decompression if gzip is used by the server
+    curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "gzip");
+
+    CURLcode res = curl_easy_perform(curl);
+    long http_code = 0;
+    if (res == CURLE_OK) {
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    }
+
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK) {
+        throw std::runtime_error("Brave API request failed: " + std::string(curl_easy_strerror(res)));
+    }
+
+    if (http_code < 200 || http_code >= 300) {
+        throw std::runtime_error("Brave API request failed with HTTP code " + std::to_string(http_code) + ". Response: " + response_string);
+    }
+
+    return response_string;
+}
+
+// Function to parse the Brave Search API JSON response
+std::string parse_brave_api_response(const std::string& json_response) {
+    try {
+        nlohmann::json response_json = nlohmann::json::parse(json_response);
+        std::string result = "Web results (from Brave API):\n\n";
+        int count = 0;
+
+        // Check if the 'web' key and 'results' array exist
+        if (response_json.contains("web") && response_json["web"].is_object() &&
+            response_json["web"].contains("results") && response_json["web"]["results"].is_array())
+        {
+            const size_t max_results = 10; // Limit the number of results
+            for (const auto& item : response_json["web"]["results"]) {
+                if (count >= max_results) break; // Stop after reaching the limit
+                if (!item.is_object()) continue;
+
+                std::string title = item.value("title", "");
+                std::string url = item.value("url", "");
+                std::string description = item.value("description", ""); // Snippet/description
+                std::string display_url_text; // Brave API might provide profile.display_url
+
+                // Try to get a display URL if available (e.g., from profile)
+                if (item.contains("profile") && item["profile"].is_object() && item["profile"].contains("display_url")) {
+                    display_url_text = item["profile"]["display_url"].get<std::string>();
+                }
+
+                if (!title.empty() && !url.empty()) {
+                    result += std::to_string(++count) + ". " + title + "\n";
+                    if (!description.empty()) {
+                        result += "   " + description + "\n";
+                    }
+                    std::string display_url = display_url_text.empty() ? url : display_url_text;
+                    result += "   " + display_url + " [href=" + url + "]\n\n";
+                }
+            }
+        }
+
+        if (count > 0) {
+            return result;
+        } else {
+            return "No web results found in Brave API response.";
+        }
+
+    } catch (const nlohmann::json::parse_error& e) {
+        // std::cerr << "Error parsing Brave API JSON response: " << e.what() << std::endl; // Debug removed
+        return "Error parsing Brave API JSON response.";
+    } catch (const std::exception& e) {
+        // std::cerr << "Error processing Brave API response: " << e.what() << std::endl; // Debug removed
+        return "Error processing Brave API response.";
+    }
+}
+
+
 // --- Implementation of search_web ---
 std::string search_web(const std::string& query) {
-    CURL* curl = nullptr; // Initialize later
+    CURL* curl = nullptr; // Initialize later for HTML scraping
     CURLcode res;
     std::string response;
     std::string parsed_result;
     long http_code = 0;
+    std::string brave_html_error_reason = "Unknown"; // Store failure reason
+    std::string ddg_html_error_reason = "Unknown";   // Store failure reason
 
     // --- Attempt 1: Brave Search ---
     struct curl_slist* brave_headers = nullptr;
@@ -362,10 +495,16 @@ std::string search_web(const std::string& query) {
             return parsed_result; // Return Brave results
         } else {
             // std::cerr << "Brave Search returned no results, falling back to DuckDuckGo..." << std::endl; // Status removed
+            brave_html_error_reason = "No results found or parse failed."; // Capture reason
         }
     } else {
         // std::cerr << "Brave Search failed (CURL error: " << curl_easy_strerror(res)
         //           << ", HTTP code: " << http_code << "), falling back to DuckDuckGo..." << std::endl; // Status removed
+        if (res != CURLE_OK) {
+            brave_html_error_reason = "CURL error: " + std::string(curl_easy_strerror(res));
+        } else {
+            brave_html_error_reason = "HTTP error: " + std::to_string(http_code);
+        }
     }
 
     // --- Attempt 2: DuckDuckGo HTML Search (Fallback) ---
@@ -399,13 +538,47 @@ std::string search_web(const std::string& query) {
 
     if (res != CURLE_OK) {
         // std::cerr << "DDG Search also failed: " << curl_easy_strerror(res) << std::endl; // Status removed
-        // Return the error message from the *first* failure (Brave) or a generic one if Brave didn't even run
-        // For simplicity, let's throw a new error indicating both failed.
-        throw std::runtime_error("Both Brave and DuckDuckGo search attempts failed.");
+        // Capture DDG failure reason before checking API key
+        ddg_html_error_reason = "CURL error: " + std::string(curl_easy_strerror(res));
+        // Fall through to API attempt
+    } else if (http_code < 200 || http_code >= 300) {
+        // Capture HTTP error for DDG
+        ddg_html_error_reason = "HTTP error: " + std::to_string(http_code);
+        // Fall through to API attempt
+    } else {
+        // Parse DDG results if request was successful
+        parsed_result = parse_ddg_html(response);
+        // Check if DDG search returned actual results (contains links)
+        if (parsed_result.find("[href=") != std::string::npos) {
+            // std::cerr << "DuckDuckGo Search successful." << std::endl; // Status removed
+            return parsed_result; // Return DDG results
+        } else {
+            // std::cerr << "DuckDuckGo Search returned no results, falling back to Brave API..." << std::endl; // Status removed
+            ddg_html_error_reason = "No results found or parse failed."; // Capture reason
+        }
     }
 
-    // Parse DDG results regardless of HTTP code for now, parser handles "no results"
-    parsed_result = parse_ddg_html(response);
-    // std::cerr << "DuckDuckGo Search finished." << std::endl; // Status removed
-    return parsed_result; // Return DDG results (could be "no results found")
+
+    // --- Attempt 3: Brave Search API (Final Fallback) ---
+    std::string brave_api_key = get_brave_api_key();
+    if (brave_api_key.empty()) {
+        // std::cerr << "Brave API key not found (compile-time or env var BRAVE_SEARCH_API_KEY). Cannot use API fallback." << std::endl; // Status removed
+        // Return the last result we got (which was the "no results" message from DDG parser)
+        return parsed_result;
+    }
+
+    try {
+        // std::cerr << "Attempting Brave Search API call..." << std::endl; // Status removed
+        std::string api_response_json = call_brave_search_api(query, brave_api_key);
+        parsed_result = parse_brave_api_response(api_response_json);
+        // std::cerr << "Brave Search API call finished." << std::endl; // Status removed
+        // The parser function handles "no results found" internally
+        return parsed_result;
+    } catch (const std::exception& e) {
+        // std::cerr << "Brave Search API failed: " << e.what() << std::endl; // Status removed
+        // Return the detailed error message including reasons for each failure
+        return "All search methods failed. Brave HTML: " + brave_html_error_reason +
+               ", DDG HTML: " + ddg_html_error_reason +
+               ", Brave API: " + std::string(e.what());
+    }
 }

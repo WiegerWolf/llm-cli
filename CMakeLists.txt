@@ -114,6 +114,9 @@ target_include_directories(llm PRIVATE
 # Add option for OPENROUTER_API_KEY
 option(OPENROUTER_API_KEY "OpenRouter LLM API Key to embed at compile time" "")
 
+# Add cache entry for BRAVE_SEARCH_API_KEY (string, not boolean)
+set(BRAVE_SEARCH_API_KEY "" CACHE STRING "Brave Search API Key to embed at compile time")
+
 # Configure config.h for compile-time API key embedding
 configure_file(
   ${CMAKE_SOURCE_DIR}/config.h.in
