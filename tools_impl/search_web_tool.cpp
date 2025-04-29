@@ -495,10 +495,16 @@ std::string search_web(const std::string& query) {
             return parsed_result; // Return Brave results
         } else {
             // std::cerr << "Brave Search returned no results, falling back to DuckDuckGo..." << std::endl; // Status removed
+            brave_html_error_reason = "No results found or parse failed."; // Capture reason
         }
     } else {
         // std::cerr << "Brave Search failed (CURL error: " << curl_easy_strerror(res)
         //           << ", HTTP code: " << http_code << "), falling back to DuckDuckGo..." << std::endl; // Status removed
+        if (res != CURLE_OK) {
+            brave_html_error_reason = "CURL error: " + std::string(curl_easy_strerror(res));
+        } else {
+            brave_html_error_reason = "HTTP error: " + std::to_string(http_code);
+        }
     }
 
     // --- Attempt 2: DuckDuckGo HTML Search (Fallback) ---
@@ -532,20 +538,26 @@ std::string search_web(const std::string& query) {
 
     if (res != CURLE_OK) {
         // std::cerr << "DDG Search also failed: " << curl_easy_strerror(res) << std::endl; // Status removed
-        // Return the error message from the *first* failure (Brave) or a generic one if Brave didn't even run
-        // For simplicity, let's throw a new error indicating both failed.
-        throw std::runtime_error("Both Brave and DuckDuckGo search attempts failed.");
+        // Capture DDG failure reason before checking API key
+        ddg_html_error_reason = "CURL error: " + std::string(curl_easy_strerror(res));
+        // Fall through to API attempt
+    } else if (http_code < 200 || http_code >= 300) {
+        // Capture HTTP error for DDG
+        ddg_html_error_reason = "HTTP error: " + std::to_string(http_code);
+        // Fall through to API attempt
+    } else {
+        // Parse DDG results if request was successful
+        parsed_result = parse_ddg_html(response);
+        // Check if DDG search returned actual results (contains links)
+        if (parsed_result.find("[href=") != std::string::npos) {
+            // std::cerr << "DuckDuckGo Search successful." << std::endl; // Status removed
+            return parsed_result; // Return DDG results
+        } else {
+            // std::cerr << "DuckDuckGo Search returned no results, falling back to Brave API..." << std::endl; // Status removed
+            ddg_html_error_reason = "No results found or parse failed."; // Capture reason
+        }
     }
 
-    // Parse DDG results regardless of HTTP code for now, parser handles "no results"
-    parsed_result = parse_ddg_html(response);
-    // Check if DDG search returned actual results (contains links)
-    if (parsed_result.find("[href=") != std::string::npos) {
-        // std::cerr << "DuckDuckGo Search successful." << std::endl; // Status removed
-        return parsed_result; // Return DDG results
-    } else {
-        // std::cerr << "DuckDuckGo Search returned no results, falling back to Brave API..." << std::endl; // Status removed
-    }
 
     // --- Attempt 3: Brave Search API (Final Fallback) ---
     std::string brave_api_key = get_brave_api_key();
