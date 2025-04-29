@@ -4,7 +4,7 @@ LLM-CLI is a command-line chat assistant that connects to OpenRouter LLM APIs (e
 
 ## Features
 - **Chat with LLMs** (default: GPT-4.1-nano via OpenRouter)
-- **Web search** using Brave Search (DuckDuckGo fallback)
+- **Web search** using Brave Search (HTML scraping), DuckDuckGo (HTML scraping fallback), and Brave Search API (final fallback)
 - **Visit URLs** and extract readable content
 - **Web research**: multi-step research with synthesis
 - **Deep research**: break down complex goals into sub-queries
@@ -32,18 +32,22 @@ sudo apt-get install build-essential cmake libcurl4-openssl-dev libsqlite3-dev l
 # git clone ...
 cd llm-cli
 
-# Set your OpenRouter API key in .env (see below)
+# Set your API keys in .env (see below) or provide them at compile time
 cp .env.example .env  # or create .env manually
 
 # Build (Release by default)
+# You can optionally embed API keys at compile time (see CMakeLists.txt)
+# Example: ./build.sh -DOPENROUTER_API_KEY=your_key -DBRAVE_SEARCH_API_KEY=your_key
 ./build.sh
 ```
 
 ### API Key Setup
-Create a `.env` file in the project root:
-```
+Create a `.env` file in the project root to provide API keys at runtime (recommended):
+```dotenv
 OPENROUTER_API_KEY=sk-or-...
+BRAVE_SEARCH_API_KEY=bsk-... # Optional: For Brave Search API fallback
 ```
+Alternatively, you can embed keys at compile time using CMake flags (less secure, not recommended for shared environments).
 
 ### Run
 ```sh
@@ -56,7 +60,7 @@ OPENROUTER_API_KEY=sk-or-...
 - The assistant will use tools (web search, visit_url, etc.) as needed.
 
 ## Tools
-- `search_web`: Search the web for information.
+- `search_web`: Search the web. Tries Brave Search HTML scraping, then DuckDuckGo HTML scraping, then Brave Search API (if key provided).
 - `visit_url`: Fetch and extract main text from a URL.
 - `web_research`: Multi-step research and synthesis.
 - `deep_research`: Break down complex goals and aggregate research.
