@@ -365,7 +365,7 @@ std::string call_brave_search_api(const std::string& query, const std::string& a
 
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Accept: application/json");
-    headers = curl_slist_append(headers, "Accept-Encoding: gzip"); // Brave recommends gzip
+    // Note: Accept-Encoding is handled by CURLOPT_ACCEPT_ENCODING below
     headers = curl_slist_append(headers, ("X-Subscription-Token: " + api_key).c_str());
     // Add User-Agent (optional but good practice)
     headers = curl_slist_append(headers, std::string("User-Agent: ").append(kUserAgent).c_str());
