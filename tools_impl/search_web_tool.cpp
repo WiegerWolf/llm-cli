@@ -411,7 +411,9 @@ std::string parse_brave_api_response(const std::string& json_response) {
         if (response_json.contains("web") && response_json["web"].is_object() &&
             response_json["web"].contains("results") && response_json["web"]["results"].is_array())
         {
+            const size_t max_results = 10; // Limit the number of results
             for (const auto& item : response_json["web"]["results"]) {
+                if (count >= max_results) break; // Stop after reaching the limit
                 if (!item.is_object()) continue;
 
                 std::string title = item.value("title", "");
