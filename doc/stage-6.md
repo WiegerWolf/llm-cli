@@ -6,13 +6,13 @@
 
 **Checklist:**
 
-1.  [ ] **Modify `tools.h`:**
+1.  [x] **Modify `tools.h`:**
     *   Add `class UserInterface;` forward declaration near the top.
     *   Update `ToolManager::execute_tool` signature:
         ```cpp
         std::string execute_tool(PersistenceManager& db, class ChatClient& client, UserInterface& ui, const std::string& tool_name, const nlohmann::json& args);
         ```
-2.  [ ] **Modify `tools.cpp`:**
+2.  [x] **Modify `tools.cpp`:**
     *   Include `ui_interface.h`.
     *   Update the definition of `ToolManager::execute_tool` to match the new signature (add `UserInterface& ui` parameter).
     *   Inside `execute_tool`:
@@ -25,20 +25,20 @@
         *   Update the call to `perform_web_research`: `return perform_web_research(db, client, ui, topic);`.
         *   Update the call to `perform_deep_research`: `return perform_deep_research(db, client, ui, goal);`.
     *   Remove `#include <iostream>` if no longer needed.
-3.  [ ] **Modify `tools_impl/web_research_tool.h`:**
+3.  [x] **Modify `tools_impl/web_research_tool.h`:**
     *   Add `class UserInterface;` forward declaration.
     *   Update signature: `std::string perform_web_research(PersistenceManager& db, ChatClient& client, UserInterface& ui, const std::string& topic);`.
-4.  [ ] **Modify `tools_impl/web_research_tool.cpp`:**
+4.  [x] **Modify `tools_impl/web_research_tool.cpp`:**
     *   Include `ui_interface.h`.
     *   Update function definition to match the new signature (add `UserInterface& ui` parameter).
     *   Replace all `std::cout << " [Research Step X: ...]\n"; std::cout.flush();` lines with `ui.displayStatus(" [Research Step X: ...]");`.
     *   Replace `std::cout << "[Web research complete for: " << topic << "]\n"; std::cout.flush();` with `ui.displayStatus("[Web research complete for: " + topic + "]");`.
     *   Replace `std::cerr << "Web research failed during execution: " << e.what() << "\n";` with `ui.displayError("Web research failed during execution: " + std::string(e.what()));`.
     *   Remove `#include <iostream>` if no longer needed.
-5.  [ ] **Modify `tools_impl/deep_research_tool.h`:**
+5.  [x] **Modify `tools_impl/deep_research_tool.h`:**
     *   Add `class UserInterface;` forward declaration.
     *   Update signature: `std::string perform_deep_research(PersistenceManager& db, ChatClient& client, UserInterface& ui, const std::string& goal);`.
-6.  [ ] **Modify `tools_impl/deep_research_tool.cpp`:**
+6.  [x] **Modify `tools_impl/deep_research_tool.cpp`:**
     *   Include `ui_interface.h`.
     *   Update function definition to match the new signature (add `UserInterface& ui` parameter).
     *   Replace all `std::cout << " [Deep Research Step X: ...]\n"; std::cout.flush();` lines with `ui.displayStatus(" [Deep Research Step X: ...]");`.
@@ -48,11 +48,11 @@
         *   Capture `ui` by reference: `[&db, &client, &ui, &sub_query]`
         *   Call `perform_web_research` with `ui`: `std::string result = perform_web_research(db, client, ui, sub_query);`
     *   Remove `#include <iostream>` if no longer needed.
-7.  [ ] **Modify `chat_client.cpp`:**
+7.  [x] **Modify `chat_client.cpp`:**
     *   In `ChatClient::executeAndPrepareToolResult`: Update the call to `toolManager.execute_tool` to pass the `ui` member: `tool_result_str = toolManager.execute_tool(db, *this, ui, function_name, function_args);`.
     *   In `ChatClient::executeFallbackFunctionTags`: Update the call to `executeAndPrepareToolResult` (it doesn't call `toolManager.execute_tool` directly, but the previous step ensures the `ui` is passed down when `execute_tool` *is* called). Ensure status messages here use `ui.displayStatus`.
-8.  [ ] **Review Includes:** Check `tools.cpp`, `tools_impl/web_research_tool.cpp`, `tools_impl/deep_research_tool.cpp` for unneeded `#include <iostream>`.
-9.  [ ] **Build & Verify:**
+8.  [x] **Review Includes:** Check `tools.cpp`, `tools_impl/web_research_tool.cpp`, `tools_impl/deep_research_tool.cpp` for unneeded `#include <iostream>`.
+9.  [x] **Build & Verify:**
     *   Run `./build.sh`.
     *   Ensure compilation succeeds.
     *   Run `./build/llm`. Test tools (`search_web`, `visit_url`, `web_research`, `deep_research`). Verify their status messages are now displayed via the `CliInterface` (e.g., `[Status] Searching web...`).
