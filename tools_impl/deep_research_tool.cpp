@@ -1,19 +1,21 @@
 #include "tools_impl/deep_research_tool.h"
 #include "tools_impl/web_research_tool.h"
 #include "chat_client.h"
+#include "ui_interface.h" // Include UI interface
 #include <vector>
 #include <future>
 #include <mutex>
-#include <iostream>
+// #include <iostream> // Replaced with ui.displayStatus/Error
 #include <nlohmann/json.hpp>
 #include <sstream>
+#include <string> // For std::to_string
 
-std::string perform_deep_research(PersistenceManager& db, ChatClient& client, const std::string& goal) {
+std::string perform_deep_research(PersistenceManager& db, ChatClient& client, UserInterface& ui, const std::string& goal) {
     std::string aggregated_results = "Deep Research Results for: " + goal + "\n\n";
     std::vector<std::string> sub_queries;
 
     try {
-        std::cout << "  [Deep Research Step 1: Generating sub-queries...]\n"; std::cout.flush(); // Keep this status
+        ui.displayStatus("  [Deep Research Step 1: Generating sub-queries...]"); // Use UI for status
         std::vector<Message> subquery_context;
         subquery_context.push_back({"system", "You are an AI assistant helping with research planning. Given a research goal, break it down into 3-5 specific, actionable sub-topics suitable for individual web research. Output *only* a JSON array of strings, where each string is a sub-topic. Example: [\"sub-topic 1\", \"sub-topic 2\", \"sub-topic 3\"]"});
         subquery_context.push_back({"user", "Research Goal: " + goal});
@@ -54,16 +56,16 @@ std::string perform_deep_research(PersistenceManager& db, ChatClient& client, co
         }
         // std::cout << "  [Deep Research Step 1: Generated " << sub_queries.size() << " sub-queries.]\n"; std::cout.flush(); // Status removed
 
-        std::cout << "  [Deep Research Step 2: Launching parallel web research for " << sub_queries.size() << " sub-queries...]\n"; std::cout.flush(); // Keep this status
+        ui.displayStatus("  [Deep Research Step 2: Launching parallel web research for " + std::to_string(sub_queries.size()) + " sub-queries...]"); // Use UI for status
         std::vector<std::future<std::pair<std::string, std::string>>> research_futures;
         std::mutex results_mutex;
 
         for (const std::string& sub_query : sub_queries) {
             research_futures.push_back(std::async(std::launch::async,
-                [&db, &client, &sub_query]() -> std::pair<std::string, std::string> {
+                [&db, &client, &ui, &sub_query]() -> std::pair<std::string, std::string> { // Capture ui
                 // std::cout << "    [Starting research for: '" << sub_query << "']\n"; std::cout.flush(); // Status removed
                 try {
-                    std::string result = perform_web_research(db, client, sub_query);
+                    std::string result = perform_web_research(db, client, ui, sub_query); // Pass ui
                     // std::cout << "    [Finished research for: '" << sub_query << "']\n"; std::cout.flush(); // Status removed
                     return {sub_query, result};
                 } catch (const std::exception& e) {
@@ -100,7 +102,7 @@ std::string perform_deep_research(PersistenceManager& db, ChatClient& client, co
         }
         // std::cout << "  [Deep Research Step 2: All parallel research tasks finished.]\n"; std::cout.flush(); // Status removed
 
-        std::cout << "  [Deep Research Step 3: Synthesizing final report...]\n"; std::cout.flush(); // Keep this status
+        ui.displayStatus("  [Deep Research Step 3: Synthesizing final report...]"); // Use UI for status
         std::vector<Message> synthesis_context;
         synthesis_context.push_back({"system", "You are a research assistant. Based *only* on the provided research goal and the aggregated results from multiple web research sub-queries, synthesize a comprehensive final report that directly addresses the original goal. Integrate the findings smoothly. DO NOT USE ANY TOOLS OR FUNCTIONS. Do not add any preamble like 'Based on the provided text...'."});
         synthesis_context.push_back({"user", "Original Research Goal: " + goal + "\n\nAggregated Research Findings:\n" + aggregated_results});
@@ -152,11 +154,11 @@ std::string perform_deep_research(PersistenceManager& db, ChatClient& client, co
         if (!synthesis_success) {
             return "I conducted deep research on '" + goal + "' but encountered technical difficulties synthesizing the final report. Here are the raw research findings:\n\n" + aggregated_results;
         }
-        std::cout << "[Deep research complete for: " << goal << "]\n"; std::cout.flush();
+        ui.displayStatus("[Deep research complete for: " + goal + "]"); // Use UI for status
         return final_report;
 
     } catch (const std::exception& e) {
-        std::cerr << "Deep research failed during execution: " << e.what() << "\n";
+        ui.displayError("Deep research failed during execution: " + std::string(e.what())); // Use UI for error
         return "Error performing deep research: " + std::string(e.what()) + "\n\nPartial results gathered:\n" + aggregated_results;
     }
 }

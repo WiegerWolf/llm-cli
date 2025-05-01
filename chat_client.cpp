@@ -169,7 +169,8 @@ std::string ChatClient::executeAndPrepareToolResult(
         // Execute the tool using the ToolManager instance member
         // Pass the db instance needed by some tools like read_history
         // Pass the ChatClient instance (*this) for tools that need to make API calls (like web_research)
-        tool_result_str = toolManager.execute_tool(db, *this, function_name, function_args);
+        // Pass the ui instance for status messages
+        tool_result_str = toolManager.execute_tool(db, *this, ui, function_name, function_args);
     } catch (const std::exception& e) {
          // Errors during argument validation or unknown tool are caught here
          ui.displayError("Tool execution error for '" + function_name + "': " + e.what()); // Use UI for error
@@ -592,7 +593,8 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             context = db.getContextHistory();
             std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
 
-            ui.displayStatus("[Executing function from content: " + function_name + "]"); // Use UI for status
+            // Note: executeAndPrepareToolResult will call toolManager.execute_tool, which now uses ui.displayStatus internally
+            // So we don't need an explicit ui.displayStatus here, but the call below ensures ui is passed down.
 
             // Execute tool and get result JSON string
             std::string tool_result_msg_json = executeAndPrepareToolResult(tool_call_id, function_name, function_args);

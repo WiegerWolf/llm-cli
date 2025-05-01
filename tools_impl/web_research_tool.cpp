@@ -2,16 +2,18 @@
 #include "tools_impl/search_web_tool.h"
 #include "tools_impl/visit_url_tool.h"
 #include "chat_client.h"
+#include "ui_interface.h" // Include UI interface
 #include <sstream>
 #include <vector>
 #include <future>
 #include <mutex>
-#include <iostream>
+// #include <iostream> // Replaced with ui.displayStatus/Error
 #include <nlohmann/json.hpp>
+#include <string> // For std::to_string
 
-std::string perform_web_research(PersistenceManager& db, ChatClient& client, const std::string& topic) {
+std::string perform_web_research(PersistenceManager& db, ChatClient& client, UserInterface& ui, const std::string& topic) {
     try {
-        std::cout << "  [Research Step 1: Searching web...]\n"; std::cout.flush(); // Keep this status
+        ui.displayStatus("  [Research Step 1: Searching web...]"); // Use UI for status
         std::string search_query = topic;
         std::string search_results_raw = search_web(search_query);
 
@@ -35,7 +37,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
                 }
             }
         }
-        std::cout << "  [Research Step 2: Found " << urls.size() << " absolute URLs. Visiting all...]\n"; std::cout.flush();
+        ui.displayStatus("  [Research Step 2: Found " + std::to_string(urls.size()) + " absolute URLs. Visiting all...]"); // Use UI for status
 
         std::string visited_content_summary = "\n\nVisited Pages Content:\n";
         std::mutex summary_mutex;
@@ -57,7 +59,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
                 }));
             }
 
-            std::cout << "  [Research Step 3: Waiting for URL visits to complete...]\n"; std::cout.flush();
+            ui.displayStatus("  [Research Step 3: Waiting for URL visits to complete...]"); // Use UI for status
             for (size_t i = 0; i < futures.size(); ++i) {
                 try {
                     std::pair<std::string, std::string> result = futures[i].get();
@@ -80,7 +82,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
             // std::cout << "  [Research Step 3: All URL visits completed.]\n"; std::cout.flush(); // Status removed
         }
 
-        std::cout << "  [Research Step 4: Synthesizing results...]\n"; std::cout.flush(); // Keep this status
+        ui.displayStatus("  [Research Step 4: Synthesizing results...]"); // Use UI for status
         std::string synthesis_context = "Web search results for '" + topic + "':\n" + search_results_raw + visited_content_summary;
 
         std::vector<Message> synthesis_messages;
@@ -135,11 +137,11 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, con
             return "I researched information about '" + topic + "' but encountered technical difficulties synthesizing the results. The search found relevant information, but I was unable to properly summarize it due to API limitations.";
         }
 
-        std::cout << "[Web research complete for: " << topic << "]\n"; std::cout.flush();
+        ui.displayStatus("[Web research complete for: " + topic + "]"); // Use UI for status
         return final_synthesized_content;
 
     } catch (const std::exception& e) {
-        std::cerr << "Web research failed during execution: " << e.what() << "\n";
+        ui.displayError("Web research failed during execution: " + std::string(e.what())); // Use UI for error
         return "Error performing web research: " + std::string(e.what());
     }
 }

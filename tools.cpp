@@ -7,9 +7,11 @@
 #include "tools_impl/deep_research_tool.h"
 #include "chat_client.h" // Include the full definition of ChatClient
 #include "database.h" // Include database.h for PersistenceManager definition
+#include "ui_interface.h" // Include UI interface
 #include <stdexcept>
-#include <iostream>
+// #include <iostream> // Replaced with ui.displayStatus
 #include <mutex>
+#include <string> // For std::to_string
 
 
 
@@ -148,24 +150,22 @@ nlohmann::json ToolManager::get_tool_definitions() const {
     return nlohmann::json::array({search_web_tool, get_current_datetime_tool, visit_url_tool, read_history_tool, web_research_tool, deep_research_tool}); // Added deep_research_tool
 }
 
-// Added ChatClient& client parameter
-std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client, const std::string& tool_name, const nlohmann::json& args) {
+// Added ChatClient& client and UserInterface& ui parameters
+std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client, UserInterface& ui, const std::string& tool_name, const nlohmann::json& args) {
     // Execute the appropriate tool based on name
     if (tool_name == "search_web") {
         std::string query = args.value("query", "");
         if (query.empty()) {
             throw std::runtime_error("'query' argument missing or empty for search_web tool.");
         }
-        std::cout << "[Searching web for: " << query << "]\n"; // Keep this status
-        std::cout.flush();
+        ui.displayStatus("[Searching web for: " + query + "]"); // Use UI for status
         try {
             return search_web(query);
         } catch (const std::exception& e) {
             return "Error performing web search: " + std::string(e.what());
         }
     } else if (tool_name == "get_current_datetime") {
-        std::cout << "[Getting current date and time]\n"; // Keep this status
-        std::cout.flush();
+        ui.displayStatus("[Getting current date and time]"); // Use UI for status
         try {
             return get_current_datetime();
         } catch (const std::exception& e) {
@@ -176,8 +176,7 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         if (url_to_visit.empty()) {
             throw std::runtime_error("'url' argument missing or empty for visit_url tool.");
         }
-        std::cout << "[Visiting URL: " << url_to_visit << "]\n"; // Keep this status
-        std::cout.flush();
+        ui.displayStatus("[Visiting URL: " + url_to_visit + "]"); // Use UI for status
         try {
             return visit_url(url_to_visit);
         } catch (const std::exception& e) {
@@ -191,8 +190,7 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         if (start_time.empty() || end_time.empty()) {
             throw std::runtime_error("'start_time' or 'end_time' missing for read_history tool.");
         }
-        std::cout << "[Reading history (" << start_time << " to " << end_time << ", Limit: " << limit << ")]\n"; // Keep this status
-        std::cout.flush();
+        ui.displayStatus("[Reading history (" + start_time + " to " + end_time + ", Limit: " + std::to_string(limit) + ")]"); // Use UI for status
         try {
             return read_history(db, start_time, end_time, limit);
         } catch (const std::exception& e) {
@@ -203,17 +201,15 @@ std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client
         if (topic.empty()) {
             throw std::runtime_error("'topic' argument missing or empty for web_research tool.");
         }
-        std::cout << "[Performing web research on: " << topic << "]\n"; // Keep this status
-        std::cout.flush();
-        return perform_web_research(db, client, topic);
+        ui.displayStatus("[Performing web research on: " + topic + "]"); // Use UI for status
+        return perform_web_research(db, client, ui, topic); // Pass ui
     } else if (tool_name == "deep_research") {
         std::string goal = args.value("goal", "");
         if (goal.empty()) {
             throw std::runtime_error("'goal' argument missing or empty for deep_research tool.");
         }
-        std::cout << "[Performing deep research for: " << goal << "]\n"; // Keep this status
-        std::cout.flush();
-        return perform_deep_research(db, client, goal);
+        ui.displayStatus("[Performing deep research for: " + goal + "]"); // Use UI for status
+        return perform_deep_research(db, client, ui, goal); // Pass ui
     } else {
         throw std::runtime_error("Unknown tool requested: " + tool_name);
     }
