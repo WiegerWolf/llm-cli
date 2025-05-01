@@ -83,9 +83,11 @@ add_executable(llm
     main.cpp                                                                                                                                                             
     chat_client.cpp                                                                                                                                                      
     chat_client.h                                                                                                                                                        
-    ui_interface.h  # Add UI abstraction header                                                                                                                          
-    curl_utils.h    # Add new header file                                                                                                                                
-    database.cpp                                                                                                                                                         
+    ui_interface.h      # UI abstraction header                                                                                                                          
+    cli_interface.h     # CLI implementation header                                                                                                                      
+    cli_interface.cpp   # CLI implementation source                                                                                                                      
+    curl_utils.h        # Add new header file                                                                                                                            
+    database.cpp                                                                                                                                                        
     database.h                                                                                                                                                           
     tools.cpp
     tools.h     
