@@ -11,7 +11,7 @@
     *   Add `cli_interface.cpp` to the list of source files.
     *   Verify that `Readline_INCLUDE_DIRS` is added to `target_include_directories(llm PRIVATE ...)` (already present).
     *   Verify that `${Readline_LIBRARIES}` is added to `target_link_libraries(llm PRIVATE ...)` (already present).
-2.  [ ] **Modify `main.cpp`:**
+2.  [X] **Modify `main.cpp`:**
     *   Include `cli_interface.h`.
     *   Inside `main()` function, before creating `ChatClient`:
         *   Instantiate the CLI UI: `CliInterface cli_ui;`.
@@ -19,10 +19,10 @@
     *   **Temporarily Adapt `ChatClient` Instantiation:**
         *   The `ChatClient` constructor doesn't accept the UI yet. Either:
             *   Comment out the `ChatClient client;` and `client.run();` lines for now.
-            *   *OR* Temporarily modify `ChatClient`'s constructor in `chat_client.h`/`.cpp` to accept `UserInterface&` (even if unused) to allow compilation. This change will be finalized in Stage 4. **(Recommended approach for continuous compilation)**.
+            *   *OR* Temporarily modify `ChatClient`'s constructor in `chat_client.h`/`.cpp` to accept `UserInterface&` (even if unused) to allow compilation. This change will be finalized in Stage 4. **(Recommended approach for continuous compilation)**. **DONE** (Modified constructor in `chat_client.h/.cpp`)
     *   Inside `main()`, just before `return 0;` (or after the `try` block if `client.run()` is active):
-        *   Call `cli_ui.shutdown();`.
-    *   Ensure the `catch` blocks remain to handle potential errors.
+        *   Call `cli_ui.shutdown();`. **DONE**
+    *   Ensure the `catch` blocks remain to handle potential errors. **DONE** (Modified catch blocks to use UI)
 3.  [ ] **Build & Verify:**
     *   Run `./build.sh`.
     *   Ensure the application compiles successfully.

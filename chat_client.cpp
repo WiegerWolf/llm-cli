@@ -1,13 +1,14 @@
 #include "chat_client.h"
-#include <iostream>
+#include "ui_interface.h" // Include UI interface
+#include <iostream>       // Keep for cerr in executeAndPrepareToolResult for now
 #include <string>
 #include <vector>
 #include <curl/curl.h>
-#include <cstdlib>
+#include <cstdlib>        // Keep for getenv, free
 #include <nlohmann/json.hpp>
 #include <stdexcept>
-#include <readline/readline.h>
-#include <readline/history.h>
+// #include <readline/readline.h> // Remove readline includes
+// #include <readline/history.h>
 #include <unordered_set>   //  NUEVA – para rastrear ids de tool_calls
 #include "database.h" // For PersistenceManager and Message
 #include "tools.h"    // For ToolManager
@@ -28,6 +29,15 @@ std::string get_openrouter_api_key() {
         return std::string(env_key);
     }
     throw std::runtime_error("OPENROUTER_API_KEY not set at compile time or in environment");
+}
+
+// --- ChatClient Constructor ---
+ChatClient::ChatClient(UserInterface& ui_ref) :
+    db(),              // Initialize PersistenceManager
+    toolManager(),     // Initialize ToolManager
+    ui(ui_ref)         // Initialize the UI reference
+{
+    // Constructor body (if any) - currently empty
 }
 
 // --- ChatClient Method Implementations ---
