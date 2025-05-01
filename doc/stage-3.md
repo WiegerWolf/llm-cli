@@ -6,7 +6,7 @@
 
 **Checklist:**
 
-1.  [ ] **Modify `CMakeLists.txt`:**
+1.  [X] **Modify `CMakeLists.txt`:**
     *   Find the `add_executable(llm ...)` command.
     *   Add `cli_interface.cpp` to the list of source files.
     *   Verify that `Readline_INCLUDE_DIRS` is added to `target_include_directories(llm PRIVATE ...)` (already present).
