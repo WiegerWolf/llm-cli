@@ -6,9 +6,9 @@
 
 **Checklist:**
 
-1.  [ ] **Modify `ChatClient::promptUserInput()` (`chat_client.cpp`):**
+1.  [X] **Modify `ChatClient::promptUserInput()` (`chat_client.cpp`):**
     *   Remove the entire existing implementation (which should be identical to `CliInterface::promptUserInput`).
-    *   Replace it with: `return ui.promptUserInput();`.
+    *   Replace it with: `return ui.promptUserInput();`. **DONE**
 2.  [ ] **Modify `ChatClient::run()` (`chat_client.cpp`):**
     *   Replace `std::cout << "Chatting with " << this->model_name << " - Type your message (Ctrl+D to exit)\n";`
         with `ui.displayOutput("Chatting with " + this->model_name + " - Type your message (Ctrl+D to exit)\n");`.

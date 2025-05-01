@@ -203,12 +203,8 @@ void ChatClient::run() {
 }
 
 std::optional<std::string> ChatClient::promptUserInput() {
-    char* input_cstr = readline("> ");
-    if (!input_cstr) return std::nullopt;       // Ctrl‑D
-    std::string input(input_cstr);
-    free(input_cstr);
-    if (!input.empty()) add_history(input.c_str());
-    return input;
+    // Delegate input prompting to the injected UI object
+    return ui.promptUserInput();
 }
 
 void ChatClient::saveUserInput(const std::string& input) {
