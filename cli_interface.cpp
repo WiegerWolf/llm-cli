@@ -47,9 +47,9 @@ void CliInterface::displayOutput(const std::string& output) {
 }                                                                                                                                                                        
                                                                                                                                                                          
 // Displays error messages to the console (stderr).                                                                                                                      
-// Ensures output ends with a newline.                                                                                                                                   
+// Prefixes with "Error: " and ensures output ends with a newline.                                                                                                       
 void CliInterface::displayError(const std::string& error) {                                                                                                              
-    std::cerr << error;                                                                                                                                                  
+    std::cerr << "Error: " << error; // Add "Error: " prefix                                                                                                             
     // Add newline if error doesn't already end with one                                                                                                                 
     if (error.empty() || error.back() != '\n') {                                                                                                                         
         std::cerr << '\n';                                                                                                                                               
