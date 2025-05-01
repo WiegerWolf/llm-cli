@@ -13,9 +13,9 @@ Refactor the `llm-cli` application to separate the command-line interface (CLI) 
 
 ## 3. Current Architecture Issues
 
-*   **Mixed Concerns:** The `ChatClient` class currently handles both core logic (API calls, tool execution, state management via `PersistenceManager`) and presentation logic (reading input via `readline`, printing output/errors/status via `std::cout`/`std::cerr`).
-*   **Direct Output:** Tool implementations (`tools_impl/`) sometimes print status messages directly to `std::cout`, bypassing the main application flow.
-*   **CLI Dependencies:** Core components like `ChatClient` might implicitly depend on CLI-specific libraries (like `readline`) or terminal behavior.
+*   **Mixed Concerns:** The `ChatClient` class currently handles both core logic (API calls, tool execution, state management via `PersistenceManager`) and presentation logic (reading input via `readline`/`add_history` in `promptUserInput`, printing output/errors/status via `std::cout`/`std::cerr` in `run`, `handleApiError`, `executeStandardToolCalls`, `executeFallbackFunctionTags`, `printAndSaveAssistantContent`).
+*   **Direct Output:** `ToolManager::execute_tool` and tool implementations (`tools_impl/web_research_tool.cpp`, `tools_impl/deep_research_tool.cpp`) print status messages directly to `std::cout`, bypassing the main application flow.
+*   **CLI Dependencies:** `ChatClient` directly depends on `readline` headers and functions.
 
 ## 4. Proposed Architecture
 
@@ -40,18 +40,23 @@ We will introduce a clear boundary between the core application and the user int
     *   Contains all CLI-specific dependencies and logic.
 
 *   **`ChatClient` (Core Logic):**
-    *   Modified to hold a reference or pointer to a `UserInterface` object (passed via constructor - Dependency Injection).
-    *   All direct console I/O (`readline`, `std::cout`, `std::cerr`) will be replaced with calls to the `UserInterface` methods (e.g., `ui->displayOutput(...)`).
-    *   Will no longer have direct dependencies on CLI libraries.
+    *   Modified to hold a `UserInterface&` (passed via constructor - Dependency Injection).
+    *   All direct console I/O (`readline`, `free`, `add_history`, `std::cout`, `std::cerr`) will be replaced with calls to the `UserInterface` methods (e.g., `ui.promptUserInput()`, `ui.displayOutput()`, `ui.displayError()`, `ui.displayStatus()`).
+    *   Will no longer include `readline` headers or call its functions directly.
+    *   Will pass the `UserInterface&` to methods like `executeAndPrepareToolResult` and `executeFallbackFunctionTags` so it can be propagated to `ToolManager`.
 
 *   **`ToolManager` / Tool Implementations:**
-    *   Modified to accept a `UserInterface` reference or pointer where necessary (likely passed down from `ChatClient` through `execute_tool`).
-    *   Direct `std::cout` calls for status messages will be replaced with calls to `ui->displayStatus(...)`.
+    *   `ToolManager::execute_tool` signature changed to accept `UserInterface& ui`.
+    *   Tool implementation functions that print status (e.g., `perform_web_research`, `perform_deep_research`) signatures changed to accept `UserInterface& ui`.
+    *   The `UserInterface&` will be passed from `ChatClient` -> `executeAndPrepareToolResult`/`executeFallbackFunctionTags` -> `ToolManager::execute_tool` -> specific tool implementations (`perform_web_research`, `perform_deep_research`).
+    *   Direct `std::cout` calls for status messages in `ToolManager::execute_tool` and relevant tool implementations will be replaced with calls to `ui.displayStatus(...)`.
+    *   Direct `std::cerr` calls for user-facing errors within tools (if any) should likely become `ui.displayError(...)`.
 
 *   **`main.cpp` (Entry Point):**
     *   Instantiates the concrete `CliInterface`.
-    *   Instantiates `ChatClient`, injecting the `CliInterface` instance.
-    *   Calls `ui->initialize()`, `client.run()`, and `ui->shutdown()`.
+    *   Instantiates the concrete `CliInterface` (e.g., `CliInterface cli_ui;`).
+    *   Instantiates `ChatClient`, injecting the `CliInterface` instance (e.g., `ChatClient client(cli_ui);`).
+    *   Calls `cli_ui.initialize()`, `client.run()`, and `cli_ui.shutdown()`.
 
 ## 5. Refactoring Steps (High-Level)
 
@@ -66,9 +71,9 @@ We will introduce a clear boundary between the core application and the user int
 
 ## 6. Potential Challenges & Considerations
 
-*   **Status Message Propagation:** Passing the `UserInterface` reference down through `ChatClient` -> `ToolManager` -> specific tool functions requires careful plumbing.
-*   **Error Handling Granularity:** Differentiate between errors that should just be displayed to the user versus those that are fatal to the application's current operation or require termination. The core logic should decide the severity, the UI should just display.
-*   **Build System Complexity:** Ensuring CLI libraries are only linked where needed might add complexity, though linking them to the main executable is often simpler initially.
-*   **Incremental Changes:** This refactoring can be done incrementally, focusing on one piece of I/O at a time (e.g., first `promptUserInput`, then `displayOutput`, etc.).
+*   **Status Message Propagation:** Passing the `UserInterface&` down through `ChatClient` -> `ToolManager` -> specific tool functions requires careful modification of function signatures as outlined in the steps.
+*   **Error Handling Granularity:** Differentiate between errors that should just be displayed to the user (use `ui.displayError()`) versus those that are fatal. Internal debug messages (`std::cerr`) might remain if not intended for the end-user, or a proper logging framework could be introduced later.
+*   **Build System Complexity:** Ensuring `readline` headers/libraries are only linked where `CliInterface` is defined might require creating a separate library/object file for `CliInterface` or adjusting include paths. Linking `readline` to the main executable remains the simpler initial approach.
+*   **Incremental Changes:** This refactoring can be done incrementally. A good order might be: 1) Define interfaces, create `CliInterface`, update `main.cpp`. 2) Refactor `ChatClient` I/O. 3) Refactor `ToolManager` and tool implementations.
 
 This plan provides a roadmap for the refactoring. We can proceed step-by-step, refining details as needed.
