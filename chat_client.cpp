@@ -257,7 +257,7 @@ bool ChatClient::handleApiError(const nlohmann::json& api_response,
         // Fall through to the fallback parsing logic below
     } else {
          // Unexpected response structure
-         std::cerr << "Error: Invalid API response structure (First Response).\nResponse was: " << api_response.dump() << "\n";
+         ui.displayError("Invalid API response structure (First Response). Response was: " + api_response.dump()); // Use UI for error
          return true;
     }
     return false;
@@ -634,7 +634,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                      continue;
                  }
                  if (final_response_json.contains("error")) {
-                      std::cerr << "API Error Received (Fallback Final Response): " << final_response_json["error"].dump(2) << std::endl; // Keep this error
+                      ui.displayError("API Error Received (Fallback Final Response): " + final_response_json["error"].dump(2)); // Use UI for error
                       if (attempt == 2) break;
                       continue;
                  }
