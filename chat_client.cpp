@@ -1,10 +1,10 @@
 #include "chat_client.h"
 #include "ui_interface.h" // Include UI interface
-#include <iostream>       // Keep for cerr in executeAndPrepareToolResult for now
+// #include <iostream>    // Remove iostream if no longer needed
 #include <string>
 #include <vector>
 #include <curl/curl.h>
-#include <cstdlib>        // Keep for getenv, free
+#include <cstdlib>        // Keep for getenv
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 // #include <readline/readline.h> // Remove readline includes
@@ -172,7 +172,7 @@ std::string ChatClient::executeAndPrepareToolResult(
         tool_result_str = toolManager.execute_tool(db, *this, function_name, function_args);
     } catch (const std::exception& e) {
          // Errors during argument validation or unknown tool are caught here
-         std::cerr << "Tool execution error for '" << function_name << "': " << e.what() << "\n"; // Keep this error
+         ui.displayError("Tool execution error for '" + function_name + "': " + e.what()); // Use UI for error
          tool_result_str = "Error executing tool '" + function_name + "': " + e.what();
          // Continue to prepare the error as the tool result
     }
@@ -192,8 +192,7 @@ std::string ChatClient::executeAndPrepareToolResult(
 
 void ChatClient::run() {
     db.cleanupOrphanedToolMessages();
-    std::cout << "Chatting with " << this->model_name
-              << " - Type your message (Ctrl+D to exit)\n";
+    ui.displayOutput("Chatting with " + this->model_name + " - Type your message (Ctrl+D to exit)\n"); // Use UI
     while (true) {
         auto input_opt = promptUserInput();
         if (!input_opt) break;          // salir con Ctrl‑D
@@ -218,7 +217,7 @@ bool ChatClient::handleApiError(const nlohmann::json& api_response,
 {
     // --- Check for API Errors first ---
     if (api_response.contains("error")) {
-        std::cerr << "API Error Received: " << api_response["error"].dump(2) << std::endl; // Keep this error
+        ui.displayError("API Error Received: " + api_response["error"].dump(2)); // Use UI for error
         // Check for the specific recoverable error
         if (api_response["error"].contains("code") &&
             api_response["error"]["code"] == "tool_use_failed" &&
@@ -369,7 +368,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
 
         // Check for API errors in the final response
         if (final_response_json.contains("error")) {
-             std::cerr << "API Error Received (Final Response): " << final_response_json["error"].dump(2) << std::endl;
+             ui.displayError("API Error Received (Final Response): " + final_response_json["error"].dump(2)); // Use UI for error
              if (attempt == 2) break;
              continue; // Try again
         }
@@ -407,7 +406,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
 
     // 6. Handle the final response
     if (!final_response_success) {
-        std::cerr << "Error: Failed to get a valid final text response after tool execution and 3 attempts.\n";
+        ui.displayError("Failed to get a valid final text response after tool execution and 3 attempts."); // Use UI for error
         return false; // Indicate overall failure for this turn's tool path
     }
 
@@ -415,8 +414,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     db.saveAssistantMessage(final_content);
 
     // Display final response
-    std::cout << final_content << "\n\n";
-    std::cout.flush(); // Ensure output is displayed before next prompt
+    ui.displayOutput(final_content + "\n\n"); // Use UI for output
     return true; // Indicate success for the standard tool call path
 }
 
@@ -592,11 +590,9 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             std::string function_block = content_str.substr(func_start, func_end + 11 - func_start);
             db.saveAssistantMessage(function_block);
             context = db.getContextHistory();
-
             std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
 
-            std::cout << "[Executing function from content: " << function_name << "]\n";
-            std::cout.flush();
+            ui.displayStatus("[Executing function from content: " + function_name + "]"); // Use UI for status
 
             // Execute tool and get result JSON string
             std::string tool_result_msg_json = executeAndPrepareToolResult(tool_call_id, function_name, function_args);
@@ -666,11 +662,10 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
 
             if (final_response_success) {
                 db.saveAssistantMessage(final_content);
-                std::cout << final_content << "\n\n";
-                std::cout.flush();
+                ui.displayOutput(final_content + "\n\n"); // Use UI for output
                 any_executed = true; // Mark success for this fallback path
             } else {
-                 std::cerr << "Error: Failed to get final response after fallback tool execution.\n";
+                 ui.displayError("Failed to get final response after fallback tool execution."); // Use UI for error
                  // Continue searching for other tags, but this one failed
             }
         }
@@ -688,13 +683,13 @@ void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_mes
         if (response_message["content"].is_string()) {
             std::string txt = response_message["content"];
             db.saveAssistantMessage(txt);
-            std::cout << txt << "\n\n";
+            ui.displayOutput(txt + "\n\n"); // Use UI for output
         } else if (!response_message["content"].is_null()) {
             std::string dumped = response_message["content"].dump();
             db.saveAssistantMessage(dumped);
-            std::cout << dumped << "\n\n";
+            ui.displayOutput(dumped + "\n\n"); // Use UI for output
         }
-        std::cout.flush();
+        // Removed std::cout.flush();
     }
 }
 
@@ -723,7 +718,9 @@ void ChatClient::processTurn(const std::string& input) {
 
     } catch (const nlohmann::json::parse_error& e) {
         // std::cerr << "JSON Parsing Error (Outer Turn): " << e.what() << "\n"; // Error removed (less verbose)
+        // Optionally display a generic error via UI?
+        // ui.displayError("An internal error occurred while processing the response.");
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << "\n"; // Keep generic error
+        ui.displayError(e.what()); // Use UI for generic error
     }
 }

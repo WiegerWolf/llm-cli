@@ -23,8 +23,8 @@
     *   Inside `main()`, just before `return 0;` (or after the `try` block if `client.run()` is active):
         *   Call `cli_ui.shutdown();`. **DONE**
     *   Ensure the `catch` blocks remain to handle potential errors. **DONE** (Modified catch blocks to use UI)
-3.  [ ] **Build & Verify:**
-    *   Run `./build.sh`.
-    *   Ensure the application compiles successfully.
+3.  [X] **Build & Verify:**
+    *   Run `./build.sh`. **DONE**
+    *   Ensure the application compiles successfully. **DONE**
     *   If `client.run()` was commented out, the program should just initialize/shutdown the UI and exit.
     *   If `ChatClient` was temporarily adapted, the program might run but UI calls won't work correctly yet.
