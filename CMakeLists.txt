@@ -78,41 +78,52 @@ else()
     message(FATAL_ERROR "Readline libraries not found - install with: sudo apt-get install libreadline-dev")
 endif()
 
-# Add executable and link libraries
-add_executable(llm
-    main.cpp                                                                                                                                                             
-    chat_client.cpp                                                                                                                                                      
-    chat_client.h                                                                                                                                                        
-    ui_interface.h      # UI abstraction header                                                                                                                          
-    cli_interface.h     # CLI implementation header                                                                                                                      
-    cli_interface.cpp   # CLI implementation source                                                                                                                      
-    curl_utils.h        # Add new header file                                                                                                                            
-    database.cpp                                                                                                                                                        
-    database.h                                                                                                                                                           
+# --- Core Library ---
+add_library(llm_core STATIC
+    chat_client.cpp
+    chat_client.h
+    database.cpp
+    database.h
     tools.cpp
-    tools.h     
+    tools.h
     tools_impl/search_web_tool.cpp
     tools_impl/visit_url_tool.cpp
     tools_impl/datetime_tool.cpp
     tools_impl/read_history_tool.cpp
     tools_impl/web_research_tool.cpp
     tools_impl/deep_research_tool.cpp
-)
-target_link_libraries(llm PRIVATE 
-    ${CURL_LIBRARIES} 
-    nlohmann_json::nlohmann_json
-    ${Readline_LIBRARIES}
-    ${SQLite3_LIBRARIES}
-    ${GUMBO_LIBRARIES}
-    Threads::Threads # Link Threads library
+    curl_utils.h        # Header-only utility
+    ui_interface.h      # Interface header
 )
 
-# Ensure Gumbo includes are available (already present, just confirming)
-target_include_directories(llm PRIVATE
-    ${GUMBO_INCLUDE_DIRS}
-    ${CMAKE_BINARY_DIR}
-    ${PROJECT_SOURCE_DIR}
+target_link_libraries(llm_core PUBLIC
+    ${CURL_LIBRARIES}
+    nlohmann_json::nlohmann_json
+    ${SQLite3_LIBRARIES}
+    ${GUMBO_LIBRARIES}
+    Threads::Threads
 )
+
+target_include_directories(llm_core PUBLIC
+    ${GUMBO_INCLUDE_DIRS}
+    ${CMAKE_BINARY_DIR} # For config.h
+    ${PROJECT_SOURCE_DIR} # For project headers
+)
+
+# --- CLI Executable ---
+add_executable(llm-cli
+    main_cli.cpp        # Renamed from main.cpp
+    cli_interface.h     # CLI implementation header
+    cli_interface.cpp   # CLI implementation source
+)
+
+target_link_libraries(llm-cli PRIVATE
+    llm_core            # Link against the core library
+    ${Readline_LIBRARIES} # CLI-specific dependency
+)
+
+# Include directories needed by the CLI executable itself (if any beyond core)
+# target_include_directories(llm-cli PRIVATE ...)
 
 # Add option for OPENROUTER_API_KEY
 option(OPENROUTER_API_KEY "OpenRouter LLM API Key to embed at compile time" "")
@@ -128,10 +139,12 @@ configure_file(
 )
 
 # Installation setup
-install(TARGETS llm
+install(TARGETS llm-cli # Install the CLI executable
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 # Optional: Add tests
 enable_testing()
-add_test(NAME BasicTest COMMAND llm)
+# Update test command if needed, or keep using the installed name 'llm-cli'
+# For now, assuming the test runs the built executable directly
+add_test(NAME BasicTest COMMAND llm-cli)
