@@ -66,7 +66,8 @@ std::string perform_deep_research(PersistenceManager& db, ChatClient& client, Us
                     return {sub_query, result};
                 } catch (const std::exception& e) {
                     #ifdef VERBOSE_LOGGING
-                    std::cerr << "[deep_research] sub-query \"" << sub_query << "\" failed: " << e.what() << '\n';
+                    // Use ui.displayError even for verbose logging for consistency
+                    ui.displayError("[Verbose] Deep research sub-query \"" + sub_query + "\" failed: " + e.what());
                     #endif
                     return {sub_query, "Error during web_research: " + std::string(e.what())};
                 }
