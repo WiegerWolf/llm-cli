@@ -15,20 +15,21 @@ The primary goal is to add a graphical user interface (GUI) as an alternative fr
 
 *   Create a new directory `gui_interface/` for GUI-specific code.
 *   Implement a new class `GuiInterface` in `gui_interface/gui_interface.h` and `gui_interface/gui_interface.cpp`, derived from `UserInterface`.
-*   Include ImGui source files (potentially as a submodule or via FetchContent) within the project structure (e.g., under `vendor/imgui`).
-*   Modify `main.cpp` to parse a command-line argument (e.g., `--gui`) to determine whether to instantiate `CliInterface` or `GuiInterface`.
+*   Integrate ImGui and GLFW libraries, preferably using CMake's `FetchContent` or relying on system-provided packages found via `find_package`. Avoid git submodules.
+*   Create two separate main entry points:
+    *   `main_cli.cpp` (renamed from `main.cpp`): For the `llm-cli` executable, using `CliInterface`.
+    *   `main_gui.cpp`: For the `llm-gui` executable, using `GuiInterface`.
 
 ### 2.3. Adapt Build System (CMake)
 
 *   Modify `CMakeLists.txt` to:
-    *   Add a CMake option `BUILD_GUI` (default OFF).
-    *   When `BUILD_GUI` is ON:
-        *   Find **GLFW** using `find_package(glfw3 REQUIRED)` or FetchContent.
-        *   Find **OpenGL** libraries (`find_package(OpenGL REQUIRED)`).
-        *   Add the **ImGui** source directory (e.g., `vendor/imgui`) as a subdirectory or source files directly. Include necessary ImGui backend files (e.g., `imgui_impl_glfw.cpp`, `imgui_impl_opengl3.cpp`).
-        *   Add `gui_interface/gui_interface.cpp` to the executable's sources.
-        *   Link the executable against GLFW, OpenGL, and potentially platform-specific libraries (like `dl` on Linux).
-        *   Define a preprocessor macro (e.g., `ENABLE_GUI`) for conditional compilation in `main.cpp`.
+    *   Define the existing executable target as `llm-cli`, using `main_cli.cpp` (renamed from `main.cpp`) and linking only necessary CLI libraries (Readline, etc.).
+    *   Add a new executable target `llm-gui`.
+    *   Use `FetchContent` or `find_package` to locate/acquire **GLFW** and **ImGui**. Integrate ImGui sources (including necessary backends like `imgui_impl_glfw.cpp`, `imgui_impl_opengl3.cpp`).
+    *   Find **OpenGL** libraries (`find_package(OpenGL REQUIRED)`).
+    *   Add `main_gui.cpp` and `gui_interface/gui_interface.cpp` to the `llm-gui` target's sources.
+    *   Link `llm-gui` against the core logic library (see below), `GuiInterface`, ImGui, GLFW, OpenGL, and Threads.
+    *   **Recommendation:** Refactor the core logic (`ChatClient`, `ToolManager`, `PersistenceManager`, tool implementations) into a static or shared library (`llm_core`) that both `llm-cli` and `llm-gui` can link against. This avoids compiling the core logic twice and promotes modularity.
 
 ### 2.4. Implement `GuiInterface`
 
@@ -49,12 +50,16 @@ The primary goal is to add a graphical user interface (GUI) as an alternative fr
 
 ### 2.5. Adapt Core Logic Integration
 
-*   The `ChatClient` constructor accepting `UserInterface&` remains valid.
-*   The `ChatClient::run()` method, which contains the blocking loop, **will not be called** in GUI mode.
-*   Instead, the GUI's main loop (in `main.cpp` or `gui_interface.cpp`) will:
-    *   Poll GLFW events.
-    *   Start a new ImGui frame.
-    *   Render the ImGui UI (input box, output area, status bar, "Send" button).
+*   The `ChatClient` constructor accepting `UserInterface&` remains valid for both interfaces.
+*   The `llm-cli` executable (using `main_cli.cpp`) will instantiate `CliInterface` and call `ChatClient::run()` as it does now.
+*   The `llm-gui` executable (using `main_gui.cpp`) will:
+    *   Instantiate `GuiInterface`.
+    *   Initialize the GUI environment (`GuiInterface::initialize()`).
+    *   Start the worker thread for `ChatClient` operations.
+    *   Enter the main GUI loop (GLFW/ImGui event loop):
+        *   Poll GLFW events.
+        *   Start a new ImGui frame.
+        *   Render the ImGui UI (input box, output area, status bar, "Send" button).
     *   **On "Send" button click:**
         *   Retrieve text from the `ImGui::InputText` buffer.
         *   Clear the input buffer.
@@ -62,10 +67,12 @@ The primary goal is to add a graphical user interface (GUI) as an alternative fr
     *   Check the thread-safe queues/buffers for new output/error/status messages from the worker thread and display them using ImGui widgets.
     *   End the ImGui frame and render it.
     *   Swap GLFW buffers.
-*   A worker thread will be launched during initialization. This thread will:
-    *   Wait for input to appear on the input queue.
+*   The worker thread (launched by `main_gui.cpp` or `GuiInterface::initialize`) will:
+    *   Instantiate `ChatClient`, passing the `GuiInterface` instance.
+    *   Wait for input to appear on the input queue (sent from the GUI thread).
     *   When input is received, call `chatClient.processTurn(input)`.
-    *   `processTurn` will execute, calling the `GuiInterface` methods (`displayOutput`, etc.) which will push results onto the output queues/buffers for the GUI thread.
+    *   `processTurn` will execute, calling the `GuiInterface` methods (`displayOutput`, etc.) which will push results onto the output queues/buffers for the GUI thread to display.
+    *   The `ChatClient::run()` method itself will *not* be called by the GUI executable's worker thread; `processTurn` is invoked directly based on GUI events.
 
 ### 2.6. Packaging and Installation
 
