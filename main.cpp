@@ -1,19 +1,13 @@
-#include <iostream>
+#include <iostream> // Keep for cerr fallback
 #include <string>
-#include <curl/curl.h>
-#include <cstdlib>
-#include <nlohmann/json.hpp>
-#include <sstream>
-#include <iomanip>
-#include <stdexcept>
-#include <iostream>
-#include <string>
-#include <cstdlib> // For getenv
 #include <stdexcept> // For runtime_error
 #include "chat_client.h" // Include the ChatClient header
 #include "cli_interface.h" // Include the CLI UI implementation header
 
-using namespace std;
+// Use std namespace explicitly to avoid potential conflicts
+using std::cerr;
+using std::endl;
+using std::string;
 
 int main() {
     CliInterface cli_ui; // Instantiate the CLI UI
@@ -24,7 +18,7 @@ int main() {
         client.run();
 
         cli_ui.shutdown(); // Shutdown the UI
-        cout << "\nExiting...\n"; // Keep final exit message on cout for now
+        cli_ui.displayOutput("\nExiting...\n"); // Use UI for final message
     } catch (const std::exception& e) {
         // If UI is available, use it for errors, otherwise fallback to cerr
         try {

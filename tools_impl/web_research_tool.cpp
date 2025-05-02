@@ -7,7 +7,6 @@
 #include <vector>
 #include <future>
 #include <mutex>
-// #include <iostream> // Replaced with ui.displayStatus/Error
 #include <nlohmann/json.hpp>
 #include <string> // For std::to_string
 
@@ -46,7 +45,6 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, Use
             visited_content_summary += "No relevant URLs found in search results to visit.\n";
         } else {
             std::vector<std::future<std::pair<std::string, std::string>>> futures;
-            // std::cout << "  [Research Step 3: Launching " << urls.size() << " parallel URL visits...]\n"; std::cout.flush(); // Status removed
 
             for (const std::string& url : urls) {
                 futures.push_back(std::async(std::launch::async, [url]() {
@@ -79,7 +77,6 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, Use
                     visited_content_summary += "\n--- Error retrieving result from future: " + std::string(e.what()) + " ---\n";
                 }
             }
-            // std::cout << "  [Research Step 3: All URL visits completed.]\n"; std::cout.flush(); // Status removed
         }
 
         ui.displayStatus("  [Research Step 4: Synthesizing results...]"); // Use UI for status
@@ -104,7 +101,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, Use
             try {
                 synthesis_response_json = nlohmann::json::parse(synthesis_response_str);
             } catch (const nlohmann::json::parse_error& e) {
-                // std::cerr << "JSON Parsing Error (Synthesis Response): " << e.what() << "\nResponse was: " << synthesis_response_str << "\n"; // Error removed
+                // JSON Parsing Error (Synthesis Response)
                 if (attempt == 2) return "Error: Failed to parse synthesis response from LLM.";
                 continue;
             }
@@ -116,7 +113,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, Use
                 auto message = synthesis_response_json["choices"][0]["message"];
 
                 if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-                    // std::cerr << "Warning: Synthesis response contains tool_calls. Retrying with stronger instructions.\n"; // Warning removed
+                    // Warning: Synthesis response contains tool_calls. Retrying with stronger instructions.
                     continue;
                 }
 
@@ -128,7 +125,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, Use
             }
 
             if (attempt == 2) {
-                // std::cerr << "Error: Invalid API response structure (Synthesis Response).\nResponse was: " << synthesis_response_str << "\n"; // Error removed
+                // Error: Invalid API response structure (Synthesis Response).
                 return "Error: Invalid response structure from LLM during synthesis.";
             }
         }

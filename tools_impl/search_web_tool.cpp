@@ -5,10 +5,10 @@
 #include <sstream>
 #include <vector>
 #include <functional>
-#include <iostream>
 #include <stdexcept> // For runtime_error
 #include <cstdlib>   // For getenv
 #include <nlohmann/json.hpp> // For JSON parsing
+#include <iostream> // Keep for cerr warning (static handle init failure)
 #include "curl_utils.h" // Include the shared callback
 #include "config.h"     // For BRAVE_SEARCH_API_KEY
 
@@ -244,7 +244,6 @@ std::string parse_ddg_html(const std::string& html) {
 
     if (output && output->root) {
         find_result_divs(output->root);
-        // std::cerr << "DEBUG: parse_ddg_html: Found " << result_divs.size() << " potential result divs." << std::endl; // Debug removed
 
         for (GumboNode* result_div : result_divs) {
             std::string title;
@@ -317,8 +316,6 @@ std::string parse_ddg_html(const std::string& html) {
         } // End loop through result divs
 
         gumbo_destroy_output(&kGumboDefaultOptions, output);
-    } else {
-         // std::cerr << "DEBUG: parse_ddg_html: Gumbo output or root node was null." << std::endl; // Debug removed
     }
 
     std::string final_result = count > 0 ? result : "No results found or failed to parse results page (DuckDuckGo)."; // Indicate source on failure too
@@ -447,7 +444,6 @@ std::string parse_brave_api_response(const std::string& json_response) {
         // std::cerr << "Error parsing Brave API JSON response: " << e.what() << std::endl; // Debug removed
         return "Error parsing Brave API JSON response.";
     } catch (const std::exception& e) {
-        // std::cerr << "Error processing Brave API response: " << e.what() << std::endl; // Debug removed
         return "Error processing Brave API response.";
     }
 }
@@ -476,9 +472,8 @@ std::string search_web(const std::string& query) {
     http_code = 0; // Reset http_code before checking
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        // std::cerr << "DEBUG: Brave Search HTTP status code: " << http_code << std::endl; // Debug removed
         if (http_code == 202) {
-            // std::cerr << "WARNING: Brave Search: Received HTTP 202 Accepted." << std::endl; // Warning removed
+            // WARNING: Brave Search: Received HTTP 202 Accepted.
         }
     }
 
@@ -491,15 +486,14 @@ std::string search_web(const std::string& query) {
         parsed_result = parse_brave_search_html(response);
         // Check if Brave search returned actual results (contains links)
         if (parsed_result.find("[href=") != std::string::npos) {
-            // std::cerr << "Brave Search successful." << std::endl; // Status removed
+            // Brave Search successful.
             return parsed_result; // Return Brave results
         } else {
-            // std::cerr << "Brave Search returned no results, falling back to DuckDuckGo..." << std::endl; // Status removed
+            // Brave Search returned no results, falling back to DuckDuckGo...
             brave_html_error_reason = "No results found or parse failed."; // Capture reason
         }
     } else {
-        // std::cerr << "Brave Search failed (CURL error: " << curl_easy_strerror(res)
-        //           << ", HTTP code: " << http_code << "), falling back to DuckDuckGo..." << std::endl; // Status removed
+        // Brave Search failed, falling back to DuckDuckGo...
         if (res != CURLE_OK) {
             brave_html_error_reason = "CURL error: " + std::string(curl_easy_strerror(res));
         } else {
@@ -525,9 +519,8 @@ std::string search_web(const std::string& query) {
     http_code = 0; // Reset http_code before checking
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        // std::cerr << "DEBUG: DDG Search: Received HTTP status code: " << http_code << std::endl; // Debug removed
         if (http_code == 202) {
-             // std::cerr << "WARNING: DDG Search: Received HTTP 202 Accepted." << std::endl; // Warning removed
+             // WARNING: DDG Search: Received HTTP 202 Accepted.
         }
     }
 
@@ -537,7 +530,7 @@ std::string search_web(const std::string& query) {
     curl = nullptr; // Reset curl handle for safety
 
     if (res != CURLE_OK) {
-        // std::cerr << "DDG Search also failed: " << curl_easy_strerror(res) << std::endl; // Status removed
+        // DDG Search also failed
         // Capture DDG failure reason before checking API key
         ddg_html_error_reason = "CURL error: " + std::string(curl_easy_strerror(res));
         // Fall through to API attempt
@@ -550,10 +543,10 @@ std::string search_web(const std::string& query) {
         parsed_result = parse_ddg_html(response);
         // Check if DDG search returned actual results (contains links)
         if (parsed_result.find("[href=") != std::string::npos) {
-            // std::cerr << "DuckDuckGo Search successful." << std::endl; // Status removed
+            // DuckDuckGo Search successful.
             return parsed_result; // Return DDG results
         } else {
-            // std::cerr << "DuckDuckGo Search returned no results, falling back to Brave API..." << std::endl; // Status removed
+            // DuckDuckGo Search returned no results, falling back to Brave API...
             ddg_html_error_reason = "No results found or parse failed."; // Capture reason
         }
     }
@@ -562,20 +555,20 @@ std::string search_web(const std::string& query) {
     // --- Attempt 3: Brave Search API (Final Fallback) ---
     std::string brave_api_key = get_brave_api_key();
     if (brave_api_key.empty()) {
-        // std::cerr << "Brave API key not found (compile-time or env var BRAVE_SEARCH_API_KEY). Cannot use API fallback." << std::endl; // Status removed
+        // Brave API key not found. Cannot use API fallback.
         // Return the last result we got (which was the "no results" message from DDG parser)
         return parsed_result;
     }
 
     try {
-        // std::cerr << "Attempting Brave Search API call..." << std::endl; // Status removed
+        // Attempting Brave Search API call...
         std::string api_response_json = call_brave_search_api(query, brave_api_key);
         parsed_result = parse_brave_api_response(api_response_json);
-        // std::cerr << "Brave Search API call finished." << std::endl; // Status removed
+        // Brave Search API call finished.
         // The parser function handles "no results found" internally
         return parsed_result;
     } catch (const std::exception& e) {
-        // std::cerr << "Brave Search API failed: " << e.what() << std::endl; // Status removed
+        // Brave Search API failed.
         // Return the detailed error message including reasons for each failure
         return "All search methods failed. Brave HTML: " + brave_html_error_reason +
                ", DDG HTML: " + ddg_html_error_reason +

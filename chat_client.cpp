@@ -1,14 +1,11 @@
 #include "chat_client.h"
 #include "ui_interface.h" // Include UI interface
-// #include <iostream>    // Remove iostream if no longer needed
 #include <string>
 #include <vector>
 #include <curl/curl.h>
 #include <cstdlib>        // Keep for getenv
 #include <nlohmann/json.hpp>
 #include <stdexcept>
-// #include <readline/readline.h> // Remove readline includes
-// #include <readline/history.h>
 #include <unordered_set>   //  NUEVA – para rastrear ids de tool_calls
 #include "database.h" // For PersistenceManager and Message
 #include "tools.h"    // For ToolManager
@@ -226,8 +223,6 @@ bool ChatClient::handleApiError(const nlohmann::json& api_response,
             api_response["error"]["failed_generation"].is_string())
         {
             fallback_content = api_response["error"]["failed_generation"];
-            // std::cout << "[API reported tool_use_failed, attempting fallback parsing on failed_generation...]\n"; // Status removed
-            // std::cout.flush();
             // Fall through to the fallback parsing logic below
         } else {
             // Unrecoverable API error, skip processing this turn
@@ -253,8 +248,6 @@ bool ChatClient::handleApiError(const nlohmann::json& api_response,
                api_response["error"]["failed_generation"].is_string()) {
         // Additional fallback: handle tool_use_failed error with failed_generation string
         fallback_content = api_response["error"]["failed_generation"];
-        // std::cout << "[API returned tool_use_failed with failed_generation fallback string, attempting fallback parsing...]\n"; // Status removed
-        // std::cout.flush();
         // Fall through to the fallback parsing logic below
     } else {
          // Unexpected response structure
@@ -292,7 +285,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
 
     for (const auto& tool_call : response_message["tool_calls"]) {
         if (!tool_call.contains("id") || !tool_call.contains("function") || !tool_call["function"].contains("name") || !tool_call["function"].contains("arguments")) {
-            // std::cerr << "Error: Malformed tool_call object received. Skipping.\n"; // Warning removed
+            // Malformed tool_call object received. Skipping.
             continue; // Skip this malformed tool call
         }
         std::string tool_call_id = tool_call["id"];
@@ -319,7 +312,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
 
     // If no tools were actually executed (e.g., all malformed), return false
     if (!any_tool_executed) {
-        // std::cerr << "Warning: Assistant requested tool calls, but none could be executed.\n"; // Warning removed
+        // Assistant requested tool calls, but none could be executed.
         return false;
     }
 
@@ -333,8 +326,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
         // db.commitTransaction(); // Assuming commit
     } catch (const std::exception& e) {
         // db.rollbackTransaction(); // Assuming rollback
-        // std::cerr << "Error saving tool results to database: " << e.what() << std::endl; // Error removed (handled by returning false)
-        // Decide how to proceed. Maybe return false? For now, log and continue.
+        // Error saving tool results to database (handled by returning false)
         return false; // Indicate failure if DB save fails
     }
 
@@ -362,7 +354,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
         try {
             final_response_json = nlohmann::json::parse(final_response_str);
         } catch (const nlohmann::json::parse_error& e) {
-            // std::cerr << "JSON Parsing Error (Final Response): " << e.what() << "\nResponse was: " << final_response_str << "\n"; // Error removed (handled by retry/failure)
+            // JSON Parsing Error (Final Response) - handled by retry/failure
             if (attempt == 2) break; // Exit loop on last attempt
             continue; // Try again
         }
@@ -377,7 +369,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
         // Check if we have a valid response structure
         if (!final_response_json.contains("choices") || final_response_json["choices"].empty() ||
             !final_response_json["choices"][0].contains("message")) {
-            // std::cerr << "Error: Invalid API response structure (Final Response).\nResponse was: " << final_response_str << "\n"; // Error removed (handled by retry/failure)
+            // Invalid API response structure (Final Response) - handled by retry/failure
             if (attempt == 2) break;
             continue; // Try again
         }
@@ -386,7 +378,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
 
         // Check if the final message *still* contains tool_calls (should be rare now)
         if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-            // std::cerr << "Warning: Final response unexpectedly contains tool_calls. Retrying with explicit instruction.\n"; // Warning removed
+            // Warning: Final response unexpectedly contains tool_calls. Retrying with explicit instruction.
             // Optionally save this unexpected assistant message?
             // db.saveAssistantMessage(message.dump());
             if (attempt == 2) break;
@@ -399,7 +391,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
             final_response_success = true;
             break; // Success!
         } else {
-            // std::cerr << "Error: Final response message missing content field.\nResponse was: " << final_response_str << "\n"; // Error removed (handled by retry/failure)
+            // Final response message missing content field - handled by retry/failure
             if (attempt == 2) break;
             continue; // Try again
         }
@@ -485,12 +477,12 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                         function_args = nlohmann::json::parse(trimmed_args);
                         parsed_args_or_no_args_needed = true;
                     } catch (const nlohmann::json::parse_error& e) {
-                        // std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n"; // Warning removed
+                        // Warning: Failed to parse arguments JSON from <function...>. Treating as empty args.
                         function_args = nlohmann::json::object();
                         parsed_args_or_no_args_needed = true;
                     }
                 } else {
-                    // std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n"; // Warning removed
+                    // Warning: Malformed arguments - found open delimiter but no matching close delimiter before </function>.
                 }
             } else if (open_delim == ',') {
                 size_t args_start_pos = args_delimiter_start + 1;
@@ -501,12 +493,12 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                         function_args = nlohmann::json::parse(args_str);
                         parsed_args_or_no_args_needed = true;
                     } catch (const nlohmann::json::parse_error& e) {
-                        // std::cerr << "Warning: Failed to parse arguments JSON after comma in <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n"; // Warning removed
+                        // Warning: Failed to parse arguments JSON after comma in <function...>. Treating as empty args.
                         function_args = nlohmann::json::object();
                         parsed_args_or_no_args_needed = true;
                     }
                 } else {
-                    // std::cerr << "Warning: Found comma delimiter but no arguments before </function>.\n"; // Warning removed
+                    // Warning: Found comma delimiter but no arguments before </function>.
                     function_args = nlohmann::json::object();
                     parsed_args_or_no_args_needed = true;
                 }
@@ -536,12 +528,12 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                         function_args = nlohmann::json::parse(trimmed_args);
                         parsed_args_or_no_args_needed = true;
                     } catch (const nlohmann::json::parse_error& e) {
-                        // std::cerr << "Warning: Failed to parse arguments JSON from <function...>: " << e.what() << ". Treating as empty args.\nArgs string was: " << args_str << "\n"; // Warning removed
+                        // Warning: Failed to parse arguments JSON from <function...>. Treating as empty args.
                         function_args = nlohmann::json::object();
                         parsed_args_or_no_args_needed = true;
                     }
                 } else {
-                    // std::cerr << "Warning: Malformed arguments - found '" << open_delim << "' but no matching '" << close_delim << "' before </function>.\n"; // Warning removed
+                    // Warning: Malformed arguments - found open delimiter but no matching close delimiter before </function>.
                     parsed_args_or_no_args_needed = true;
                 }
             } else {
@@ -567,7 +559,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
 
         // *** FIX: Handle web_research fallback using 'query' instead of 'topic' ***
         if (function_name == "web_research" && function_args.contains("query") && !function_args.contains("topic")) {
-            // std::cout << "[Fallback parser: Renaming 'query' to 'topic' for web_research]\n"; std::cout.flush(); // Status removed
+            // Fallback parser: Renaming 'query' to 'topic' for web_research
             function_args["topic"] = function_args["query"];
             function_args.erase("query");
         }
@@ -603,7 +595,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             try {
                 db.saveToolMessage(tool_result_msg_json);
             } catch (const std::exception& e) {
-                 // std::cerr << "Error saving fallback tool result: " << e.what() << std::endl; // Error removed
+                 // Error saving fallback tool result
                  search_pos = func_end + 11; // Move past this tag
                  continue; // Skip API call for this failed save
             }
@@ -631,7 +623,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                  try {
                      final_response_json = nlohmann::json::parse(final_response_str);
                  } catch (const nlohmann::json::parse_error& e) {
-                     // std::cerr << "JSON Parsing Error (Fallback Final Response): " << e.what() << "\nResponse was: " << final_response_str << "\n"; // Error removed
+                     // JSON Parsing Error (Fallback Final Response)
                      if (attempt == 2) break;
                      continue;
                  }
@@ -641,13 +633,13 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                       continue;
                  }
                  if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message")) {
-                     // std::cerr << "Error: Invalid API response structure (Fallback Final Response).\nResponse was: " << final_response_str << "\n"; // Error removed
+                     // Error: Invalid API response structure (Fallback Final Response).
                      if (attempt == 2) break;
                      continue;
                  }
                  auto& message = final_response_json["choices"][0]["message"];
                  if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-                     // std::cerr << "Warning: Fallback final response unexpectedly contains tool_calls. Retrying.\n"; // Warning removed
+                     // Warning: Fallback final response unexpectedly contains tool_calls. Retrying.
                      if (attempt == 2) break;
                      continue;
                  }
@@ -656,7 +648,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                      final_response_success = true;
                      break;
                  } else {
-                     // std::cerr << "Error: Fallback final response message missing content field.\nResponse was: " << final_response_str << "\n"; // Error removed
+                     // Error: Fallback final response message missing content field.
                      if (attempt == 2) break;
                      continue;
                  }
@@ -691,7 +683,6 @@ void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_mes
             db.saveAssistantMessage(dumped);
             ui.displayOutput(dumped + "\n\n"); // Use UI for output
         }
-        // Removed std::cout.flush();
     }
 }
 
@@ -719,9 +710,8 @@ void ChatClient::processTurn(const std::string& input) {
             printAndSaveAssistantContent(response_msg);
 
     } catch (const nlohmann::json::parse_error& e) {
-        // std::cerr << "JSON Parsing Error (Outer Turn): " << e.what() << "\n"; // Error removed (less verbose)
-        // Optionally display a generic error via UI?
-        // ui.displayError("An internal error occurred while processing the response.");
+        // JSON Parsing Error (Outer Turn) - less verbose now
+        ui.displayError("An internal error occurred while processing the response.");
     } catch (const std::exception& e) {
         ui.displayError(e.what()); // Use UI for generic error
     }

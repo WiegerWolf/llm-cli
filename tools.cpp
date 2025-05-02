@@ -9,7 +9,6 @@
 #include "database.h" // Include database.h for PersistenceManager definition
 #include "ui_interface.h" // Include UI interface
 #include <stdexcept>
-// #include <iostream> // Replaced with ui.displayStatus
 #include <mutex>
 #include <string> // For std::to_string
 
