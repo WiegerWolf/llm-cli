@@ -44,11 +44,18 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     if (!curl) {
         throw std::runtime_error("Failed to initialize CURL");
     }
+    // RAII wrapper for CURL handle
+    auto curl_guard = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>{curl, curl_easy_cleanup};
 
-    std::string api_key = get_openrouter_api_key();
+
+    std::string api_key = get_openrouter_api_key(); // Now safe - no leaks on throw
 
     struct curl_slist* headers = nullptr;
+    // Use RAII for headers too
+    auto headers_guard = std::unique_ptr<struct curl_slist, decltype(&curl_slist_free_all)>{nullptr, curl_slist_free_all};
+
     headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+    headers_guard.reset(headers); // Transfer ownership to guard
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "HTTP-Referer: https://llm-cli.tsatsin.com");
     headers = curl_slist_append(headers, "X-Title: LLM-cli");
@@ -142,10 +149,11 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
     CURLcode res = curl_easy_perform(curl);
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
+    // curl_slist_free_all(headers); // Handled by headers_guard
+    // curl_easy_cleanup(curl); // Handled by curl_guard
 
     if (res != CURLE_OK) {
+        // The unique_ptrs will automatically clean up headers and curl handle here
         throw std::runtime_error("API request failed: " + std::string(curl_easy_strerror(res)));
     }
 
@@ -316,16 +324,16 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
         return false;
     }
 
-    // 3. Save all collected tool results to the database
+    // 3. Save all collected tool results to the database within a transaction
     try {
-        // Use a transaction for atomicity if desired (optional but good practice)
-        // db.beginTransaction(); // Assuming a method like this exists or implement exec("BEGIN") etc.
+        db.beginTransaction(); // Start transaction
         for (const auto& msg_json : tool_result_messages) {
             db.saveToolMessage(msg_json);
         }
-        // db.commitTransaction(); // Assuming commit
+        db.commitTransaction(); // Commit transaction
     } catch (const std::exception& e) {
-        // db.rollbackTransaction(); // Assuming rollback
+        db.rollbackTransaction(); // Rollback on error
+        ui.displayError("Database error saving tool results: " + std::string(e.what())); // Use UI for error
         // Error saving tool results to database (handled by returning false)
         return false; // Indicate failure if DB save fails
     }

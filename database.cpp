@@ -56,26 +56,28 @@ struct PersistenceManager::Impl {
 PersistenceManager::PersistenceManager() : impl(std::make_unique<Impl>()) {}
 PersistenceManager::~PersistenceManager() = default;
 
-void PersistenceManager::saveUserMessage(const std::string& content) {
+// Transaction Management Implementation
+void PersistenceManager::beginTransaction() {
     impl->exec("BEGIN");
-    try {
-        impl->insertMessage({"user", content});
-        impl->exec("COMMIT");
-    } catch(...) {
-        impl->exec("ROLLBACK");
-        throw;
-    }
+}
+
+void PersistenceManager::commitTransaction() {
+    impl->exec("COMMIT");
+}
+
+void PersistenceManager::rollbackTransaction() {
+    impl->exec("ROLLBACK");
+}
+
+
+void PersistenceManager::saveUserMessage(const std::string& content) {
+    // Transaction managed externally
+    impl->insertMessage({"user", content});
 }
 
 void PersistenceManager::saveAssistantMessage(const std::string& content) {
-    impl->exec("BEGIN");
-    try {
-        impl->insertMessage({"assistant", content});
-        impl->exec("COMMIT");
-    } catch(...) {
-        impl->exec("ROLLBACK");
-        throw;
-    }
+    // Transaction managed externally
+    impl->insertMessage({"assistant", content});
 }
 
 void PersistenceManager::saveToolMessage(const std::string& content) {
@@ -99,16 +101,10 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
         // Re-throw other validation errors, adding context
         throw std::runtime_error("Error validating tool message content: " + std::string(e.what()) + ". Content: " + content);
     }
-    
+
     // If validation passed:
-    impl->exec("BEGIN");
-    try {
-        impl->insertMessage({"tool", content}); // Save the validated message
-        impl->exec("COMMIT");
-    } catch(...) {
-        impl->exec("ROLLBACK");
-        throw; // Re-throw DB errors
-    }
+    // Transaction managed externally
+    impl->insertMessage({"tool", content}); // Save the validated message
 }
 
 // Add a function to clean up orphaned tool messages
@@ -129,16 +125,22 @@ void PersistenceManager::cleanupOrphanedToolMessages() {
             ) = 0
         )
     )";
-    
+
+    // Transaction should be managed externally if needed,
+    // but this cleanup is often okay as a standalone operation.
+    // If called within a larger transaction, it will participate.
+    // If called alone, it acts as its own transaction implicitly (autocommit).
+    // For explicit control if needed elsewhere:
+    // beginTransaction();
     try {
-        impl->exec("BEGIN");
         impl->exec(sql);
-        impl->exec("COMMIT");
-        // std::cerr << "Cleaned up orphaned tool messages from database" << std::endl; // Debug removed
+        // commitTransaction(); // Only if beginTransaction was called here
     } catch (const std::exception& e) {
-        impl->exec("ROLLBACK");
-        // std::cerr << "Error cleaning up orphaned tool messages: " << e.what() << std::endl; // Debug removed
+        // rollbackTransaction(); // Only if beginTransaction was called here
+        // Re-throw or handle the error appropriately
+        throw; // Re-throwing for now
     }
+    // Removed explicit BEGIN/COMMIT/ROLLBACK here
 }
 
 // Removed duplicate definition of saveToolMessage
