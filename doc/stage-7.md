@@ -21,6 +21,6 @@
     *   [X] Confirm all necessary source files (`cli_interface.cpp`, etc.) are listed.
     *   [X] Confirm necessary libraries (`Readline`, `Threads`, `CURL`, etc.) are linked.
     *   [X] Confirm include directories are correctly set.
-4.  [ ] **Build & Verify:**
-    *   Run `./build.sh`. Ensure clean compilation without warnings about unused variables or includes if possible.
-    *   Run `./build/llm`. Perform a quick smoke test to ensure basic functionality remains.
+4.  [X] **Build & Verify:**
+    *   [X] Run `./build.sh`. Ensure clean compilation without warnings about unused variables or includes if possible. (Verified fc92a09)
+    *   [X] Run `./build/llm`. Perform a quick smoke test to ensure basic functionality remains. (Verified fc92a09)
