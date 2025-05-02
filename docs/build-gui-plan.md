@@ -8,44 +8,75 @@ The primary goal is to add a graphical user interface (GUI) as an alternative fr
 
 ### 2.1. Choose a GUI Toolkit
 
-*   **Decision:** Select a suitable C++ GUI toolkit (e.g., Qt, wxWidgets, ImGui, GTKmm).
-*   **Considerations:** Cross-platform compatibility, ease of use, licensing, dependency management, community support, and visual requirements. The choice will significantly impact development and build complexity.
+*   **Decision:** Use **ImGui** (Dear ImGui) for the UI elements and **GLFW** for windowing and input handling. An OpenGL backend (e.g., OpenGL 3.3+) will be used for rendering ImGui.
+*   **Rationale:** This combination is chosen for its lightweight nature, low runtime resource usage, relatively simple integration, immediate mode rendering paradigm (which can simplify state management), and good cross-platform support.
 
 ### 2.2. Update Project Structure
 
-*   Create a new directory (e.g., `gui_interface/`) for GUI-specific code.
-*   Implement a new class `GuiInterface` derived from the abstract `UserInterface` base class (`ui_interface.h`).
-*   Modify `main.cpp` or create a new entry point (`gui_main.cpp`?) to allow launching the application in either CLI or GUI mode (e.g., based on a command-line argument like `--gui`).
+*   Create a new directory `gui_interface/` for GUI-specific code.
+*   Implement a new class `GuiInterface` in `gui_interface/gui_interface.h` and `gui_interface/gui_interface.cpp`, derived from `UserInterface`.
+*   Include ImGui source files (potentially as a submodule or via FetchContent) within the project structure (e.g., under `vendor/imgui`).
+*   Modify `main.cpp` to parse a command-line argument (e.g., `--gui`) to determine whether to instantiate `CliInterface` or `GuiInterface`.
 
 ### 2.3. Adapt Build System (CMake)
 
 *   Modify `CMakeLists.txt` to:
-    *   Find the chosen GUI toolkit libraries and headers.
-    *   Conditionally compile the `GuiInterface` implementation and link against the GUI library. This could be controlled by a CMake option (e.g., `-DBUILD_GUI=ON`).
-    *   Handle potential platform-specific requirements for the GUI toolkit.
+    *   Add a CMake option `BUILD_GUI` (default OFF).
+    *   When `BUILD_GUI` is ON:
+        *   Find **GLFW** using `find_package(glfw3 REQUIRED)` or FetchContent.
+        *   Find **OpenGL** libraries (`find_package(OpenGL REQUIRED)`).
+        *   Add the **ImGui** source directory (e.g., `vendor/imgui`) as a subdirectory or source files directly. Include necessary ImGui backend files (e.g., `imgui_impl_glfw.cpp`, `imgui_impl_opengl3.cpp`).
+        *   Add `gui_interface/gui_interface.cpp` to the executable's sources.
+        *   Link the executable against GLFW, OpenGL, and potentially platform-specific libraries (like `dl` on Linux).
+        *   Define a preprocessor macro (e.g., `ENABLE_GUI`) for conditional compilation in `main.cpp`.
 
 ### 2.4. Implement `GuiInterface`
 
 *   Implement all virtual methods defined in `UserInterface`:
-    *   `initialize()`: Create and show the main application window, input fields, output areas, status bar, etc.
-    *   `shutdown()`: Perform GUI cleanup.
-    *   `promptUserInput()`: This will likely need adaptation. Instead of blocking, the GUI's "Send" button click event will trigger the processing. This method might signal the core logic that input is ready or be bypassed entirely by an event-driven approach.
-    *   `displayOutput()`: Append assistant messages to the main chat view/text area.
-    *   `displayError()`: Show error messages (e.g., in a popup, status bar, or dedicated error view).
-    *   `displayStatus()`: Update a status bar or designated area with status messages.
-*   **Threading:** GUI operations must run on the main GUI thread. Long-running tasks (API calls, tool execution in `ChatClient`) must be executed in background threads to prevent freezing the UI. Mechanisms like signals/slots (Qt), event posting, or callbacks will be needed to safely communicate between the `ChatClient`'s thread and the GUI thread.
+    *   `initialize()`: Initialize GLFW, create a GLFW window, initialize the OpenGL context, initialize ImGui (including GLFW and OpenGL backends), load fonts. Store the GLFW window handle.
+    *   `shutdown()`: Clean up ImGui backends, destroy the ImGui context, destroy the GLFW window, terminate GLFW.
+    *   `promptUserInput()`: **This method will likely not be used directly in the GUI flow.** User input will be captured via an `ImGui::InputText` widget. A separate mechanism (e.g., a "Send" button) will trigger the processing of this input. See Section 2.5.
+    *   `displayOutput(const std::string& output)`: Append the `output` string to a thread-safe buffer (e.g., using `std::mutex`). The GUI render loop will read from this buffer and display it in an ImGui widget (e.g., a scrolling `ImGui::BeginChild` window with `ImGui::TextUnformatted`).
+    *   `displayError(const std::string& error)`: Append the `error` string to a separate thread-safe buffer or the main output buffer, possibly prefixed or styled differently. Display in the GUI render loop.
+    *   `displayStatus(const std::string& status)`: Update a thread-safe string variable. The GUI render loop will read this variable and display it in a designated status area (e.g., using `ImGui::Text`).
+*   **Threading:** This is critical.
+    *   The main thread will run the GLFW/ImGui event and rendering loop.
+    *   All `ChatClient` operations (`processTurn`, API calls, tool execution) **must** run on a separate worker thread to avoid blocking the GUI.
+    *   Use thread-safe queues (e.g., a custom implementation or a library like `moodycamel::ConcurrentQueue`) or condition variables with mutexes to pass data between threads:
+        *   **GUI -> Worker:** Send user input strings.
+        *   **Worker -> GUI:** Send output strings, error messages, and status updates.
+    *   The `GuiInterface` methods (`displayOutput`, `displayError`, `displayStatus`) will be called *from the worker thread* and must safely place data into shared buffers/queues for the GUI thread to consume.
 
 ### 2.5. Adapt Core Logic Integration
 
-*   The `ChatClient` constructor already accepts a `UserInterface&`, which is good.
-*   The main challenge lies in adapting the synchronous `ChatClient::run` loop. In a GUI, the application is typically event-driven. The GUI will likely initiate calls to `ChatClient::processTurn` (or a similar method) in response to user actions (e.g., clicking "Send"). `ChatClient` might need adjustments to work within an event loop or manage its state differently.
+*   The `ChatClient` constructor accepting `UserInterface&` remains valid.
+*   The `ChatClient::run()` method, which contains the blocking loop, **will not be called** in GUI mode.
+*   Instead, the GUI's main loop (in `main.cpp` or `gui_interface.cpp`) will:
+    *   Poll GLFW events.
+    *   Start a new ImGui frame.
+    *   Render the ImGui UI (input box, output area, status bar, "Send" button).
+    *   **On "Send" button click:**
+        *   Retrieve text from the `ImGui::InputText` buffer.
+        *   Clear the input buffer.
+        *   Push the retrieved text onto the thread-safe queue for the worker thread.
+    *   Check the thread-safe queues/buffers for new output/error/status messages from the worker thread and display them using ImGui widgets.
+    *   End the ImGui frame and render it.
+    *   Swap GLFW buffers.
+*   A worker thread will be launched during initialization. This thread will:
+    *   Wait for input to appear on the input queue.
+    *   When input is received, call `chatClient.processTurn(input)`.
+    *   `processTurn` will execute, calling the `GuiInterface` methods (`displayOutput`, etc.) which will push results onto the output queues/buffers for the GUI thread.
 
 ### 2.6. Packaging and Installation
 
-*   Update installation scripts (`install.sh`, CMake `install` commands) to include any necessary GUI library runtime components or assets.
+*   Update installation scripts (`install.sh`, CMake `install` commands) to:
+    *   Include GLFW runtime libraries if they are dynamically linked and not expected to be system-provided.
+    *   Include any necessary font files if not embedded.
+    *   Ensure the build process correctly links OpenGL.
 
 ## 3. Next Steps
 
-*   Decide on the GUI toolkit.
-*   Refine the plan with more specific details based on the chosen toolkit.
-*   Start implementing the build system changes and the basic `GuiInterface` structure.
+*   Implement the CMake changes (`CMakeLists.txt`) to support the `BUILD_GUI` option, find GLFW/OpenGL, and include ImGui.
+*   Create the basic `gui_interface/` directory and skeleton `GuiInterface` class.
+*   Implement the basic GLFW/ImGui window setup and main loop structure in `main.cpp` (conditionally compiled).
+*   Set up the worker thread and basic thread-safe communication mechanism (e.g., simple queues with mutexes).
