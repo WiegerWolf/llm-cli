@@ -30,7 +30,7 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, Use
                         urls.push_back(extracted_url);
                     } else {
 #ifdef VERBOSE_LOGGING
-                        std::cerr << "[web_research] skipped non-absolute URL: " << extracted_url << '\n';
+                        ui.displayError("[web_research] skipped non-absolute URL: " + extracted_url); // Use UI for verbose error
 #endif
                     }
                 }
