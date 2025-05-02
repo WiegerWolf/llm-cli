@@ -8,6 +8,7 @@
 
 // Forward declaration if needed, or include necessary headers
 class PersistenceManager;
+class UserInterface; // Forward declaration
 
 class ToolManager {
 public:
@@ -22,7 +23,8 @@ public:
     // Returns the result as a string. Throws exceptions on failure.
     // Needs PersistenceManager for tools like read_history
     // Needs ChatClient for tools like web_research that need to make internal API calls
-    std::string execute_tool(PersistenceManager& db, class ChatClient& client, const std::string& tool_name, const nlohmann::json& args);
+    // Needs UserInterface to display status messages
+    std::string execute_tool(PersistenceManager& db, class ChatClient& client, UserInterface& ui, const std::string& tool_name, const nlohmann::json& args);
 
 // Tool definitions (moved from main.cpp)
 nlohmann::json search_web_tool;

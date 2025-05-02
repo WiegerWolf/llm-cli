@@ -3,7 +3,7 @@
 #include <gumbo.h>
 #include <string>
 #include <sstream>
-#include <iostream>
+// #include <iostream> // Not needed after removing debug/error prints
 #include "curl_utils.h" // Include the shared callback
 
 // --- Gumbo helpers (static) ---

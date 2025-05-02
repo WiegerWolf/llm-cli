@@ -1,30 +1,42 @@
-#include <iostream>
+#include <iostream> // Keep for cerr fallback
 #include <string>
-#include <curl/curl.h>
-#include <cstdlib>
-#include <nlohmann/json.hpp>
-#include <sstream>
-#include <iomanip>
-#include <stdexcept>
-#include <iostream>
-#include <string>
-#include <cstdlib> // For getenv
 #include <stdexcept> // For runtime_error
-#include "chat_client.h" // Include the new header
+#include "chat_client.h" // Include the ChatClient header
+#include "cli_interface.h" // Include the CLI UI implementation header
 
-using namespace std;
+// Use std namespace explicitly to avoid potential conflicts
+using std::cerr;
+using std::endl;
+using std::string;
 
 int main() {
+    CliInterface cli_ui; // Instantiate the CLI UI
     try {
-        ChatClient client;
+        cli_ui.initialize(); // Initialize the UI
+
+        ChatClient client(cli_ui); // Inject the UI into the client
         client.run();
-        cout << "\nExiting...\n";
+
+        cli_ui.shutdown(); // Shutdown the UI
+        cli_ui.displayOutput("\nExiting...\n"); // Use UI for final message
     } catch (const std::exception& e) {
-        cerr << "Fatal Error: " << e.what() << endl;
+        // If UI is available, use it for errors, otherwise fallback to cerr
+        try {
+             cli_ui.displayError("Fatal Error: " + std::string(e.what()));
+             cli_ui.shutdown(); // Attempt graceful shutdown
+        } catch (...) {
+             cerr << "Fatal Error: " << e.what() << endl; // Fallback if UI fails
+        }
         return 1;
     } catch (...) {
-        cerr << "Unknown Fatal Error." << endl;
+        // If UI is available, use it for errors, otherwise fallback to cerr
+        try {
+             cli_ui.displayError("Unknown Fatal Error.");
+             cli_ui.shutdown(); // Attempt graceful shutdown
+        } catch (...) {
+             cerr << "Unknown Fatal Error." << endl; // Fallback if UI fails
+        }
         return 1;
     }
-    return 0;
+    return 0; // Normal exit
 }

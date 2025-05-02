@@ -21,7 +21,12 @@ public:
     void cleanupOrphanedToolMessages(); // Added to clean up orphaned tool messages
     std::vector<Message> getContextHistory(size_t max_pairs = 10); // Gets recent context for API call
     // Changed signature to use time range and limit
-    std::vector<Message> getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit = 50); 
+    std::vector<Message> getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit = 50);
+
+    // Transaction management
+    void beginTransaction();
+    void commitTransaction();
+    void rollbackTransaction();
 
 private:
     struct Impl;

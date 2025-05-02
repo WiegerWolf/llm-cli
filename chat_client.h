@@ -6,15 +6,17 @@
 #include <nlohmann/json.hpp>
 #include "database.h" // Includes Message struct
 #include "tools.h"    // Includes ToolManager
+#include "ui_interface.h" // Include the UI abstraction
 
 // Forward declaration needed by ToolManager::execute_tool
-class ChatClient; 
+class ChatClient;
 
 // Now define ChatClient fully
 class ChatClient {
 private:
     PersistenceManager db;
-    ToolManager toolManager; 
+    ToolManager toolManager;
+    UserInterface& ui; // Add reference to the UI
     std::string api_base = "https://openrouter.ai/api/v1/chat/completions";
     std::string model_name = "openai/gpt-4.1-nano"; 
 
@@ -48,8 +50,8 @@ private:
     void printAndSaveAssistantContent(const nlohmann::json& response_message);
 
 public:
-    // Constructor (if needed, currently default is fine)
-    // ChatClient(); 
+    // Constructor now requires a UserInterface reference
+    explicit ChatClient(UserInterface& ui_ref);
 
     // Public method for making API calls (used by web_research tool)
     std::string makeApiCall(const std::vector<Message>& context, bool use_tools = false);
