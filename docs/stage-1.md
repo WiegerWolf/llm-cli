@@ -22,8 +22,8 @@ Refactor the CMake build system and project structure to support separate CLI an
         *   [x] Ensure `llm-cli` includes necessary directories (implicitly via `llm_core` linkage).
     *   [x] **Update Installation:**
         *   [x] Modify the `install(TARGETS ...)` command to install `llm-cli` instead of `llm`.
-*   [ ] **Verify Build:**
-    *   [ ] Run CMake configuration (`./build.sh` or `cmake .. -B build`).
-    *   [ ] Build the project (`make -C build` or `cmake --build build`).
-    *   [ ] Confirm the `llm-cli` executable is created (`build/llm-cli`) and runs correctly.
-    *   [ ] Confirm the `llm_core` static library is built (e.g., `build/libllm_core.a`).
+*   [x] **Verify Build:**
+    *   [x] Run CMake configuration (`./build.sh` or `cmake .. -B build`). (Verified)
+    *   [x] Build the project (`make -C build` or `cmake --build build`). (Verified)
+    *   [x] Confirm the `llm-cli` executable is created (`build/llm-cli`) and runs correctly. (Verified)
+    *   [x] Confirm the `llm_core` static library is built (e.g., `build/libllm_core.a`). (Verified)
