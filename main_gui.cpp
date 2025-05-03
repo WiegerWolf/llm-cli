@@ -72,9 +72,9 @@ int main(int, char**) {
         // --- Main UI Layout (Stage 3 / Updated for Stage 4) ---
         const ImVec2 display_size = ImGui::GetIO().DisplaySize;
         const float input_height = 35.0f; // Height for the input text box + button
-        const float status_height = 25.0f; // Height for the status bar
+        const float status_height = 23.0f; // Height for the status bar
         // Calculate height needed for elements below the output area
-        const float bottom_elements_height = input_height + status_height + (ImGui::GetStyle().ItemSpacing.y * 3.0f) + ImGui::GetStyle().WindowPadding.y;
+        const float bottom_elements_height = input_height + status_height;
 
         // Create a full-window container
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
