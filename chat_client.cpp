@@ -676,11 +676,14 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
 
             // Save the tool result message (JSON string).
             try {
+                db.beginTransaction();
                 db.saveToolMessage(tool_result_msg_json);
+                db.commitTransaction();
             } catch (const std::exception& e) {
-                 ui.displayError("Database error saving fallback tool result: " + std::string(e.what()));
-                 search_pos = func_end + 11; // Move past this failed tag
-                 continue; // Skip API call for this failed save
+                db.rollbackTransaction();
+                ui.displayError("Database error saving fallback tool result: " + std::string(e.what()));
+                search_pos = func_end + 11; // Move past this failed tag
+                continue; // Skip API call for this failed save
             }
 
             // Reload context again, now including the tool result.
