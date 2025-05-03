@@ -13,6 +13,7 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
 
+
 int main(int, char**) {
     GuiInterface gui_ui; // Instantiate the GUI interface
 
@@ -45,7 +46,7 @@ int main(int, char**) {
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f); // Background color
 
     // --- Local GUI State (managed by main loop, updated from GuiInterface) ---
-    std::vector<std::string> output_history;
+    std::vector<HistoryMessage> output_history; // Updated for Issue #8
     static bool initial_focus_set = false; // Added for Issue #5
     static bool request_input_focus = false;
 
@@ -82,23 +83,36 @@ int main(int, char**) {
         // --- Output Area ---
         // Use negative height to automatically fill space minus the bottom elements
         ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
-        // Use the local output_history vector updated by processDisplayQueue
-        for (const auto& line : output_history) {
+        // Iterate over HistoryMessage objects (Issue #8 Refactor)
+        for (const auto& message : output_history) {
             bool color_pushed = false;
-            // Check for prefixes and push color accordingly
-            if (line.rfind("User: ", 0) == 0) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 1.0f, 0.1f, 1.0f)); // Green for User
-                color_pushed = true;
-            } else if (line.rfind("[STATUS] ", 0) == 0) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.2f, 1.0f)); // Yellow for Status
-                color_pushed = true;
-            } else if (line.rfind("ERROR: ", 0) == 0) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f)); // Red for Error
-                color_pushed = true;
+            std::string display_text;
+
+            // Determine color and display text based on message type
+            switch (message.type) {
+                case MessageType::USER_INPUT:
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 1.0f, 0.1f, 1.0f)); // Green
+                    color_pushed = true;
+                    display_text = "User: " + message.content;
+                    break;
+                case MessageType::STATUS:
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.2f, 1.0f)); // Yellow
+                    color_pushed = true;
+                    display_text = "[STATUS] " + message.content; // Add prefix for display only
+                    break;
+                case MessageType::ERROR:
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f)); // Red
+                    color_pushed = true;
+                    display_text = "ERROR: " + message.content; // Add prefix for display only
+                    break;
+                case MessageType::LLM_RESPONSE:
+                default: // Default includes LLM_RESPONSE
+                    display_text = message.content; // No prefix, default color
+                    break;
             }
 
             // Use TextWrapped for better readability of long lines
-            ImGui::TextWrapped("%s", line.c_str());
+            ImGui::TextWrapped("%s", display_text.c_str());
 
             // Pop color if one was pushed
             if (color_pushed) {
@@ -147,10 +161,10 @@ int main(int, char**) {
             if (input_buf[0] != '\0') {
                 // Send input to the worker thread via GuiInterface
                 gui_ui.sendInputToWorker(input_buf);
-
-                // Clear the buffer after sending
+                
+                // Add user input to history (Issue #8 Refactor)
 // Add the user's message to the history for display
-                output_history.push_back("User: " + std::string(input_buf));
+                output_history.push_back({MessageType::USER_INPUT, std::string(input_buf)});
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
                 request_input_focus = true; // Set flag to request focus next frame
