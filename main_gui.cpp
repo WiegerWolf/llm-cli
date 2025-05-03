@@ -73,7 +73,8 @@ int main(int, char**) {
         const ImVec2 display_size = ImGui::GetIO().DisplaySize;
         const float input_height = 35.0f; // Height for the input text box + button
         const float status_height = 25.0f; // Height for the status bar
-        const float output_height = display_size.y - input_height - status_height - (ImGui::GetStyle().ItemSpacing.y * 2.0f); // Remaining height for output (adjust for padding/spacing)
+        // Calculate height needed for elements below the output area
+        const float bottom_elements_height = input_height + status_height + (ImGui::GetStyle().ItemSpacing.y * 3.0f) + ImGui::GetStyle().WindowPadding.y;
 
         // Create a full-window container
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -81,7 +82,8 @@ int main(int, char**) {
         ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
         // --- Output Area ---
-        ImGui::BeginChild("Output", ImVec2(0, output_height), true);
+        // Use negative height to automatically fill space minus the bottom elements
+        ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
         // Use the local output_history vector updated by processDisplayQueue
         for (const auto& line : output_history) {
             // Use TextWrapped for better readability of long lines
