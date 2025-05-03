@@ -84,8 +84,26 @@ int main(int, char**) {
         ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
         // Use the local output_history vector updated by processDisplayQueue
         for (const auto& line : output_history) {
+            bool color_pushed = false;
+            // Check for prefixes and push color accordingly
+            if (line.rfind("User: ", 0) == 0) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 1.0f, 0.1f, 1.0f)); // Green for User
+                color_pushed = true;
+            } else if (line.rfind("[STATUS] ", 0) == 0) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.2f, 1.0f)); // Yellow for Status
+                color_pushed = true;
+            } else if (line.rfind("ERROR: ", 0) == 0) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f)); // Red for Error
+                color_pushed = true;
+            }
+
             // Use TextWrapped for better readability of long lines
             ImGui::TextWrapped("%s", line.c_str());
+
+            // Pop color if one was pushed
+            if (color_pushed) {
+                ImGui::PopStyleColor();
+            }
         }
         // Auto-scroll based on the flag set by processDisplayQueue
         if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) { // Only auto-scroll if near the bottom
