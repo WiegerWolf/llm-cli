@@ -3,3 +3,4 @@ build/
 *.log
 examples/
 .env
+imgui.ini

@@ -29,6 +29,9 @@ public:
     void rollbackTransaction();
 
 private:
+    // Forward declaration for the Pimpl (Pointer to Implementation) idiom
+    // This hides the private implementation details (like the SQLite handle)
+    // from the header file, reducing compile-time dependencies.
     struct Impl;
-    std::unique_ptr<Impl> impl;
+    std::unique_ptr<Impl> impl; // Owning pointer to the implementation object
 };

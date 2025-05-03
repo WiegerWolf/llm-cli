@@ -2,8 +2,13 @@ cmake_minimum_required(VERSION 3.15)
 project(MyCLIApp VERSION 1.0.0 LANGUAGES CXX)
 
 # Set C++ standard
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Set optimization flags for Release builds
+# Removed global CXX_FLAGS_RELEASE setting - Handled per-target below
+# You might consider -O2 if -O3 causes issues or significantly increases compile time.
+# set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3") # If you have C code
 
 # Add JSON library
 include(FetchContent)
@@ -12,20 +17,33 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/nlohmann/json
     GIT_TAG v3.11.3
     CMAKE_ARGS -DJSON_BuildTests=OFF
+    CMAKE_ARGS -DJSON_BuildTests=OFF -DJSON_Install=OFF # Don't install json lib separately
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
 # Find required packages
 find_package(CURL REQUIRED)
-find_package(SQLite3 QUIET)
-find_package(PkgConfig QUIET)
+find_package(SQLite3 QUIET) # Fallback search implemented below
+find_package(PkgConfig REQUIRED) # PkgConfig is needed for ImGui discovery now
+find_package(OpenGL REQUIRED) # Find OpenGL - Assumes system provides runtime libs
+find_package(glfw3 REQUIRED)  # Find GLFW3 - Assumes system provides runtime libs (e.g., libglfw.so.3)
+
+# Platform Checks Note:
+# The current find_package calls handle typical Linux/macOS setups.
+# Windows builds might require more specific handling, potentially using
+# a package manager like vcpkg or providing pre-built dependencies.
 
 # Find Gumbo HTML parser
 if(PKG_CONFIG_FOUND)
     pkg_check_modules(GUMBO gumbo)
+    pkg_check_modules(IMGUI REQUIRED imgui) # Find ImGui using pkg-config
 endif()
 
-if(NOT GUMBO_FOUND)
+if(NOT PKG_CONFIG_FOUND)
+    message(FATAL_ERROR "pkg-config not found, needed to find ImGui and Gumbo.")
+endif()
+
+if(NOT GUMBO_FOUND) # Corrected typo from GUI_FOUND
     find_path(GUMBO_INCLUDE_DIR gumbo.h
         PATHS /usr/include /usr/local/include /usr/include/gumbo /usr/local/include/gumbo
     )
@@ -78,41 +96,78 @@ else()
     message(FATAL_ERROR "Readline libraries not found - install with: sudo apt-get install libreadline-dev")
 endif()
 
-# Add executable and link libraries
-add_executable(llm
-    main.cpp                                                                                                                                                             
-    chat_client.cpp                                                                                                                                                      
-    chat_client.h                                                                                                                                                        
-    ui_interface.h      # UI abstraction header                                                                                                                          
-    cli_interface.h     # CLI implementation header                                                                                                                      
-    cli_interface.cpp   # CLI implementation source                                                                                                                      
-    curl_utils.h        # Add new header file                                                                                                                            
-    database.cpp                                                                                                                                                        
-    database.h                                                                                                                                                           
+# --- Core Library ---
+add_library(llm_core STATIC
+    chat_client.cpp
+    chat_client.h
+    database.cpp
+    database.h
     tools.cpp
-    tools.h     
+    tools.h
     tools_impl/search_web_tool.cpp
     tools_impl/visit_url_tool.cpp
     tools_impl/datetime_tool.cpp
     tools_impl/read_history_tool.cpp
     tools_impl/web_research_tool.cpp
     tools_impl/deep_research_tool.cpp
-)
-target_link_libraries(llm PRIVATE 
-    ${CURL_LIBRARIES} 
-    nlohmann_json::nlohmann_json
-    ${Readline_LIBRARIES}
-    ${SQLite3_LIBRARIES}
-    ${GUMBO_LIBRARIES}
-    Threads::Threads # Link Threads library
+    curl_utils.h        # Header-only utility
+    ui_interface.h      # Interface header
 )
 
-# Ensure Gumbo includes are available (already present, just confirming)
-target_include_directories(llm PRIVATE
-    ${GUMBO_INCLUDE_DIRS}
-    ${CMAKE_BINARY_DIR}
-    ${PROJECT_SOURCE_DIR}
+target_link_libraries(llm_core PUBLIC
+    ${CURL_LIBRARIES}
+    nlohmann_json::nlohmann_json
+    ${SQLite3_LIBRARIES}
+    ${GUMBO_LIBRARIES}
+    Threads::Threads
 )
+
+target_include_directories(llm_core PUBLIC
+    ${GUMBO_INCLUDE_DIRS}
+    ${CMAKE_BINARY_DIR} # For config.h
+    ${PROJECT_SOURCE_DIR} # For project headers
+)
+target_compile_options(llm_core PRIVATE $<$<CONFIG:Release>:-O3>)
+
+# --- CLI Executable ---
+add_executable(llm-cli
+    main_cli.cpp        # Renamed from main.cpp
+    cli_interface.h     # CLI implementation header
+    cli_interface.cpp   # CLI implementation source
+)
+
+target_link_libraries(llm-cli PRIVATE
+    llm_core            # Link against the core library
+    ${Readline_LIBRARIES} # CLI-specific dependency
+)
+
+# Include directories needed by the CLI executable itself (if any beyond core)
+# target_include_directories(llm-cli PRIVATE ...)
+target_compile_options(llm-cli PRIVATE $<$<CONFIG:Release>:-O3>)
+
+
+# --- GUI Executable ---
+add_executable(llm-gui
+    main_gui.cpp
+    gui_interface/gui_interface.cpp
+    gui_interface/gui_interface.h
+)
+
+target_link_libraries(llm-gui PRIVATE
+    llm_core            # Link against the core library
+    ${IMGUI_LIBRARIES}  # Link against system ImGui via pkg-config
+    glfw                # Link against GLFW
+    OpenGL::GL          # Link against OpenGL
+    Threads::Threads    # Link against Threads
+)
+
+# Include directories needed by the GUI executable
+target_include_directories(llm-gui PRIVATE
+    ${PROJECT_SOURCE_DIR} # For project headers like ui_interface.h
+    ${IMGUI_INCLUDE_DIRS} # Include system ImGui headers via pkg-config
+)
+target_compile_options(llm-gui PRIVATE $<$<CONFIG:Release>:-O3>)
+
 
 # Add option for OPENROUTER_API_KEY
 option(OPENROUTER_API_KEY "OpenRouter LLM API Key to embed at compile time" "")
@@ -127,11 +182,23 @@ configure_file(
   @ONLY
 )
 
+include(GNUInstallDirs)
 # Installation setup
-install(TARGETS llm
+install(TARGETS llm-cli llm-gui # Install both executables
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Installation Notes:
+# - Runtime Libraries: Dependencies like GLFW, CURL, SQLite3, Gumbo, Readline
+#   are expected to be provided by the system or installed by the user
+#   (e.g., via package manager). This install rule does not bundle them.
+#   Ensure README details these runtime dependencies.
+# - Resource Files: No external resources (e.g., fonts) are currently used
+#   by the GUI, so none are installed. If resources are added later,
+#   install rules will be needed here using install(FILES ...).
+
 # Optional: Add tests
 enable_testing()
-add_test(NAME BasicTest COMMAND llm)
+# Update test command if needed, or keep using the installed name 'llm-cli'
+# For now, assuming the test runs the built executable directly
+add_test(NAME BasicTest COMMAND llm-cli)
