@@ -26,9 +26,10 @@ int main(int, char**) {
     // --- Worker Thread Setup (Stage 4) ---
     ChatClient client(gui_ui); // Create the client, passing the UI interface
     // Use jthread with RAII: construct in-place with lambda, joins automatically on destruction
-    std::jthread worker_thread([&client]{
+    // Pass the stop_token provided by jthread to the lambda and client.run()
+    std::jthread worker_thread([&client](std::stop_token st){
         try {
-            client.run(); // Run the client's main loop
+            client.run(st); // Pass the stop token to the client's run loop
         } catch (const std::exception& e) {
             // Log exceptions from the worker thread if needed
             std::cerr << "Exception in worker thread: " << e.what() << std::endl;

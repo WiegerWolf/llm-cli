@@ -3,6 +3,7 @@
 #include <stdexcept> // For runtime_error
 #include "chat_client.h" // Include the ChatClient header
 #include "cli_interface.h" // Include the CLI UI implementation header
+#include <stop_token>      // Include for std::stop_token
 
 // Use std namespace explicitly to avoid potential conflicts
 using std::cerr;
@@ -15,7 +16,8 @@ int main() {
         cli_ui.initialize(); // Initialize the UI
 
         ChatClient client(cli_ui); // Inject the UI into the client
-        client.run();
+        // Pass a default (non-stoppable) stop_token as the CLI uses Ctrl+D for exit
+        client.run(std::stop_token{});
 
         cli_ui.shutdown(); // Shutdown the UI
         cli_ui.displayOutput("\nExiting...\n"); // Use UI for final message

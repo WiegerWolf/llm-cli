@@ -1,4 +1,5 @@
 #pragma once
+#include <stop_token> // Added for cooperative cancellation
 
 #include <optional>
 #include <string>
@@ -60,5 +61,6 @@ public:
     std::string makeApiCall(const std::vector<Message>& context, bool use_tools = false);
 
     // Main application loop
-    void run();
+    // Main application loop, now accepts a stop_token for cooperative cancellation
+    void run(std::stop_token st);
 };

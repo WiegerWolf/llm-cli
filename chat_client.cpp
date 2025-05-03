@@ -1,4 +1,5 @@
 #include "chat_client.h"
+#include <stop_token> // Added for cooperative cancellation
 #include "ui_interface.h" // Include UI interface
 #include <string>
 #include <vector>
@@ -214,12 +215,20 @@ std::string ChatClient::executeAndPrepareToolResult(
 }
 
 
-void ChatClient::run() {
+// Accept the stop_token for cooperative cancellation
+void ChatClient::run(std::stop_token st) {
     db.cleanupOrphanedToolMessages();
     ui.displayOutput("Chatting with " + this->model_name + " - Type your message (Ctrl+D to exit)\n"); // Use UI
     while (true) {
+        // Check for stop request at the beginning of each loop iteration
+        if (st.stop_requested()) {
+            ui.displayStatus("Shutdown requested, exiting run loop..."); // Inform UI
+            break; // Exit the loop cleanly
+        }
         try {
-            auto input_opt = promptUserInput();
+            // Pass the stop token to promptUserInput as well, in case it needs to check
+            // (Assuming promptUserInput might be modified later to accept it)
+            auto input_opt = promptUserInput(); // TODO: Consider passing 'st' here if promptUserInput becomes blocking
             if (!input_opt) break;          // Exit loop if UI signals shutdown (e.g., Ctrl+D or window close)
             if (input_opt->empty()) continue; // Ignore empty input lines
             processTurn(*input_opt);        // Process the user's input for this turn
