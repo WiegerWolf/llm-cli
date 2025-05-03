@@ -73,7 +73,7 @@ int main(int, char**) {
         const ImVec2 display_size = ImGui::GetIO().DisplaySize;
         const float input_height = 35.0f; // Height for the input text box + button
         const float status_height = 25.0f; // Height for the status bar
-        const float output_height = display_size.y - input_height - status_height - 1.0f; // Remaining height for output (adjust for padding)
+        const float output_height = display_size.y - input_height - status_height - (ImGui::GetStyle().ItemSpacing.y * 2.0f); // Remaining height for output (adjust for padding/spacing)
 
         // Create a full-window container
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
