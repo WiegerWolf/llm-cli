@@ -25,14 +25,18 @@ int main(int, char**) {
 
     // --- Worker Thread Setup (Stage 4) ---
     ChatClient client(gui_ui); // Create the client, passing the UI interface
-    std::jthread worker_thread; // Use jthread for RAII joining
-    try {
-         worker_thread = std::jthread(&ChatClient::run, &client); // Launch worker
-    } catch (const std::system_error& e) {
-        std::cerr << "Failed to create worker thread: " << e.what() << " (" << e.code() << ")" << std::endl;
-        gui_ui.shutdown(); // Clean up GUI resources
-        return 1; // Exit if thread creation fails
-    }
+    // Use jthread with RAII: construct in-place with lambda, joins automatically on destruction
+    std::jthread worker_thread([&client]{
+        try {
+            client.run(); // Run the client's main loop
+        } catch (const std::exception& e) {
+            // Log exceptions from the worker thread if needed
+            std::cerr << "Exception in worker thread: " << e.what() << std::endl;
+            // Consider signaling the main thread or handling the error appropriately
+        } catch (...) {
+            std::cerr << "Unknown exception in worker thread." << std::endl;
+        }
+    });
     // --- End Worker Thread Setup ---
 
 
@@ -158,21 +162,7 @@ int main(int, char**) {
     gui_ui.requestShutdown(); // Signal the worker thread to exit
 
     std::cout << "Joining worker thread..." << std::endl;
-    if (worker_thread.joinable()) {
-        try {
-            worker_thread.join(); // Wait for the worker thread to finish
-            std::cout << "Worker thread joined." << std::endl;
-        } catch (const std::system_error& e) {
-            // std::thread::join can throw std::system_error
-            std::cerr << "Exception caught while joining worker thread: " << e.what() << " (code: " << e.code() << ")" << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "Generic exception caught while joining worker thread: " << e.what() << std::endl;
-        } catch (...) {
-            std::cerr << "Unknown exception caught while joining worker thread." << std::endl;
-        }
-    } else {
-        std::cerr << "Warning: Worker thread was not joinable upon exit." << std::endl;
-    }
+    // No explicit join needed - std::jthread handles this in its destructor (RAII)
 
     // Ensure GUI shutdown happens regardless of join success/failure/exception
     std::cout << "Shutting down GUI..." << std::endl;
