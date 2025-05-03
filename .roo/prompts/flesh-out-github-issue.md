@@ -4,7 +4,7 @@ first, form a task for coder to pick earliest unsolved issue from my repo at htt
 
 then you need to tell it to get the issue using the github tools (get_issue, get_issue_comments) and read what the issue is about and return to you the issue title, description and any relevant info, like comments or labels
 
-then use coder to find and read relevant files on our codebase to fix the issue and ask the coder to return the relevant files list and why they are relevant to the issue at hand.
+then use architect to find and read relevant files on our codebase to fix the issue and ask the architect to return the relevant files list and why they are relevant to the issue at hand.
 
 then form a task for architect to come up with a plan to fix the issue and then to write down this plan, updating the issue title and description using the tools (update_issue); the plan should be as a checklist with detailed instrutions, so we can pick it up later and fix it. once architect updates the issue on gihub we're done
 
