@@ -12,13 +12,43 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/nlohmann/json
     GIT_TAG v3.11.3
     CMAKE_ARGS -DJSON_BuildTests=OFF
+    CMAKE_ARGS -DJSON_BuildTests=OFF -DJSON_Install=OFF # Don't install json lib separately
 )
 FetchContent_MakeAvailable(nlohmann_json)
+
+# Fetch ImGui using FetchContent
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.90.8 # Use a specific stable tag
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(imgui)
+
+# Create an interface library for ImGui
+add_library(imgui_lib INTERFACE)
+target_sources(imgui_lib INTERFACE
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(imgui_lib INTERFACE
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+# Link ImGui library to GLFW and OpenGL (needed by backends)
+target_link_libraries(imgui_lib INTERFACE glfw ${OpenGL_LIBRARIES})
+
 
 # Find required packages
 find_package(CURL REQUIRED)
 find_package(SQLite3 QUIET)
 find_package(PkgConfig QUIET)
+find_package(OpenGL REQUIRED) # Find OpenGL
+find_package(glfw3 REQUIRED)  # Find GLFW3
 
 # Find Gumbo HTML parser
 if(PKG_CONFIG_FOUND)
