@@ -44,7 +44,7 @@ public:
     size_t getInputBufferSize() const; // Returns size of internal buffer
 
     // --- Thread-safe methods for communication (Stage 4) ---
-    bool processDisplayQueue(std::vector<std::string>& history, std::string& status); // Called by GUI thread to update display
+    bool processDisplayQueue(std::vector<std::string>& history); // Called by GUI thread to update display
 
 private:
     GLFWwindow* window = nullptr;

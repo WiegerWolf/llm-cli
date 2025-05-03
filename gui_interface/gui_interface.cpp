@@ -301,7 +301,7 @@ void GuiInterface::sendInputToWorker(const std::string& input) {
 // Called by the *GUI thread* in its main render loop.
 // Processes all messages currently in the display queue.
 // Returns true if the history vector was modified (used for auto-scrolling).
-bool GuiInterface::processDisplayQueue(std::vector<std::string>& history, std::string& status) {
+bool GuiInterface::processDisplayQueue(std::vector<std::string>& history) {
     bool history_updated = false;
     // Lock the display mutex to safely access the queue from the GUI thread.
     std::lock_guard<std::mutex> lock(display_mutex);
@@ -326,7 +326,8 @@ bool GuiInterface::processDisplayQueue(std::vector<std::string>& history, std::s
                 history_updated = true;
                 break;
             case DisplayMessageType::STATUS:
-                status = message; // Update the local status string in main_gui.cpp
+                history.push_back("[STATUS] " + message); // Append status to history
+                history_updated = true; // Mark history as updated
                 break;
         }
         // Message is processed, loop continues or exits.

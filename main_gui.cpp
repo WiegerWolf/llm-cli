@@ -46,7 +46,6 @@ int main(int, char**) {
 
     // --- Local GUI State (managed by main loop, updated from GuiInterface) ---
     std::vector<std::string> output_history;
-    std::string status_text = "Initializing..."; // Initial status
     static bool initial_focus_set = false; // Added for Issue #5
     static bool request_input_focus = false;
 
@@ -65,16 +64,15 @@ int main(int, char**) {
         ImGui::NewFrame();
 
         // --- Process Display Updates from Worker (Stage 4) ---
-        bool new_output_added = gui_ui.processDisplayQueue(output_history, status_text);
+        bool new_output_added = gui_ui.processDisplayQueue(output_history);
         // --- End Process Display Updates ---
 
 
         // --- Main UI Layout (Stage 3 / Updated for Stage 4) ---
         const ImVec2 display_size = ImGui::GetIO().DisplaySize;
         const float input_height = 35.0f; // Height for the input text box + button
-        const float status_height = 23.0f; // Height for the status bar
         // Calculate height needed for elements below the output area
-        const float bottom_elements_height = input_height + status_height;
+        const float bottom_elements_height = input_height; // Only input height now
 
         // Create a full-window container
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -123,9 +121,7 @@ int main(int, char**) {
         ImGui::SameLine();
         send_pressed = ImGui::Button("Send", ImVec2(button_width, 0));
 
-        // --- Status Bar ---
-        ImGui::Separator();
-        ImGui::TextUnformatted(status_text.c_str()); // Use local status_text updated by processDisplayQueue
+        // --- Status Bar Removed ---
 
         // --- Input Handling (Stage 4 & 5) ---
         if (send_pressed || enter_pressed) {
