@@ -1,3 +1,4 @@
+#include <cstdio> // For fprintf
 #include "gui_interface.h"
 #include <stdexcept>
 #include <iostream> // For error reporting during init/shutdown
@@ -7,6 +8,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
+#include "../resources/noto_sans_font.h" // Include the generated font header
 
 // Helper function for GLFW errors
 static void glfw_error_callback(int error, const char* description) {
@@ -107,11 +109,78 @@ void GuiInterface::initialize() {
     }
 
 
-    // Load Fonts (optional - commented out as default font is used)
-    // ImGuiIO& io = ImGui::GetIO();
-    // io.Fonts->AddFontDefault();
-    // io.Fonts->AddFontFromFileTTF("path/to/font.ttf", 16.0f);
-    // io.Fonts->Build(); // Build font atlas if using custom fonts
+    // Load Fonts: Use Noto Sans for better Unicode support
+    // ImGuiIO& io = ImGui::GetIO(); // io is already defined above (line 72)
+    float font_size = 18.0f;
+
+    ImFontConfig font_cfg;
+    font_cfg.OversampleH = 2; // Improve rendering quality
+    font_cfg.OversampleV = 1;
+    font_cfg.PixelSnapH = true;
+    font_cfg.FontDataOwnedByAtlas = false; // Font data is managed externally (in the header)
+
+    // Load default ranges first (ASCII, basic Latin) from memory
+    ImFont* font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load default font segment from memory.\n");
+        // Fall back to ImGui's default font
+        io.Fonts->AddFontDefault();
+        fprintf(stderr, "Falling back to ImGui default font.\n");
+    }
+
+    // Merge additional ranges (Latin Extended A+B for broader European language support)
+    // Add more ranges (e.g., Cyrillic, Greek) here if needed in the future.
+    static const ImWchar extended_ranges[] =
+    {
+        0x0100, 0x017F, // Latin Extended-A
+        0x0180, 0x024F, // Latin Extended-B
+        0, // Null terminator
+    };
+    // Define additional ranges
+    static const ImWchar cyrillic_ranges[] =
+    {
+        0x0400, 0x052F, // Cyrillic + Cyrillic Supplement
+        0,
+    };
+    // Add common Symbol ranges. Note: AddFontFromMemoryTTF expects ImWchar (16-bit),
+    // so high-code-point Emojis (0x1Fxxx) cannot be added this way directly.
+    // Including only the ranges that fit within ImWchar.
+    static const ImWchar emoji_ranges[] =
+    {
+        0x2600,  0x26FF,  // Miscellaneous Symbols
+        0x2700,  0x27BF,  // Dingbats
+        // Ranges like 0x1F300-0x1F5FF are > 0xFFFF and incompatible here.
+        0,
+    };
+
+    // Merge additional ranges into the default font
+    font_cfg.MergeMode = true; // Set MergeMode before the first merge
+
+    // Merge Latin Extended A+B
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, extended_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load Latin Extended font segment from memory.\n");
+    }
+
+    // Merge Cyrillic
+    // font_cfg.MergeMode = true; // Still true from previous call
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, cyrillic_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load Cyrillic font segment from memory.\n");
+    }
+
+    // Merge Symbols (using ImWchar ranges)
+    // font_cfg.MergeMode = true; // Still true from previous call
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, emoji_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load Symbols font segment from memory.\n");
+    }
+
+    // IMPORTANT: Reset MergeMode only after the *last* merge operation
+    font_cfg.MergeMode = false;
+
+    // IMPORTANT: Build the font atlas AFTER adding all fonts/ranges
+    io.Fonts->Build();
 
     imgui_init_done = true; // Mark ImGui as fully initialized
     std::cout << "GUI Initialized Successfully." << std::endl;
@@ -193,7 +262,7 @@ void GuiInterface::displayOutput(const std::string& output) {
     // Lock the display mutex to ensure exclusive access to the display queue.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the message and its type onto the queue for the GUI thread to process.
-    display_queue.push({output, DisplayMessageType::OUTPUT});
+    display_queue.push({MessageType::LLM_RESPONSE, output}); // Updated for Issue #8
     // The GUI thread periodically calls processDisplayQueue to check this queue.
 }
 
@@ -202,7 +271,7 @@ void GuiInterface::displayError(const std::string& error) {
     // Lock the display mutex.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the error message and its type onto the queue.
-    display_queue.push({error, DisplayMessageType::ERROR});
+    display_queue.push({MessageType::ERROR, error}); // Updated for Issue #8
 }
 
 // Called by the *worker thread* to update the status text in the display queue.
@@ -210,7 +279,7 @@ void GuiInterface::displayStatus(const std::string& status) {
     // Lock the display mutex.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the status message and its type onto the queue.
-    display_queue.push({status, DisplayMessageType::STATUS});
+    display_queue.push({MessageType::STATUS, status}); // Updated for Issue #8
 }
 
 
@@ -246,37 +315,19 @@ void GuiInterface::sendInputToWorker(const std::string& input) {
 
 // Called by the *GUI thread* in its main render loop.
 // Processes all messages currently in the display queue.
-// Returns true if the history vector was modified (used for auto-scrolling).
-bool GuiInterface::processDisplayQueue(std::vector<std::string>& history, std::string& status) {
-    bool history_updated = false;
+// Returns a vector containing all messages drained from the internal display queue.
+std::vector<HistoryMessage> GuiInterface::processDisplayQueue() {
+    std::vector<HistoryMessage> transferred_messages; // Local vector to hold drained messages
+    transferred_messages.reserve(display_queue.size());
     // Lock the display mutex to safely access the queue from the GUI thread.
     std::lock_guard<std::mutex> lock(display_mutex);
 
     // Process all messages currently in the queue.
     while (!display_queue.empty()) {
-        // Move the front element to a local variable before popping.
-        auto msgPair = std::move(display_queue.front());
+        // Move the front element directly into the result vector before popping.
+        transferred_messages.push_back(std::move(display_queue.front()));
         display_queue.pop(); // Now it's safe to pop.
-
-        // Use structured binding on the moved pair.
-        const auto& [message, type] = msgPair;
-
-        // Handle the message based on its type.
-        switch (type) {
-            case DisplayMessageType::OUTPUT:
-                history.push_back(message); // Add to the local history vector in main_gui.cpp
-                history_updated = true;
-                break;
-            case DisplayMessageType::ERROR:
-                history.push_back("ERROR: " + message); // Prepend "ERROR:" for clarity
-                history_updated = true;
-                break;
-            case DisplayMessageType::STATUS:
-                status = message; // Update the local status string in main_gui.cpp
-                break;
-        }
-        // Message is processed, loop continues or exits.
     }
-    // Return whether the history content changed, so the GUI can auto-scroll.
-    return history_updated;
+    // Return the vector containing all drained messages.
+    return transferred_messages;
 }

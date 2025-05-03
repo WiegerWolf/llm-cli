@@ -1,0 +1,1 @@
+i want you to fix @/docs/issue-1.md  in my code. your job is to first read the issue, come up with a new git branch name to switch to for fixing this issue. checkout into fix branch and work there. using coder you need to implement the fix as it's proposed in the issue plan.

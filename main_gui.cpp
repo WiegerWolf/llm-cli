@@ -13,6 +13,12 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
 
+// Message type colors
+const ImVec4 USER_INPUT_COLOR = ImVec4(0.1f, 1.0f, 0.1f, 1.0f);
+const ImVec4 STATUS_COLOR = ImVec4(1.0f, 1.0f, 0.2f, 1.0f);
+const ImVec4 ERROR_COLOR = ImVec4(1.0f, 0.2f, 0.2f, 1.0f);
+const ImVec4 DEFAULT_TEXT_COLOR = ImGui::GetStyleColorVec4(ImGuiCol_Text); // Use default text color
+
 int main(int, char**) {
     GuiInterface gui_ui; // Instantiate the GUI interface
 
@@ -45,8 +51,9 @@ int main(int, char**) {
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f); // Background color
 
     // --- Local GUI State (managed by main loop, updated from GuiInterface) ---
-    std::vector<std::string> output_history;
-    std::string status_text = "Initializing..."; // Initial status
+    std::vector<HistoryMessage> output_history; // Updated for Issue #8
+    static bool initial_focus_set = false; // Added for Issue #5
+    static bool request_input_focus = false;
 
     // --- Main Render Loop ---
     while (!glfwWindowShouldClose(window)) {
@@ -63,15 +70,23 @@ int main(int, char**) {
         ImGui::NewFrame();
 
         // --- Process Display Updates from Worker (Stage 4) ---
-        bool new_output_added = gui_ui.processDisplayQueue(output_history, status_text);
+        // Process messages from the worker thread by getting the drained queue
+        std::vector<HistoryMessage> new_messages = gui_ui.processDisplayQueue();
+        bool new_output_added = !new_messages.empty(); // Check if any messages were actually returned
+        if (new_output_added) {
+            // Append the new messages to the history using move iterators for efficiency
+            output_history.insert(output_history.end(),
+                                  std::make_move_iterator(new_messages.begin()),
+                                  std::make_move_iterator(new_messages.end()));
+        }
         // --- End Process Display Updates ---
 
 
         // --- Main UI Layout (Stage 3 / Updated for Stage 4) ---
         const ImVec2 display_size = ImGui::GetIO().DisplaySize;
         const float input_height = 35.0f; // Height for the input text box + button
-        const float status_height = 25.0f; // Height for the status bar
-        const float output_height = display_size.y - input_height - status_height; // Remaining height for output
+        // Calculate height needed for elements below the output area
+        const float bottom_elements_height = input_height; // Only input height now
 
         // Create a full-window container
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -79,11 +94,43 @@ int main(int, char**) {
         ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
         // --- Output Area ---
-        ImGui::BeginChild("Output", ImVec2(0, output_height), true, ImGuiWindowFlags_HorizontalScrollbar);
-        // Use the local output_history vector updated by processDisplayQueue
-        for (const auto& line : output_history) {
+        // Use negative height to automatically fill space minus the bottom elements
+        ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
+        // Iterate over HistoryMessage objects (Issue #8 Refactor)
+        for (const auto& message : output_history) {
+            bool color_pushed = false;
+            std::string display_text;
+
+            // Determine color and display text based on message type
+            switch (message.type) {
+                case MessageType::USER_INPUT:
+                    ImGui::PushStyleColor(ImGuiCol_Text, USER_INPUT_COLOR); // Green
+                    color_pushed = true;
+                    display_text = "User: " + message.content;
+                    break;
+                case MessageType::STATUS:
+                    ImGui::PushStyleColor(ImGuiCol_Text, STATUS_COLOR); // Yellow
+                    color_pushed = true;
+                    display_text = "[STATUS] " + message.content; // Add prefix for display only
+                    break;
+                case MessageType::ERROR:
+                    ImGui::PushStyleColor(ImGuiCol_Text, ERROR_COLOR); // Red
+                    color_pushed = true;
+                    display_text = "ERROR: " + message.content; // Add prefix for display only
+                    break;
+                case MessageType::LLM_RESPONSE:
+                default: // Default includes LLM_RESPONSE
+                    display_text = message.content; // No prefix, default color
+                    break;
+            }
+
             // Use TextWrapped for better readability of long lines
-            ImGui::TextWrapped("%s", line.c_str());
+            ImGui::TextWrapped("%s", display_text.c_str());
+
+            // Pop color if one was pushed
+            if (color_pushed) {
+                ImGui::PopStyleColor();
+            }
         }
         // Auto-scroll based on the flag set by processDisplayQueue
         if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) { // Only auto-scroll if near the bottom
@@ -95,13 +142,22 @@ int main(int, char**) {
         // --- Input Area ---
         bool enter_pressed = false;
         bool send_pressed = false;
-        bool clear_pressed = false;
         const float button_width = 60.0f; // Width for Send button
-        const float clear_button_width = 80.0f; // Width for Clear History button
-        float input_width = display_size.x - button_width - clear_button_width
-                           - ImGui::GetStyle().ItemSpacing.x * 2; // Adjust width for both buttons
+        float input_width = display_size.x - button_width - ImGui::GetStyle().ItemSpacing.x; // Adjust width for Send button only
         if (input_width < 50.f) {          // arbitrary minimum width
             input_width = 50.f;
+        }
+
+        // Request focus for the input field if the flag was set in the previous frame
+        if (request_input_focus) {
+            ImGui::SetKeyboardFocusHere(); // Target the *next* widget (InputText)
+            request_input_focus = false;   // Reset the flag
+        }
+
+        // Set focus to the input field on the first frame (Issue #5)
+        if (!initial_focus_set) {
+            ImGui::SetKeyboardFocusHere(0); // Target the next widget (InputText)
+            initial_focus_set = true;
         }
 
         ImGui::PushItemWidth(input_width);
@@ -109,12 +165,8 @@ int main(int, char**) {
         ImGui::PopItemWidth();
         ImGui::SameLine();
         send_pressed = ImGui::Button("Send", ImVec2(button_width, 0));
-        ImGui::SameLine();
-        clear_pressed = ImGui::Button("Clear History", ImVec2(clear_button_width, 0));
 
-        // --- Status Bar ---
-        ImGui::Separator();
-        ImGui::TextUnformatted(status_text.c_str()); // Use local status_text updated by processDisplayQueue
+        // --- Status Bar Removed ---
 
         // --- Input Handling (Stage 4 & 5) ---
         if (send_pressed || enter_pressed) {
@@ -122,17 +174,14 @@ int main(int, char**) {
             if (input_buf[0] != '\0') {
                 // Send input to the worker thread via GuiInterface
                 gui_ui.sendInputToWorker(input_buf);
-
-                // Clear the buffer after sending
+                
+                // Add user input to history (Issue #8 Refactor)
+// Add the user's message to the history for display
+                output_history.push_back({MessageType::USER_INPUT, std::string(input_buf)});
+                new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
+                request_input_focus = true; // Set flag to request focus next frame
             }
-            // Set focus back to the input field for the next input
-            ImGui::SetKeyboardFocusHere(-1); // -1 means previous item (the InputText)
-        } else if (clear_pressed) {
-            // Clear the local history vector
-            output_history.clear();
-            // Optionally, add a message indicating history was cleared
-            // output_history.push_back("--- History Cleared ---");
         }
 
         ImGui::End(); // End Main Window

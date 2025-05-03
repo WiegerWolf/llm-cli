@@ -11,6 +11,20 @@
 #include <thread>  // Added for Stage 4
 #include <atomic>  // Added for Stage 4
 
+// --- Message History Structure (Issue #8 Refactor) ---
+// Moved from main_gui.cpp
+enum class MessageType {
+    USER_INPUT, // Note: User input is added directly in main_gui.cpp, not via this queue
+    LLM_RESPONSE,
+    STATUS,
+    ERROR
+};
+
+struct HistoryMessage {
+    MessageType type;
+    std::string content;
+};
+// --- End Message History Structure ---
 // Forward declaration for GLFW window handle
 struct GLFWwindow;
 
@@ -44,7 +58,7 @@ public:
     size_t getInputBufferSize() const; // Returns size of internal buffer
 
     // --- Thread-safe methods for communication (Stage 4) ---
-    bool processDisplayQueue(std::vector<std::string>& history, std::string& status); // Called by GUI thread to update display
+    std::vector<HistoryMessage> processDisplayQueue(); // Returns drained messages
 
 private:
     GLFWwindow* window = nullptr;
@@ -52,12 +66,8 @@ private:
     // --- GUI State Members (Stage 3) ---
     static constexpr size_t INPUT_BUFFER_SIZE = 1024;
     char input_buf[INPUT_BUFFER_SIZE]; // Fixed-size buffer for ImGui::InputText
-    std::vector<std::string> output_history;
-    std::string status_text = "Ready";
 
     // --- Threading members (for Stage 4) ---
-    // Enum for display message types
-    enum class DisplayMessageType { OUTPUT, ERROR, STATUS }; // Added for Stage 4
 
     // Mutexes for thread safety
     std::mutex display_mutex; // To protect display_queue (updated purpose)
@@ -65,7 +75,7 @@ private:
 
     // Queues for inter-thread communication
     std::queue<std::string> input_queue; // For user input submitted via GUI
-    std::queue<std::pair<std::string, DisplayMessageType>> display_queue; // Updated for Stage 4
+    std::queue<HistoryMessage> display_queue; // Updated for Issue #8
     std::condition_variable input_cv; // To signal when input is available
     std::atomic<bool> shutdown_requested{false}; // Updated for Stage 4
 };
