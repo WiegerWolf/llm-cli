@@ -124,6 +124,9 @@ int main(int, char**) {
                 gui_ui.sendInputToWorker(input_buf);
 
                 // Clear the buffer after sending
+// Add the user's message to the history for display
+                output_history.push_back("User: " + std::string(input_buf));
+                new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
             }
             // Set focus back to the input field for the next input
