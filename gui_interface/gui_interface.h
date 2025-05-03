@@ -66,9 +66,6 @@ private:
     std::mutex input_mutex;   // To protect input_queue and input_ready flag
 
     // Queues for inter-thread communication
-    std::queue<std::string> output_queue; // Note: These queues (output, error, status) might be replaced or used differently with display_queue in Stage 4
-    std::queue<std::string> error_queue;
-    std::queue<std::string> status_queue;
     std::queue<std::string> input_queue; // For user input submitted via GUI
     std::queue<std::pair<std::string, DisplayMessageType>> display_queue; // Updated for Stage 4
     std::condition_variable input_cv; // To signal when input is available
