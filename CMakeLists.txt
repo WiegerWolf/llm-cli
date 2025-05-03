@@ -21,37 +21,10 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# Fetch ImGui using FetchContent
-FetchContent_Declare(
-    imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.90.8 # Use a specific stable tag
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(imgui)
-
-# Create an interface library for ImGui
-add_library(imgui_lib INTERFACE)
-target_sources(imgui_lib INTERFACE
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-)
-target_include_directories(imgui_lib INTERFACE
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
-)
-# Link ImGui library to GLFW and OpenGL (needed by backends)
-target_link_libraries(imgui_lib INTERFACE glfw ${OpenGL_LIBRARIES})
-
-
 # Find required packages
 find_package(CURL REQUIRED)
 find_package(SQLite3 QUIET) # Fallback search implemented below
-find_package(PkgConfig QUIET)
+find_package(PkgConfig REQUIRED) # PkgConfig is needed for ImGui discovery now
 find_package(OpenGL REQUIRED) # Find OpenGL - Assumes system provides runtime libs
 find_package(glfw3 REQUIRED)  # Find GLFW3 - Assumes system provides runtime libs (e.g., libglfw.so.3)
 
@@ -63,9 +36,14 @@ find_package(glfw3 REQUIRED)  # Find GLFW3 - Assumes system provides runtime lib
 # Find Gumbo HTML parser
 if(PKG_CONFIG_FOUND)
     pkg_check_modules(GUMBO gumbo)
+    pkg_check_modules(IMGUI REQUIRED imgui) # Find ImGui using pkg-config
 endif()
 
-if(NOT GUMBO_FOUND)
+if(NOT PKG_CONFIG_FOUND)
+    message(FATAL_ERROR "pkg-config not found, needed to find ImGui and Gumbo.")
+endif()
+
+if(NOT GUMBO_FOUND) # Corrected typo from GUI_FOUND
     find_path(GUMBO_INCLUDE_DIR gumbo.h
         PATHS /usr/include /usr/local/include /usr/include/gumbo /usr/local/include/gumbo
     )
@@ -177,7 +155,7 @@ add_executable(llm-gui
 
 target_link_libraries(llm-gui PRIVATE
     llm_core            # Link against the core library
-    imgui_lib           # Link against our ImGui interface library
+    ${IMGUI_LIBRARIES}  # Link against system ImGui via pkg-config
     glfw                # Link against GLFW
     OpenGL::GL          # Link against OpenGL
     Threads::Threads    # Link against Threads
@@ -186,7 +164,7 @@ target_link_libraries(llm-gui PRIVATE
 # Include directories needed by the GUI executable
 target_include_directories(llm-gui PRIVATE
     ${PROJECT_SOURCE_DIR} # For project headers like ui_interface.h
-    # Add other necessary include paths if needed
+    ${IMGUI_INCLUDE_DIRS} # Include system ImGui headers via pkg-config
 )
 target_compile_options(llm-gui PRIVATE $<$<CONFIG:Release>:-O3>)
 
