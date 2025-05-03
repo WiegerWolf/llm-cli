@@ -6,6 +6,7 @@
 #include <vector>
 #include <queue>
 #include <mutex>
+#include <utility> // Added for std::pair
 #include <condition_variable>
 
 // Forward declaration for GLFW window handle
@@ -37,15 +38,32 @@ public:
     void submitInput(const std::string& input);
 
 
+    // --- Getters for GUI State (Stage 3) ---
+    const std::vector<std::string>& getOutputHistory() const;
+    const std::string& getStatusText() const;
+    char* getInputBuffer(); // Returns pointer to internal buffer
+    size_t getInputBufferSize() const; // Returns size of internal buffer
+
 private:
     GLFWwindow* window = nullptr;
 
+    // --- GUI State Members (Stage 3) ---
+    static constexpr size_t INPUT_BUFFER_SIZE = 1024;
+    char input_buf[INPUT_BUFFER_SIZE]; // Fixed-size buffer for ImGui::InputText
+    std::vector<std::string> output_history;
+    std::string status_text = "Ready";
+
     // --- Threading members (for Stage 4) ---
-    std::mutex mtx; // Mutex for protecting shared data
-    std::queue<std::string> output_queue;
+    // Mutexes for thread safety
+    std::mutex display_mutex; // To protect output_history and status_text
+    std::mutex input_mutex;   // To protect input_queue and input_ready flag
+
+    // Queues for inter-thread communication
+    std::queue<std::string> output_queue; // Note: These queues (output, error, status) might be replaced or used differently with display_queue in Stage 4
     std::queue<std::string> error_queue;
     std::queue<std::string> status_queue;
-    std::queue<std::string> input_queue;
+    std::queue<std::string> input_queue; // For user input submitted via GUI
+    std::queue<std::pair<std::string, int>> display_queue; // For queuing display updates (text, type)
     std::condition_variable input_cv; // To signal when input is available
     bool input_ready = false;
     bool shutdown_requested = false; // Flag to signal shutdown to worker thread

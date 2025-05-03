@@ -13,7 +13,10 @@ static void glfw_error_callback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
 
-GuiInterface::GuiInterface() = default;
+GuiInterface::GuiInterface() {
+    // Initialize the input buffer
+    input_buf[0] = '\0';
+}
 
 GuiInterface::~GuiInterface() {
     // Ensure shutdown is called, although it should be called explicitly
@@ -129,11 +132,35 @@ GLFWwindow* GuiInterface::getWindow() const {
     return window;
 }
 
+// --- Getters for GUI State (Stage 3) ---
+
+const std::vector<std::string>& GuiInterface::getOutputHistory() const {
+    // Note: Accessing this from the main thread while the worker might modify it
+    // is NOT thread-safe. This will be addressed in Stage 4 with mutexes or queues.
+    return output_history;
+}
+
+const std::string& GuiInterface::getStatusText() const {
+    // Note: Accessing this from the main thread while the worker might modify it
+    // is NOT thread-safe. This will be addressed in Stage 4 with mutexes or queues.
+    return status_text;
+}
+
+char* GuiInterface::getInputBuffer() {
+    // Returns a pointer to the internal buffer. The caller must respect the buffer size.
+    // Note: Returning a non-const pointer allows modification (e.g., clearing).
+    return input_buf;
+}
+
+size_t GuiInterface::getInputBufferSize() const {
+    // Returns the compile-time constant size of the buffer.
+    return INPUT_BUFFER_SIZE;
+}
 // --- Stub implementations ---
 
 std::optional<std::string> GuiInterface::promptUserInput() {
     // This will be implemented properly in Stage 4 using thread synchronization
-    std::unique_lock<std::mutex> lock(mtx);
+    std::unique_lock<std::mutex> lock(input_mutex); // Use input_mutex
     input_cv.wait(lock, [this]{ return input_ready || shutdown_requested; });
 
     if (shutdown_requested) {
@@ -152,49 +179,52 @@ std::optional<std::string> GuiInterface::promptUserInput() {
 }
 
 void GuiInterface::displayOutput(const std::string& output) {
-    // Queue for GUI thread (Stage 4)
-    queueOutput(output);
+    // NOT THREAD SAFE - Placeholder for Stage 3
+    // std::lock_guard<std::mutex> lock(display_mutex); // Will add in Stage 4
+    output_history.push_back(output);
 }
 
 void GuiInterface::displayError(const std::string& error) {
-    // Queue for GUI thread (Stage 4)
-    queueError(error);
+    // NOT THREAD SAFE - Placeholder for Stage 3
+    // std::lock_guard<std::mutex> lock(display_mutex); // Will add in Stage 4
+    output_history.push_back("ERROR: " + error); // Prepend "ERROR: " for clarity
 }
 
 void GuiInterface::displayStatus(const std::string& status) {
-    // Queue for GUI thread (Stage 4)
-    queueStatus(status);
+    // NOT THREAD SAFE - Placeholder for Stage 3
+    // std::lock_guard<std::mutex> lock(display_mutex); // Will add in Stage 4
+    status_text = status;
 }
 
 // --- Thread-safe queue methods (Implementations for Stage 4) ---
 
 void GuiInterface::queueOutput(const std::string& output) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex for output queue
     output_queue.push(output);
 }
 
 void GuiInterface::queueError(const std::string& error) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex for error queue
     error_queue.push(error);
 }
 
 void GuiInterface::queueStatus(const std::string& status) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex for status queue
     status_queue.push(status);
 }
 
 std::vector<std::string> GuiInterface::getQueuedOutputs() {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex
     std::vector<std::string> outputs;
     while (!output_queue.empty()) {
         outputs.push_back(output_queue.front());
         output_queue.pop();
     }
     return outputs;
-}
+ }
 
 std::vector<std::string> GuiInterface::getQueuedErrors() {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex
     std::vector<std::string> errors;
     while (!error_queue.empty()) {
         errors.push_back(error_queue.front());
@@ -204,7 +234,7 @@ std::vector<std::string> GuiInterface::getQueuedErrors() {
 }
 
 std::vector<std::string> GuiInterface::getQueuedStatuses() {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex
     std::vector<std::string> statuses;
     while (!status_queue.empty()) {
         statuses.push_back(status_queue.front());
@@ -215,7 +245,7 @@ std::vector<std::string> GuiInterface::getQueuedStatuses() {
 
 void GuiInterface::submitInput(const std::string& input) {
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::mutex> lock(input_mutex); // Use input_mutex
         input_queue.push(input);
         input_ready = true;
     }

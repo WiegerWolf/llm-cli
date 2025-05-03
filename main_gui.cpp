@@ -1,6 +1,8 @@
 #include "gui_interface/gui_interface.h"
 #include <stdexcept>
 #include <iostream>
+#include <vector>
+#include <string>
 
 // Include GUI library headers needed for the main loop
 #include <GLFW/glfw3.h>
@@ -36,12 +38,66 @@ int main(int, char**) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // --- Placeholder ImGui Window ---
-        // Simple example window. Replace with actual UI in later stages.
-        ImGui::Begin("LLM-GUI");                          // Create a window called "LLM-GUI" and append into it.
-        ImGui::Text("Window Ready!");                     // Display some text
-        ImGui::End();
-        // --- End Placeholder ---
+        // --- Main UI Layout (Stage 3) ---
+        const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+        const float input_height = 35.0f; // Height for the input text box + button
+        const float status_height = 25.0f; // Height for the status bar
+        const float output_height = display_size.y - input_height - status_height; // Remaining height for output
+
+        // Create a full-window container
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(display_size);
+        ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+        // --- Output Area ---
+        ImGui::BeginChild("Output", ImVec2(0, output_height), true, ImGuiWindowFlags_HorizontalScrollbar);
+        const auto& history = gui_ui.getOutputHistory(); // Get history via getter
+        for (const auto& line : history) {
+            ImGui::TextUnformatted(line.c_str());
+        }
+        // Auto-scroll placeholder
+        static size_t prev_history_size = 0;
+        if (history.size() != prev_history_size) {
+            if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) // Only scroll if already near the bottom
+            {
+                 ImGui::SetScrollHereY(1.0f); // 1.0f scrolls to the bottom
+            }
+            prev_history_size = history.size();
+        }
+        ImGui::EndChild(); // End Output Area
+
+        // --- Input Area ---
+        bool enter_pressed = false;
+        bool send_pressed = false;
+        ImGui::PushItemWidth(display_size.x - 60.0f); // Leave space for the button (adjust 60.0f as needed)
+        enter_pressed = ImGui::InputText("##Input", gui_ui.getInputBuffer(), gui_ui.getInputBufferSize(), ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::PopItemWidth();
+        ImGui::SameLine();
+        send_pressed = ImGui::Button("Send");
+
+        // --- Status Bar ---
+        ImGui::Separator();
+        ImGui::TextUnformatted(gui_ui.getStatusText().c_str()); // Get status via getter
+
+        // --- Input Handling ---
+        if (send_pressed || enter_pressed) {
+            char* input_buf = gui_ui.getInputBuffer();
+            if (input_buf[0] != '\0') {
+                // Placeholder: Just print to console for now
+                std::cout << "Input captured: " << input_buf << std::endl;
+
+                // TODO: In Stage 4, this input needs to be sent to the worker thread
+                // gui_ui.submitInput(input_buf); // Example for Stage 4
+
+                // Clear the buffer after processing
+                input_buf[0] = '\0';
+            }
+            // Set focus back to the input field for the next input
+            ImGui::SetKeyboardFocusHere(-1); // -1 means previous item (the InputText)
+        }
+
+        ImGui::End(); // End Main Window
+        // --- End Main UI Layout ---
 
 
         // Rendering
