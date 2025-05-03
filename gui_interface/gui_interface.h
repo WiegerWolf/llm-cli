@@ -53,7 +53,6 @@ private:
     static constexpr size_t INPUT_BUFFER_SIZE = 1024;
     char input_buf[INPUT_BUFFER_SIZE]; // Fixed-size buffer for ImGui::InputText
     std::vector<std::string> output_history;
-    std::string status_text = "Ready";
 
     // --- Threading members (for Stage 4) ---
     // Enum for display message types

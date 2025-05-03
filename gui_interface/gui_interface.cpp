@@ -322,7 +322,7 @@ bool GuiInterface::processDisplayQueue(std::vector<std::string>& history) {
                 history_updated = true;
                 break;
             case DisplayMessageType::ERROR:
-                history.push_back("ERROR: " + message); // Prepend "ERROR:" for clarity
+                history.push_back("[ERROR] " + message); // Prepend "[ERROR] " for clarity
                 history_updated = true;
                 break;
             case DisplayMessageType::STATUS:
