@@ -110,7 +110,7 @@ void GuiInterface::initialize() {
     // Load Fonts: Use Noto Sans for better Unicode support
     // ImGuiIO& io = ImGui::GetIO(); // io is already defined above (line 72)
     const char* font_path = "resources/NotoSans-Regular.ttf";
-    float font_size = 16.0f;
+    float font_size = 18.0f;
 
     ImFontConfig font_cfg;
     font_cfg.OversampleH = 2; // Improve rendering quality
