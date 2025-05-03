@@ -13,6 +13,11 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
 
+// Message type colors
+const ImVec4 USER_INPUT_COLOR = ImVec4(0.1f, 1.0f, 0.1f, 1.0f);
+const ImVec4 STATUS_COLOR = ImVec4(1.0f, 1.0f, 0.2f, 1.0f);
+const ImVec4 ERROR_COLOR = ImVec4(1.0f, 0.2f, 0.2f, 1.0f);
+const ImVec4 DEFAULT_TEXT_COLOR = ImGui::GetStyleColorVec4(ImGuiCol_Text); // Use default text color
 
 int main(int, char**) {
     GuiInterface gui_ui; // Instantiate the GUI interface
@@ -99,17 +104,17 @@ int main(int, char**) {
             // Determine color and display text based on message type
             switch (message.type) {
                 case MessageType::USER_INPUT:
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 1.0f, 0.1f, 1.0f)); // Green
+                    ImGui::PushStyleColor(ImGuiCol_Text, USER_INPUT_COLOR); // Green
                     color_pushed = true;
                     display_text = "User: " + message.content;
                     break;
                 case MessageType::STATUS:
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.2f, 1.0f)); // Yellow
+                    ImGui::PushStyleColor(ImGuiCol_Text, STATUS_COLOR); // Yellow
                     color_pushed = true;
                     display_text = "[STATUS] " + message.content; // Add prefix for display only
                     break;
                 case MessageType::ERROR:
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f)); // Red
+                    ImGui::PushStyleColor(ImGuiCol_Text, ERROR_COLOR); // Red
                     color_pushed = true;
                     display_text = "ERROR: " + message.content; // Add prefix for display only
                     break;

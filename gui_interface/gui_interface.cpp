@@ -1,3 +1,4 @@
+#include <cstdio> // For fprintf
 #include "gui_interface.h"
 #include <stdexcept>
 #include <iostream> // For error reporting during init/shutdown
@@ -120,7 +121,11 @@ void GuiInterface::initialize() {
     font_cfg.FontDataOwnedByAtlas = false; // Font data is managed externally (in the header)
 
     // Load default ranges first (ASCII, basic Latin) from memory
-    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+    ImFont* font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load default font segment from memory.\n");
+        // Optionally, handle the error more gracefully, e.g., return or use a fallback
+    }
 
     // Merge additional ranges (Latin Extended A+B for broader European language support)
     // Add more ranges (e.g., Cyrillic, Greek) here if needed in the future.
@@ -151,15 +156,24 @@ void GuiInterface::initialize() {
     font_cfg.MergeMode = true; // Set MergeMode before the first merge
 
     // Merge Latin Extended A+B
-    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, extended_ranges);
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, extended_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load Latin Extended font segment from memory.\n");
+    }
 
     // Merge Cyrillic
     // font_cfg.MergeMode = true; // Still true from previous call
-    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, cyrillic_ranges);
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, cyrillic_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load Cyrillic font segment from memory.\n");
+    }
 
     // Merge Symbols (using ImWchar ranges)
     // font_cfg.MergeMode = true; // Still true from previous call
-    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, emoji_ranges);
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, emoji_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load Symbols font segment from memory.\n");
+    }
 
     // IMPORTANT: Reset MergeMode only after the *last* merge operation
     font_cfg.MergeMode = false;
