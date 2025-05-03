@@ -44,7 +44,7 @@ public:
     size_t getInputBufferSize() const; // Returns size of internal buffer
 
     // --- Thread-safe methods for communication (Stage 4) ---
-    bool processDisplayQueue(std::vector<std::string>& history, std::string& status); // Called by GUI thread to update display
+    bool processDisplayQueue(std::vector<std::string>& history); // Called by GUI thread to update display
 
 private:
     GLFWwindow* window = nullptr;
@@ -53,7 +53,6 @@ private:
     static constexpr size_t INPUT_BUFFER_SIZE = 1024;
     char input_buf[INPUT_BUFFER_SIZE]; // Fixed-size buffer for ImGui::InputText
     std::vector<std::string> output_history;
-    std::string status_text = "Ready";
 
     // --- Threading members (for Stage 4) ---
     // Enum for display message types
