@@ -79,7 +79,7 @@ int main(int, char**) {
         ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
         // --- Output Area ---
-        ImGui::BeginChild("Output", ImVec2(0, output_height), true, ImGuiWindowFlags_HorizontalScrollbar);
+        ImGui::BeginChild("Output", ImVec2(0, output_height), true);
         // Use the local output_history vector updated by processDisplayQueue
         for (const auto& line : output_history) {
             // Use TextWrapped for better readability of long lines
