@@ -182,6 +182,7 @@ configure_file(
   @ONLY
 )
 
+include(GNUInstallDirs)
 # Installation setup
 install(TARGETS llm-cli llm-gui # Install both executables
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
