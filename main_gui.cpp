@@ -77,10 +77,11 @@ int main(int, char**) {
         ImGui::BeginChild("Output", ImVec2(0, output_height), true, ImGuiWindowFlags_HorizontalScrollbar);
         // Use the local output_history vector updated by processDisplayQueue
         for (const auto& line : output_history) {
-            ImGui::TextUnformatted(line.c_str());
+            // Use TextWrapped for better readability of long lines
+            ImGui::TextWrapped("%s", line.c_str());
         }
         // Auto-scroll based on the flag set by processDisplayQueue
-        if (new_output_added) {
+        if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) { // Only auto-scroll if near the bottom
             ImGui::SetScrollHereY(1.0f); // Scroll to bottom if new content added
             new_output_added = false; // Reset flag
         }
@@ -89,17 +90,24 @@ int main(int, char**) {
         // --- Input Area ---
         bool enter_pressed = false;
         bool send_pressed = false;
-        ImGui::PushItemWidth(display_size.x - 60.0f); // Leave space for the button (adjust 60.0f as needed)
+        bool clear_pressed = false;
+        const float button_width = 60.0f; // Width for Send button
+        const float clear_button_width = 80.0f; // Width for Clear History button
+        const float input_width = display_size.x - button_width - clear_button_width - ImGui::GetStyle().ItemSpacing.x * 2; // Adjust width for both buttons
+
+        ImGui::PushItemWidth(input_width);
         enter_pressed = ImGui::InputText("##Input", gui_ui.getInputBuffer(), gui_ui.getInputBufferSize(), ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemWidth();
         ImGui::SameLine();
-        send_pressed = ImGui::Button("Send");
+        send_pressed = ImGui::Button("Send", ImVec2(button_width, 0));
+        ImGui::SameLine();
+        clear_pressed = ImGui::Button("Clear History", ImVec2(clear_button_width, 0));
 
         // --- Status Bar ---
         ImGui::Separator();
         ImGui::TextUnformatted(status_text.c_str()); // Use local status_text updated by processDisplayQueue
 
-        // --- Input Handling (Stage 4) ---
+        // --- Input Handling (Stage 4 & 5) ---
         if (send_pressed || enter_pressed) {
             char* input_buf = gui_ui.getInputBuffer();
             if (input_buf[0] != '\0') {
@@ -111,6 +119,11 @@ int main(int, char**) {
             }
             // Set focus back to the input field for the next input
             ImGui::SetKeyboardFocusHere(-1); // -1 means previous item (the InputText)
+        } else if (clear_pressed) {
+            // Clear the local history vector
+            output_history.clear();
+            // Optionally, add a message indicating history was cleared
+            // output_history.push_back("--- History Cleared ---");
         }
 
         ImGui::End(); // End Main Window
@@ -128,16 +141,9 @@ int main(int, char**) {
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); // Render ImGui draw data
 
-        // Update and Render additional Platform Windows
-        // (If docking/multi-viewports are enabled)
-        ImGuiIO& io = ImGui::GetIO();
-        // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        // {
-        //     GLFWwindow* backup_current_context = glfwGetCurrentContext();
-        //     ImGui::UpdatePlatformWindows();
-        //     ImGui::RenderPlatformWindowsDefault();
-        //     glfwMakeContextCurrent(backup_current_context);
-        // }
+        // Update and Render additional Platform Windows (Commented out as not used)
+        // ImGuiIO& io = ImGui::GetIO();
+        // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) { ... }
 
 
         glfwSwapBuffers(window); // Swap the front and back buffers

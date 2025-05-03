@@ -6,7 +6,7 @@
 #include <cstdlib>        // Keep for getenv
 #include <nlohmann/json.hpp>
 #include <stdexcept>
-#include <unordered_set>   //  NUEVA – para rastrear ids de tool_calls
+#include <unordered_set>   // To track valid tool_call IDs during context reconstruction
 #include "database.h" // For PersistenceManager and Message
 #include "tools.h"    // For ToolManager
 #include "config.h"   // For OPENROUTER_API_KEY
@@ -64,71 +64,89 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     payload["model"] = this->model_name; // Use member variable
     payload["messages"] = nlohmann::json::array();
 
-    // --- armado seguro de la conversación ---------------
-    // Garantiza que cada assistant con "tool_calls" incluya TODAS
-    // las respuestas «tool» necesarias; de lo contrario se descarta
-    std::unordered_set<std::string> valid_tool_ids;   // ids cuyos tool result sí incluiremos
-    nlohmann::json msg_array = nlohmann::json::array();
+    // --- Secure Conversation History Construction ---
+    // This logic ensures that only valid sequences of assistant tool_calls and their
+    // corresponding tool result messages are included in the payload sent to the API.
+    // An assistant message requesting tool calls is only included if ALL required
+    // tool result messages appear later in the history. Otherwise, the incomplete
+    // assistant message and its subsequent (now orphaned) tool results are discarded.
+    std::unordered_set<std::string> valid_tool_ids; // Stores IDs of tool calls whose results should be included.
+    nlohmann::json msg_array = nlohmann::json::array(); // The reconstructed message array for the payload.
 
     for (size_t i = 0; i < context.size(); ++i) {
         const Message& msg = context[i];
 
-        /* ---- 1. Mensajes assistant que contienen tool_calls ---- */
+        /* ---- 1. Process Assistant Messages Potentially Containing Tool Calls ---- */
+        // Check if the message is from the assistant and its content might be a JSON object (starts with '{').
         if (msg.role == "assistant" && !msg.content.empty() && msg.content.front() == '{') {
             try {
                 auto asst_json = nlohmann::json::parse(msg.content);
+                // Check if the parsed JSON contains the "tool_calls" key.
                 if (asst_json.contains("tool_calls")) {
-                    //‑‑ recolectar ids
+                    // Collect all tool_call IDs requested by this assistant message.
                     std::vector<std::string> ids;
-                    for (const auto& tc : asst_json["tool_calls"])
+                    for (const auto& tc : asst_json["tool_calls"]) {
                         if (tc.contains("id")) ids.push_back(tc["id"].get<std::string>());
-
-                    //‑‑ verificar que cada id tenga su mensaje «tool» más adelante
-                    bool all_ok = true;
-                    for (const auto& id : ids) {
-                        bool found = false;
-                        for (size_t j = i + 1; j < context.size() && !found; ++j) {
-                            if (context[j].role != "tool") continue;
-                            try {
-                                auto tool_json = nlohmann::json::parse(context[j].content);
-                                found =  tool_json.contains("tool_call_id") &&
-                                         tool_json["tool_call_id"] == id;
-                            } catch (...) { /* ignorar */ }
-                        }
-                        if (!found) { all_ok = false; break; }
                     }
-                    if (!all_ok) continue;              // DESCARTA este assistant incompleto
 
-                    //‑‑ incluir assistant y marcar ids válidos
-                    msg_array.push_back({{"role","assistant"},
-                                         {"content",nullptr},
-                                         {"tool_calls",asst_json["tool_calls"]}});
-                    valid_tool_ids.insert(ids.begin(), ids.end());
-                    continue; // Skip generic handling
+                    // Verify that *every* requested tool_call ID has a corresponding 'tool' message later in the history.
+                    bool all_results_present = true;
+                    for (const auto& id : ids) {
+                        bool found_result = false;
+                        // Search forward from the current assistant message.
+                        for (size_t j = i + 1; j < context.size() && !found_result; ++j) {
+                            if (context[j].role != "tool") continue; // Skip non-tool messages.
+                            try {
+                                // Parse the 'tool' message content to find its tool_call_id.
+                                auto tool_json = nlohmann::json::parse(context[j].content);
+                                found_result = tool_json.contains("tool_call_id") &&
+                                               tool_json["tool_call_id"] == id;
+                            } catch (...) { /* Ignore malformed tool messages */ }
+                        }
+                        if (!found_result) {
+                            all_results_present = false; // If any result is missing, mark this assistant message as invalid.
+                            break;
+                        }
+                    }
+
+                    // If not all results were found, discard this assistant message and its potential tool calls.
+                    if (!all_results_present) continue; // Skip to the next message in history.
+
+                    // If all results are present, include this assistant message (tool_calls only, content is null)
+                    // and mark its tool_call IDs as valid for inclusion later.
+                    msg_array.push_back({{"role", "assistant"},
+                                         {"content", nullptr}, // Content is null when tool_calls are present
+                                         {"tool_calls", asst_json["tool_calls"]}});
+                    valid_tool_ids.insert(ids.begin(), ids.end()); // Add these IDs to the set of valid ones.
+                    continue; // Skip the generic message handling below.
                 }
-            } catch (...) { /* no es JSON válido, sigue flujo normal */ }
+            } catch (...) { /* If content is not valid JSON, treat as a normal message below. */ }
         }
 
-        /* ---- 2. Mensajes «tool» ---- */
+        /* ---- 2. Process Tool Messages ---- */
         if (msg.role == "tool") {
             try {
                 auto tool_json = nlohmann::json::parse(msg.content);
+                // Include this tool message *only if* its tool_call_id corresponds to a previously validated assistant message.
                 if (tool_json.contains("tool_call_id") &&
                     valid_tool_ids.count(tool_json["tool_call_id"].get<std::string>())) {
-                    msg_array.push_back({{"role","tool"},
-                                         {"tool_call_id",tool_json["tool_call_id"]},
-                                         {"name",tool_json["name"]},
-                                         {"content",tool_json["content"]}});
+                    // Reconstruct the tool message in the required API format.
+                    msg_array.push_back({{"role", "tool"},
+                                         {"tool_call_id", tool_json["tool_call_id"]},
+                                         {"name", tool_json["name"]}, // Assuming 'name' is present in stored JSON
+                                         {"content", tool_json["content"]}}); // Assuming 'content' is present
                 }
-            } catch (...) { /* ignorar si está malformado */ }
-            continue;   // siempre saltar el manejo genérico para «tool»
+            } catch (...) { /* Ignore malformed or invalid tool messages. */ }
+            continue; // Always skip generic handling for 'tool' role messages.
         }
 
-        /* ---- 3. user / assistant normales ---- */
+        /* ---- 3. Process Normal User/Assistant Messages ---- */
+        // Include standard user messages and assistant messages that didn't contain valid tool_calls.
         msg_array.push_back({{"role", msg.role}, {"content", msg.content}});
     }
+    // --- End Secure Conversation History Construction ---
 
-    payload["messages"] = std::move(msg_array);
+    payload["messages"] = std::move(msg_array); // Use the securely constructed message array.
 
     // Add tools if requested
     if (use_tools) {
@@ -149,11 +167,11 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
     CURLcode res = curl_easy_perform(curl);
-    // curl_slist_free_all(headers); // Handled by headers_guard
-    // curl_easy_cleanup(curl); // Handled by curl_guard
+    // curl_slist_free_all(headers); // No longer needed, handled by headers_guard (RAII)
+    // curl_easy_cleanup(curl); // No longer needed, handled by curl_guard (RAII)
 
     if (res != CURLE_OK) {
-        // The unique_ptrs will automatically clean up headers and curl handle here
+        // The unique_ptrs (curl_guard, headers_guard) automatically clean up CURL handle and headers list on error/exit.
         throw std::runtime_error("API request failed: " + std::string(curl_easy_strerror(res)));
     }
 
@@ -202,9 +220,9 @@ void ChatClient::run() {
     while (true) {
         try {
             auto input_opt = promptUserInput();
-            if (!input_opt) break;          // salir con Ctrl‑D
-            if (input_opt->empty()) continue;
-            processTurn(*input_opt);
+            if (!input_opt) break;          // Exit loop if UI signals shutdown (e.g., Ctrl+D or window close)
+            if (input_opt->empty()) continue; // Ignore empty input lines
+            processTurn(*input_opt);        // Process the user's input for this turn
         } catch (const std::exception& e) {
             // Catch potential exceptions escaping processTurn or from promptUserInput itself
             ui.displayError("Unhandled error in main loop: " + std::string(e.what()));
@@ -274,7 +292,11 @@ bool ChatClient::handleApiError(const nlohmann::json& api_response,
     return false;
 }
 
-/* ======== tool_calls estándar ======== */
+/* ======== Standard `tool_calls` Execution Path ======== */
+// This function handles the scenario where the API response contains standard `tool_calls`.
+// It executes the requested tools, saves the results, makes a final API call
+// to get the text response based on the tool results, and handles potential errors/retries.
+// Returns true if the entire path (including the final text response) was successful.
 bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message,
                                           std::vector<Message>& context) // context is IN/OUT
 {
@@ -356,15 +378,18 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     bool final_response_success = false;
     std::string final_response_str; // Declare outside the loop
 
+    // Retry loop (up to 3 attempts) to get the final text response after tool execution.
+    // This handles cases where the API might initially fail or unexpectedly return tool calls again.
     for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
-        // On subsequent attempts, temporarily add a system message to explicitly prevent tool usage
+        // On the 2nd and 3rd attempts, add a temporary system message to strongly discourage further tool use.
         if (attempt > 0) {
             Message no_tool_msg{"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
-            context.push_back(no_tool_msg);
+            context.push_back(no_tool_msg); // Add temporary instruction
             final_response_str = makeApiCall(context, /*use_tools=*/false); // Tools explicitly disabled
-            context.pop_back(); // Remove the temporary message
+            context.pop_back(); // Remove the temporary instruction before next iteration or saving
         } else {
-            final_response_str = makeApiCall(context, /*use_tools=*/false); // Tools explicitly disabled on first attempt too
+            // First attempt: Call API with the updated context (including tool results), tools disabled.
+            final_response_str = makeApiCall(context, /*use_tools=*/false);
         }
 
         nlohmann::json final_response_json;
@@ -428,7 +453,12 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     return true; // Indicate success for the standard tool call path
 }
 
-/* ======== parser fallback <function> ======== */
+/* ======== Fallback `<function>` Tag Parsing and Execution ======== */
+// This function handles the scenario where the API response doesn't use standard `tool_calls`
+// but instead embeds function calls within XML-like `<function>` tags in the content string.
+// It parses these tags, executes the functions, saves results, makes a final API call,
+// and handles errors/retries, similar to the standard path.
+// Returns true if at least one fallback function was successfully executed and led to a final response.
 bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                                              std::vector<Message>& context)
 {
@@ -460,32 +490,44 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             break; // No closing tag found, stop
         }
 
-        // Find the start of arguments: either '{', '(', OR ','
+        // --- Argument Parsing Logic ---
+        // Attempt to parse function name and arguments based on delimiters like '(', '{', or ','.
+        // This is complex due to the unstructured nature of fallback tags.
+
+        // Find the first potential argument delimiter '(', '{', or ',' after the function name starts.
         size_t args_delimiter_start = content_str.find_first_of("{(,", name_start);
 
+        // Ignore delimiter if it's after the closing tag.
         if (args_delimiter_start != std::string::npos && args_delimiter_start >= func_end) {
-            args_delimiter_start = std::string::npos; // Treat as no delimiter before end tag
+            args_delimiter_start = std::string::npos;
         }
 
         std::string function_name;
-        nlohmann::json function_args = nlohmann::json::object();
-        bool parsed_args_or_no_args_needed = false;
+        nlohmann::json function_args = nlohmann::json::object(); // Default to empty object
+        bool parsed_args_or_no_args_needed = false; // Flag indicating if args were parsed or if none were expected
 
+        // Case 1: Delimiter found ('{', '(', or ',')
         if (args_delimiter_start != std::string::npos) {
+            // Extract function name up to the delimiter.
             function_name = content_str.substr(name_start, args_delimiter_start - name_start);
             char open_delim = content_str[args_delimiter_start];
 
+            // Subcase 1a: Arguments enclosed in '{...}' or '(...)'
             if (open_delim == '{' || open_delim == '(') {
                 char close_delim = (open_delim == '{') ? '}' : ')';
+                // Find the *last* matching closing delimiter before the </function> tag.
                 size_t search_end_pos = func_end - 1;
                 size_t args_end = content_str.rfind(close_delim, search_end_pos);
 
                 if (args_end != std::string::npos && args_end > args_delimiter_start) {
+                    // Extract the argument string (including delimiters).
                     std::string args_str = content_str.substr(args_delimiter_start, args_end - args_delimiter_start + 1);
                     try {
+                        // Trim whitespace and potentially outer parentheses before parsing as JSON.
                         std::string trimmed_args = args_str;
                         trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
                         trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
+                        // Handle cases like <function(search_web({"query": "..."}))>
                         if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
                             trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
                             trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
@@ -494,37 +536,42 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                         function_args = nlohmann::json::parse(trimmed_args);
                         parsed_args_or_no_args_needed = true;
                     } catch (const nlohmann::json::parse_error& e) {
-                        // Warning: Failed to parse arguments JSON from <function...>. Treating as empty args.
-                        function_args = nlohmann::json::object();
+                        // ui.displayWarning("Failed to parse arguments JSON from <function...>. Treating as empty args.");
+                        function_args = nlohmann::json::object(); // Fallback to empty args on parse error
                         parsed_args_or_no_args_needed = true;
                     }
                 } else {
-                    // Warning: Malformed arguments - found open delimiter but no matching close delimiter before </function>.
+                    // ui.displayWarning("Malformed arguments: Found open delimiter but no matching close delimiter before </function>.");
+                    // Keep empty args, proceed as if args might not be needed.
+                     parsed_args_or_no_args_needed = true;
                 }
+            // Subcase 1b: Arguments potentially after a comma (less common/reliable)
             } else if (open_delim == ',') {
                 size_t args_start_pos = args_delimiter_start + 1;
-                size_t args_end_pos = func_end;
+                size_t args_end_pos = func_end; // Assume args go up to the end tag
                 if (args_end_pos > args_start_pos) {
                     std::string args_str = content_str.substr(args_start_pos, args_end_pos - args_start_pos);
                     try {
                         function_args = nlohmann::json::parse(args_str);
                         parsed_args_or_no_args_needed = true;
                     } catch (const nlohmann::json::parse_error& e) {
-                        // Warning: Failed to parse arguments JSON after comma in <function...>. Treating as empty args.
+                        // ui.displayWarning("Failed to parse arguments JSON after comma in <function...>. Treating as empty args.");
                         function_args = nlohmann::json::object();
                         parsed_args_or_no_args_needed = true;
                     }
                 } else {
-                    // Warning: Found comma delimiter but no arguments before </function>.
+                    // ui.displayWarning("Found comma delimiter but no arguments before </function>.");
                     function_args = nlohmann::json::object();
                     parsed_args_or_no_args_needed = true;
                 }
             }
+        // Case 2: No explicit delimiter '{', '(', or ',' found before </function>
         } else {
-            // No explicit delimiter found, but check for special case:
-            // function name immediately followed by '(' or '{' (e.g., <function(search_web={"query":...})</function>)
+            // Check for a special case where the function name is immediately followed by '{' or '(',
+            // e.g., <function(search_web={"query":...})</function> or <function{tool_name={"arg":...}}</function>
             size_t brace_pos = content_str.find_first_of("{(", name_start);
             if (brace_pos != std::string::npos && brace_pos < func_end) {
+                // Extract name up to the brace/paren
                 function_name = content_str.substr(name_start, brace_pos - name_start);
                 char open_delim = content_str[brace_pos];
                 char close_delim = (open_delim == '{') ? '}' : ')';
@@ -532,12 +579,14 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                 size_t args_end = content_str.rfind(close_delim, search_end_pos);
 
                 if (args_end != std::string::npos && args_end > brace_pos) {
+                    // Extract and parse the arguments within the braces/parens
                     std::string args_str = content_str.substr(brace_pos, args_end - brace_pos + 1);
                     try {
+                        // Trim and parse (similar to Subcase 1a)
                         std::string trimmed_args = args_str;
                         trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
                         trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
-                        if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
+                         if (trimmed_args.size() >= 2 && trimmed_args.front() == '(' && trimmed_args.back() == ')') {
                             trimmed_args = trimmed_args.substr(1, trimmed_args.size() - 2);
                             trimmed_args.erase(0, trimmed_args.find_first_not_of(" \n\r\t"));
                             trimmed_args.erase(trimmed_args.find_last_not_of(" \n\r\t") + 1);
@@ -545,149 +594,163 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                         function_args = nlohmann::json::parse(trimmed_args);
                         parsed_args_or_no_args_needed = true;
                     } catch (const nlohmann::json::parse_error& e) {
-                        // Warning: Failed to parse arguments JSON from <function...>. Treating as empty args.
+                        // ui.displayWarning("Failed to parse arguments JSON from <function...>. Treating as empty args.");
                         function_args = nlohmann::json::object();
                         parsed_args_or_no_args_needed = true;
                     }
                 } else {
-                    // Warning: Malformed arguments - found open delimiter but no matching close delimiter before </function>.
-                    parsed_args_or_no_args_needed = true;
+                    // ui.displayWarning("Malformed arguments: Found open delimiter but no matching close delimiter before </function>.");
+                    parsed_args_or_no_args_needed = true; // Assume no args needed
                 }
             } else {
+                // Case 3: No delimiters found at all - assume function name takes the whole space.
                 function_name = content_str.substr(name_start, func_end - name_start);
-                parsed_args_or_no_args_needed = true;
+                parsed_args_or_no_args_needed = true; // Assume no arguments needed for this function
             }
         }
+        // --- End Argument Parsing Logic ---
 
+        // Clean up extracted function name (trim whitespace, remove trailing brackets)
         if (!function_name.empty()) {
             function_name.erase(0, function_name.find_first_not_of(" \n\r\t"));
             function_name.erase(function_name.find_last_not_of(" \n\r\t") + 1);
-
-            // Additional cleanup: remove trailing stray characters like '[', '(', '{'
-            while (!function_name.empty() && 
+            // Remove trailing stray characters like '[', '(', '{' that might be left from parsing
+            while (!function_name.empty() &&
                    (function_name.back() == '[' || function_name.back() == '(' || function_name.back() == '{')) {
                 function_name.pop_back();
-                // Also trim any whitespace after popping
+                // Also trim any whitespace revealed after popping
                 while (!function_name.empty() && isspace(function_name.back())) {
                     function_name.pop_back();
                 }
             }
         }
 
-        // *** FIX: Handle web_research fallback using 'query' instead of 'topic' ***
+        // Specific fix for web_research tool sometimes using 'query' instead of 'topic' in fallback tags.
         if (function_name == "web_research" && function_args.contains("query") && !function_args.contains("topic")) {
-            // Fallback parser: Renaming 'query' to 'topic' for web_research
+            // ui.displayStatus("Adjusting 'query' to 'topic' for web_research fallback.");
             function_args["topic"] = function_args["query"];
             function_args.erase("query");
         }
 
+        // Proceed if we have a function name and either parsed args or determined no args were needed.
         if (!function_name.empty() && parsed_args_or_no_args_needed) {
-            // If args are empty, try to recover by parsing the first {...} block inside the tag
+            // Recovery attempt: If args are still empty, try parsing the *first* {...} block within the tag content.
             if (function_args.empty()) {
                 size_t brace_start = content_str.find('{', name_start);
-                size_t brace_end = content_str.rfind('}', func_end - 1);
-                if (brace_start != std::string::npos && brace_end != std::string::npos && brace_end > brace_start) {
-                    std::string possible_args = content_str.substr(brace_start, brace_end - brace_start + 1);
-                    try {
-                        nlohmann::json recovered_args = nlohmann::json::parse(possible_args);
-                        function_args = recovered_args;
-                    } catch (...) {
-                        // Ignore parse errors, keep empty args
+                // Ensure brace_start is before the closing tag
+                if (brace_start != std::string::npos && brace_start < func_end) {
+                    size_t brace_end = content_str.find('}', brace_start);
+                    // Ensure brace_end is also before the closing tag
+                    if (brace_end != std::string::npos && brace_end < func_end) {
+                        std::string possible_args = content_str.substr(brace_start, brace_end - brace_start + 1);
+                        try {
+                            nlohmann::json recovered_args = nlohmann::json::parse(possible_args);
+                            function_args = recovered_args; // Use recovered args if parsing succeeds
+                        } catch (...) {
+                            // Ignore parse errors, keep empty args if recovery fails
+                        }
                     }
                 }
             }
 
-            std::string function_block = content_str.substr(func_start, func_end + 11 - func_start);
+            // Save the original assistant message containing the <function> tag.
+            std::string function_block = content_str.substr(func_start, func_end + 11 - func_start); // Include </function>
             db.saveAssistantMessage(function_block);
-            context = db.getContextHistory();
+            context = db.getContextHistory(); // Reload context including the saved message
+
+            // Generate a synthetic tool_call_id for this fallback execution.
             std::string tool_call_id = "synth_" + std::to_string(++synthetic_tool_call_counter);
 
-            // Note: executeAndPrepareToolResult will call toolManager.execute_tool, which now uses ui.displayStatus internally
-            // So we don't need an explicit ui.displayStatus here, but the call below ensures ui is passed down.
-
-            // Execute tool and get result JSON string
+            // Execute the tool using the parsed name and arguments.
+            // Status updates are handled within executeAndPrepareToolResult -> toolManager.execute_tool.
             std::string tool_result_msg_json = executeAndPrepareToolResult(tool_call_id, function_name, function_args);
 
-            // Save the tool result
+            // Save the tool result message (JSON string).
             try {
                 db.saveToolMessage(tool_result_msg_json);
             } catch (const std::exception& e) {
-                 // Error saving fallback tool result
-                 search_pos = func_end + 11; // Move past this tag
+                 ui.displayError("Database error saving fallback tool result: " + std::string(e.what()));
+                 search_pos = func_end + 11; // Move past this failed tag
                  continue; // Skip API call for this failed save
             }
 
-            // Reload context
+            // Reload context again, now including the tool result.
             context = db.getContextHistory();
 
-            // Make the final API call (similar logic to executeStandardToolCalls's final step)
-            // Try up to 3 times
+            // Make the final API call to get the text response based on the fallback tool execution.
+            // Retry logic is similar to the standard tool call path.
             std::string final_content;
             bool final_response_success = false;
-            std::string final_response_str; // Declare outside the loop
+            std::string final_response_str;
             for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
-                 // On subsequent attempts, temporarily add a system message to explicitly prevent tool usage
+                 // Add temporary system message on retries to prevent further tool use.
                  if (attempt > 0) {
                      Message no_tool_msg{"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
                      context.push_back(no_tool_msg);
                      final_response_str = makeApiCall(context, /*use_tools=*/false);
-                     context.pop_back(); // Remove the temporary message
+                     context.pop_back();
                  } else {
-                     final_response_str = makeApiCall(context, /*use_tools=*/false); // Tools explicitly disabled on first attempt too
+                     final_response_str = makeApiCall(context, /*use_tools=*/false);
                  }
 
+                 // Parse and validate the final response.
                  nlohmann::json final_response_json;
                  try {
                      final_response_json = nlohmann::json::parse(final_response_str);
                  } catch (const nlohmann::json::parse_error& e) {
-                     // JSON Parsing Error (Fallback Final Response)
-                     if (attempt == 2) break;
-                     continue;
+                     if (attempt == 2) { ui.displayError("Failed to parse final API response after fallback tool."); break; }
+                     continue; // Retry on parse error
                  }
                  if (final_response_json.contains("error")) {
-                      ui.displayError("API Error Received (Fallback Final Response): " + final_response_json["error"].dump(2)); // Use UI for error
+                      ui.displayError("API Error (Fallback Final Response): " + final_response_json["error"].dump(2));
                       if (attempt == 2) break;
-                      continue;
+                      continue; // Retry on API error
                  }
                  if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || !final_response_json["choices"][0].contains("message")) {
-                     // Error: Invalid API response structure (Fallback Final Response).
-                     if (attempt == 2) break;
-                     continue;
+                     if (attempt == 2) { ui.displayError("Invalid final API response structure after fallback tool."); break; }
+                     continue; // Retry on invalid structure
                  }
                  auto& message = final_response_json["choices"][0]["message"];
+                 // Check again for unexpected tool calls in the final response.
                  if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-                     // Warning: Fallback final response unexpectedly contains tool_calls. Retrying.
-                     if (attempt == 2) break;
-                     continue;
+                     if (attempt == 2) { ui.displayWarning("Final response still contained tool_calls after fallback execution."); break; }
+                     continue; // Retry if tools were unexpectedly called again
                  }
+                 // Extract the final content if present.
                  if (message.contains("content") && message["content"].is_string()) {
                      final_content = message["content"];
                      final_response_success = true;
-                     break;
+                     break; // Success!
                  } else {
-                     // Error: Fallback final response message missing content field.
-                     if (attempt == 2) break;
-                     continue;
+                     if (attempt == 2) { ui.displayError("Final response message missing content after fallback tool."); break; }
+                     continue; // Retry if content is missing
                  }
             }
 
+            // If we successfully got a final text response:
             if (final_response_success) {
-                db.saveAssistantMessage(final_content);
-                ui.displayOutput(final_content + "\n\n"); // Use UI for output
-                any_executed = true; // Mark success for this fallback path
+                db.saveAssistantMessage(final_content); // Save the final assistant message
+                ui.displayOutput(final_content + "\n\n"); // Display it
+                any_executed = true; // Mark that this fallback path was successful for at least one tag
             } else {
-                 ui.displayError("Failed to get final response after fallback tool execution."); // Use UI for error
-                 // Continue searching for other tags, but this one failed
+                 ui.displayError("Failed to get final response after fallback tool execution for: " + function_name);
+                 // Continue searching for other tags even if this one failed its final step.
             }
+        } else {
+             // If function name was empty or args couldn't be parsed properly, skip execution for this tag.
+             // ui.displayWarning("Skipping malformed or unparsable <function> tag.");
         }
 
-        search_pos = func_end + 11; // Move past this </function>
+        // Move search position past the current </function> tag to find the next one.
+        search_pos = func_end + 11; // Length of "</function>" is 11
     }
 
-    return any_executed; // True if at least one fallback function led to a final response
+    return any_executed; // Return true if at least one fallback function was fully processed.
 }
 
-/* ======== print & save assistant ======== */
+/* ======== Display and Save Final Assistant Content ======== */
+// Handles the case where the API response is a direct text message (no tool calls).
+// Saves the message to the database and displays it via the UI.
 void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_message)
 {
     if (!response_message.is_null() && response_message.contains("content")) {
@@ -703,33 +766,64 @@ void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_mes
     }
 }
 
+// Processes a single turn of the conversation.
 void ChatClient::processTurn(const std::string& input) {
     try {
+        // 1. Save the user's input message.
         saveUserInput(input);
+        // 2. Load the current conversation history.
         auto context = db.getContextHistory();
 
-        // 1ª llamada al modelo con tools habilitados
-        std::string api_raw   = makeApiCall(context, true);
-        nlohmann::json api_js = nlohmann::json::parse(api_raw);
+        // 3. Make the initial API call, enabling tools.
+        ui.displayStatus("Waiting for response..."); // Update status
+        std::string api_raw_response = makeApiCall(context, /*use_tools=*/true);
+        ui.displayStatus("Processing response..."); // Update status
+        nlohmann::json api_response_json = nlohmann::json::parse(api_raw_response);
 
-        std::string  fallback_content;
-        nlohmann::json response_msg;
+        // 4. Check for API errors and extract initial response message or fallback content.
+        std::string fallback_content; // Used if standard tool calls fail or aren't present, but content exists.
+        nlohmann::json response_message; // The 'message' object from the API response.
+        if (handleApiError(api_response_json, fallback_content, response_message)) {
+            ui.displayStatus("Ready."); // Reset status on error
+            return; // Turn ends prematurely due to unrecoverable API error.
+        }
 
-        if (handleApiError(api_js, fallback_content, response_msg))
-            return;                               // turno terminado por error
+        // 5. Attempt to execute standard tool calls if present in the response.
+        //    This function handles the entire flow: save assistant msg -> execute tools -> save results -> final API call -> save/display final response.
+        bool turn_completed_via_standard_tools = executeStandardToolCalls(response_message, context);
 
-        bool tool_done = executeStandardToolCalls(response_msg, context);
+        // 6. If standard tools were NOT executed (or failed partway) AND we have fallback content (from initial response or error recovery):
+        //    Attempt to parse and execute fallback <function> tags within that content.
+        //    This function also handles the full flow for the fallback path.
+        bool turn_completed_via_fallback_tools = false;
+        if (!turn_completed_via_standard_tools && !fallback_content.empty()) {
+            turn_completed_via_fallback_tools = executeFallbackFunctionTags(fallback_content, context);
+        }
 
-        if (!tool_done && !fallback_content.empty())
-            tool_done = executeFallbackFunctionTags(fallback_content, context);
+        // 7. If neither the standard tool path nor the fallback tool path completed the turn:
+        //    Assume the initial response was a direct text message (or contained only unexecutable tools/tags).
+        //    Print and save the content from the initial `response_message`.
+        if (!turn_completed_via_standard_tools && !turn_completed_via_fallback_tools) {
+            printAndSaveAssistantContent(response_message);
+        }
 
-        if (!tool_done)
-            printAndSaveAssistantContent(response_msg);
+        ui.displayStatus("Ready."); // Reset status after successful turn processing
 
     } catch (const nlohmann::json::parse_error& e) {
-        // JSON Parsing Error (Outer Turn) - less verbose now
-        ui.displayError("An internal error occurred while processing the response.");
+        // Catch JSON parsing errors occurring outside the specific tool call paths.
+        ui.displayError("Error parsing API response: " + std::string(e.what()));
+        ui.displayStatus("Error."); // Set error status
+    } catch (const std::runtime_error& e) {
+        // Catch CURL errors or other runtime errors from makeApiCall or DB operations.
+        ui.displayError("Runtime error: " + std::string(e.what()));
+         ui.displayStatus("Error."); // Set error status
     } catch (const std::exception& e) {
-        ui.displayError(e.what()); // Use UI for generic error
+        // Catch any other standard exceptions.
+        ui.displayError("An unexpected error occurred: " + std::string(e.what()));
+         ui.displayStatus("Error."); // Set error status
+    } catch (...) {
+        // Catch any non-standard exceptions.
+        ui.displayError("An unknown, non-standard error occurred.");
+        ui.displayStatus("Error."); // Set error status
     }
 }

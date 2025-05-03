@@ -51,7 +51,7 @@ void GuiInterface::initialize() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // Core profile
-    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Optional
+    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Generally not needed unless targeting very old drivers
 #endif
 
     // Create window with graphics context
@@ -68,24 +68,21 @@ void GuiInterface::initialize() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-    // io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     // Enable Docking (optional)
-    // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;   // Enable Multi-Viewport / Platform Windows (optional)
-    //io.ConfigViewportsNoAutoMerge = true;
-    //io.ConfigViewportsNoTaskBarIcon = true;
+    // Optional ImGui flags (commented out as not currently used):
+    // io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    // io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+    //     ImGuiStyle& style = ImGui::GetStyle();
+    //     style.WindowRounding = 0.0f;
+    //     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    // }
 
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
-    //ImGui::StyleColorsClassic();
+    // ImGui::StyleColorsClassic(); // Alternative style
 
-    // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
-    ImGuiStyle& style = ImGui::GetStyle();
-    // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-    // {
-    //     style.WindowRounding = 0.0f;
-    //     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-    // }
 
     // Setup Platform/Renderer backends
     if (!ImGui_ImplGlfw_InitForOpenGL(window, true)) {
@@ -103,10 +100,11 @@ void GuiInterface::initialize() {
     }
 
 
-    // Load Fonts (optional)
+    // Load Fonts (optional - commented out as default font is used)
+    // ImGuiIO& io = ImGui::GetIO();
     // io.Fonts->AddFontDefault();
     // io.Fonts->AddFontFromFileTTF("path/to/font.ttf", 16.0f);
-    // ImGui::GetIO().Fonts->Build(); // Build font atlas if using custom fonts
+    // io.Fonts->Build(); // Build font atlas if using custom fonts
 
     std::cout << "GUI Initialized Successfully." << std::endl;
 }
@@ -132,123 +130,142 @@ GLFWwindow* GuiInterface::getWindow() const {
     return window;
 }
 
-// --- Getters for GUI State (Stage 3) ---
-
-const std::vector<std::string>& GuiInterface::getOutputHistory() const {
-    // Note: Accessing this from the main thread while the worker might modify it
-    // is NOT thread-safe. This will be addressed in Stage 4 with mutexes or queues.
-    return output_history;
-}
-
-const std::string& GuiInterface::getStatusText() const {
-    // Note: Accessing this from the main thread while the worker might modify it
-    // is NOT thread-safe. This will be addressed in Stage 4 with mutexes or queues.
-    return status_text;
-}
+// --- Getters for GUI State (Used by main_gui.cpp) ---
 
 char* GuiInterface::getInputBuffer() {
-    // Returns a pointer to the internal buffer. The caller must respect the buffer size.
-    // Note: Returning a non-const pointer allows modification (e.g., clearing).
+    // Returns a pointer to the internal input buffer.
+    // The caller (main_gui) must respect the buffer size.
+    // Allows main_gui to directly modify the buffer (e.g., clearing after send).
     return input_buf;
 }
 
 size_t GuiInterface::getInputBufferSize() const {
-    // Returns the compile-time constant size of the buffer.
+    // Returns the compile-time constant size of the input buffer.
     return INPUT_BUFFER_SIZE;
 }
-// --- Stub implementations ---
 
-// --- Implementation of UserInterface contract (Thread-Safe for Stage 4) ---
+// --- Implementation of UserInterface contract (Thread-Safe Communication) ---
 
+// This method is called by the *worker thread* (ChatClient) when it needs user input.
+// It blocks the worker thread until input is provided by the GUI thread or shutdown is requested.
 std::optional<std::string> GuiInterface::promptUserInput() {
-    // Called by the worker thread to wait for user input from the GUI thread
+    // Acquire a unique lock on the input mutex. The lock is automatically released when exiting the scope.
     std::unique_lock<std::mutex> lock(input_mutex);
+
+    // Wait on the condition variable. The thread goes to sleep until:
+    // 1. `input_cv.notify_one()` is called (by `sendInputToWorker` or `requestShutdown`).
+    // 2. The predicate `[this]{ return input_ready.load() || shutdown_requested.load(); }` returns true.
+    // The predicate protects against spurious wakeups and ensures we only proceed when input is actually ready or shutdown is signaled.
     input_cv.wait(lock, [this]{ return input_ready.load() || shutdown_requested.load(); });
 
+    // Check if shutdown was requested while waiting.
     if (shutdown_requested.load()) {
-        return std::nullopt; // Shutdown requested while waiting
+        return std::nullopt; // Signal the worker to terminate.
     }
 
-    // Input must be ready if shutdown wasn't requested
+    // If woken up and not shutting down, input should be ready.
+    // Double-check the queue isn't empty (although the predicate should guarantee it).
     if (input_ready.load() && !input_queue.empty()) {
-        std::string input = std::move(input_queue.front()); // Use move for efficiency
+        std::string input = std::move(input_queue.front()); // Use move for efficiency.
         input_queue.pop();
-        input_ready = false; // Reset the flag after consuming the input
-        return input;
+        input_ready = false; // Reset the flag: the input has been consumed.
+        return input;        // Return the user input to the worker thread.
     }
 
-    // This state should ideally not be reached if logic is correct
-    // (wait condition implies input_ready or shutdown_requested)
-    // If it happens (e.g., spurious wakeup and queue empty), reset flag and return nullopt
-    input_ready = false;
-    return std::nullopt;
+    // Fallback/Error case: Should not be reached if logic is correct.
+    // If a spurious wakeup occurred and the queue is empty despite input_ready being true (unlikely),
+    // or if input_ready became false between the predicate check and here.
+    input_ready = false; // Ensure flag is reset.
+    return std::nullopt; // Indicate no input available this time.
 }
 
+// Called by the *worker thread* to add regular output to the display queue.
 void GuiInterface::displayOutput(const std::string& output) {
-    // Called by the worker thread to queue output for the GUI thread
+    // Lock the display mutex to ensure exclusive access to the display queue.
     std::lock_guard<std::mutex> lock(display_mutex);
+    // Push the message and its type onto the queue for the GUI thread to process.
     display_queue.push({output, DisplayMessageType::OUTPUT});
-    // Note: GUI thread needs to be signaled or periodically check this queue
+    // The GUI thread periodically calls processDisplayQueue to check this queue.
 }
 
+// Called by the *worker thread* to add error messages to the display queue.
 void GuiInterface::displayError(const std::string& error) {
-    // Called by the worker thread to queue an error for the GUI thread
+    // Lock the display mutex.
     std::lock_guard<std::mutex> lock(display_mutex);
+    // Push the error message and its type onto the queue.
     display_queue.push({error, DisplayMessageType::ERROR});
-    // Note: GUI thread needs to be signaled or periodically check this queue
 }
 
+// Called by the *worker thread* to update the status text in the display queue.
 void GuiInterface::displayStatus(const std::string& status) {
-    // Called by the worker thread to queue a status update for the GUI thread
+    // Lock the display mutex.
     std::lock_guard<std::mutex> lock(display_mutex);
+    // Push the status message and its type onto the queue.
     display_queue.push({status, DisplayMessageType::STATUS});
-    // Note: GUI thread needs to be signaled or periodically check this queue
 }
 
 
-// --- Methods for GUI thread to interact with Worker thread (Stage 4) ---
+// --- Methods for GUI thread to interact with Worker thread ---
 
+// Called by the *GUI thread* (e.g., when the window close button is pressed).
 void GuiInterface::requestShutdown() {
-    // Called by the GUI thread (e.g., when window is closed)
+    // Atomically set the shutdown flag. This is checked by the worker thread.
     shutdown_requested = true;
-    input_cv.notify_one(); // Wake up the worker thread if it's waiting in promptUserInput
+    // Notify the condition variable. This wakes up the worker thread if it's
+    // currently blocked waiting in `promptUserInput`.
+    input_cv.notify_one();
 }
 
+// Called by the *GUI thread* when the user presses "Send" or Enter in the input box.
 void GuiInterface::sendInputToWorker(const std::string& input) {
-    // Called by the GUI thread when the user submits input
+    // Use a separate scope for the lock_guard to ensure the mutex is released
+    // *before* notifying the condition variable. This is important for performance
+    // and avoids potential deadlocks if the woken thread immediately tries to lock the same mutex.
     {
         std::lock_guard<std::mutex> lock(input_mutex);
+        // Add the user's input string to the queue.
         input_queue.push(input);
+        // Atomically set the flag indicating input is ready.
         input_ready = true;
-    } // Mutex is released before notifying
-    input_cv.notify_one(); // Notify the worker thread waiting in promptUserInput
+    } // input_mutex is released here.
+
+    // Notify the condition variable. This wakes up the worker thread if it's
+    // currently blocked waiting in `promptUserInput`.
+    input_cv.notify_one();
 }
 
-// --- Method for GUI thread to process display updates (Stage 4) ---
+// --- Method for GUI thread to process display updates ---
 
+// Called by the *GUI thread* in its main render loop.
+// Processes all messages currently in the display queue.
+// Returns true if the history vector was modified (used for auto-scrolling).
 bool GuiInterface::processDisplayQueue(std::vector<std::string>& history, std::string& status) {
-    // Called by the GUI thread in its main loop
     bool history_updated = false;
-    std::lock_guard<std::mutex> lock(display_mutex); // Lock the queue for processing
+    // Lock the display mutex to safely access the queue from the GUI thread.
+    std::lock_guard<std::mutex> lock(display_mutex);
 
+    // Process all messages currently in the queue.
     while (!display_queue.empty()) {
-        auto& [message, type] = display_queue.front(); // Get reference to the front pair
+        // Get a reference to the front message pair (avoids copying).
+        auto& [message, type] = display_queue.front();
 
+        // Handle the message based on its type.
         switch (type) {
             case DisplayMessageType::OUTPUT:
-                history.push_back(message);
+                history.push_back(message); // Add to the local history vector in main_gui.cpp
                 history_updated = true;
                 break;
             case DisplayMessageType::ERROR:
-                // Optionally prepend "ERROR: " or handle differently
-                history.push_back("ERROR: " + message);
+                history.push_back("ERROR: " + message); // Prepend "ERROR:" for clarity
                 history_updated = true;
                 break;
             case DisplayMessageType::STATUS:
-                status = message; // Update the status text directly
+                status = message; // Update the local status string in main_gui.cpp
                 break;
         }
-        display_queue.pop(); // Remove the processed message
+        // Remove the processed message from the front of the queue.
+        display_queue.pop();
     }
-    return history_updated; // Return true if history was modified
+    // Return whether the history content changed, so the GUI can auto-scroll.
+    return history_updated;
 }

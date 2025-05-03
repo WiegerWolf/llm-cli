@@ -4,26 +4,30 @@
 #include <readline/history.h>                                                                                                                                            
 #include <cstdlib> // For free()                                                                                                                                         
                                                                                                                                                                          
-// Performs any necessary initialization for the CLI.                                                                                                                    
-// Currently, just prints a welcome message. Could load history here later.                                                                                              
-void CliInterface::initialize() {                                                                                                                                        
-    // std::cout << "CLI Initialized. Welcome!\n"; // Optional: Add welcome message if desired                                                                           
-    // rl_initialize(); // Readline initializes itself implicitly on first call usually                                                                                  
-}                                                                                                                                                                        
-                                                                                                                                                                         
-// Performs any necessary cleanup for the CLI.                                                                                                                           
-// Currently, just prints a shutdown message. Could save history here later.                                                                                             
-void CliInterface::shutdown() {                                                                                                                                          
-    // std::cout << "\nCLI Shutting down...\n"; // Optional: Add shutdown message                                                                                        
-    // clear_history(); // Example: Clear history on exit if desired                                                                                                     
-}                                                                                                                                                                        
-                                                                                                                                                                         
-// Prompts the user for input using readline.                                                                                                                            
-// Handles Ctrl+D (returns nullopt) and adds valid input to history.                                                                                                     
-std::optional<std::string> CliInterface::promptUserInput() {                                                                                                             
-    char* input_cstr = readline("> "); // Use the classic prompt symbol                                                                                                  
-    if (!input_cstr) {                                                                                                                                                   
-        return std::nullopt; // User pressed Ctrl+D or similar EOF signal                                                                                                
+// Performs any necessary initialization for the CLI.
+// (Currently no specific initialization steps are required).
+void CliInterface::initialize() {
+    // Readline library initializes itself implicitly on first use.
+    // History loading could be added here if desired.
+}
+
+// Performs any necessary cleanup for the CLI.
+// (Currently no specific shutdown steps are required).
+void CliInterface::shutdown() {
+    // History saving could be added here if desired.
+}
+
+// Prompts the user for input using the readline library.
+// Readline provides line editing, history (up/down arrows), and completion capabilities.
+// Handles Ctrl+D (returns nullopt) and adds valid input to history.
+std::optional<std::string> CliInterface::promptUserInput() {
+    // Display the prompt "> " and read a line of input.
+    char* input_cstr = readline("> ");
+
+    // Check if readline returned nullptr (indicates EOF, typically Ctrl+D).
+    if (!input_cstr) {
+        std::cout << std::endl; // Print a newline after Ctrl+D for cleaner terminal output
+        return std::nullopt; // Signal to the caller to exit.
     }                                                                                                                                                                    
     std::string input(input_cstr);                                                                                                                                       
     free(input_cstr); // Free memory allocated by readline                                                                                                               

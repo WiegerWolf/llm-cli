@@ -9,47 +9,86 @@
 struct PersistenceManager::Impl {
     sqlite3* db;
     
-    Impl() {
-        std::string path = std::string(getenv("HOME")) + "/.llm-cli-chat.db";
-        if(sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
-            throw std::runtime_error("Database connection failed");
+    // Constructor for the implementation class
+    Impl() : db(nullptr) { // Initialize db pointer
+        // Construct the database path in the user's home directory
+        const char* home_dir = std::getenv("HOME");
+        if (!home_dir) {
+            throw std::runtime_error("Failed to get HOME directory environment variable.");
         }
-        // Initialize tables
+        std::string path = std::string(home_dir) + "/.llm-cli-chat.db";
+
+        // Open the SQLite database connection
+        if(sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+            std::string err_msg = "Database connection failed: ";
+            if (db) { // sqlite3_open sets db even on error
+                err_msg += sqlite3_errmsg(db);
+                sqlite3_close(db); // Close the handle if opened partially
+                db = nullptr;
+            } else {
+                err_msg += "Could not allocate memory for database handle.";
+            }
+            throw std::runtime_error(err_msg);
+        }
+
+        // Define the database schema
         const char* schema = R"(
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                role TEXT CHECK(role IN ('system','user','assistant', 'tool')), -- Added 'tool' role
-                content TEXT
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, -- Automatically record insertion time
+                role TEXT CHECK(role IN ('system','user','assistant', 'tool')), -- Ensure valid roles
+                content TEXT -- Store message content (can be plain text or JSON string for tool/assistant)
             );
         )";
+        // Execute the schema creation statement
         exec(schema);
+        // Enable Write-Ahead Logging (WAL) mode for better concurrency
         exec("PRAGMA journal_mode=WAL");
     }
     
-    ~Impl() { sqlite3_close(db); }
+    // Destructor for the implementation class
+    ~Impl() {
+        if (db) {
+            sqlite3_close(db); // Ensure database connection is closed
+        }
+    }
 
+    // Executes a simple SQL statement without expecting results.
+    // Throws std::runtime_error on failure.
     void exec(const char* sql) {
-        char* err;
+        char* err = nullptr;
         if(sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
-            std::string msg = err;
-            sqlite3_free(err);
+            std::string msg = "SQL error executing '";
+            msg += sql;
+            msg += "': ";
+            msg += err;
+            sqlite3_free(err); // Free the error message allocated by SQLite
             throw std::runtime_error(msg);
         }
     }
 
+    // Inserts a message into the database using a prepared statement.
     void insertMessage(const Message& msg) {
-        const char* sql = "INSERT INTO messages (role, content) VALUES (?,?)";
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+        const char* sql = "INSERT INTO messages (role, content) VALUES (?, ?)";
+        sqlite3_stmt* stmt = nullptr;
+        // Prepare the SQL statement
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+             throw std::runtime_error("Failed to prepare insert statement: " + std::string(sqlite3_errmsg(db)));
+        }
+        // Use RAII for statement finalization
+        auto stmt_guard = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>{stmt, sqlite3_finalize};
+
+        // Bind the role and content parameters.
+        // SQLITE_STATIC means SQLite doesn't need to copy the data, assuming it remains valid until step.
         sqlite3_bind_text(stmt, 1, msg.role.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 2, msg.content.c_str(), -1, SQLITE_STATIC);
-        
+
+        // Execute the prepared statement.
         if(sqlite3_step(stmt) != SQLITE_DONE) {
-            sqlite3_finalize(stmt);
-            throw std::runtime_error("Insert failed");
+            // stmt_guard will finalize the statement automatically
+            throw std::runtime_error("Insert failed: " + std::string(sqlite3_errmsg(db)));
         }
-        sqlite3_finalize(stmt);
+        // Statement finalized automatically by stmt_guard
     }
 };
 
@@ -109,20 +148,32 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
 
 // Add a function to clean up orphaned tool messages
 void PersistenceManager::cleanupOrphanedToolMessages() {
-    // This query finds tool messages that don't have a preceding assistant message with tool_calls
+    // This query deletes 'tool' role messages that are considered "orphaned".
+    // An orphaned tool message is one that does not have a valid preceding 'assistant' message
+    // which requested tool execution (either via standard 'tool_calls' or fallback '<function>' tags).
+    // It ensures that we don't keep tool results whose corresponding request was lost or invalid.
     const char* sql = R"(
-        DELETE FROM messages 
-        WHERE role = 'tool' 
-        AND id NOT IN (
-            SELECT t.id FROM messages t
-            JOIN messages a ON a.id < t.id
-            WHERE t.role = 'tool'
-            AND a.role = 'assistant'
-            AND (a.content LIKE '%"tool_calls"%' OR a.content LIKE '%<function>%')
-            AND (
-                SELECT COUNT(*) FROM messages 
-                WHERE id > a.id AND id < t.id AND role = 'assistant'
-            ) = 0
+        DELETE FROM messages
+        WHERE role = 'tool' -- Target only tool messages for deletion
+        AND id NOT IN ( -- Keep tool messages whose ID *is* in the result of this subquery
+            SELECT t.id -- Select the IDs of valid tool messages
+            FROM messages t -- Alias the tool message table as 't'
+            JOIN messages a ON a.id < t.id -- Join with a preceding message 'a'
+            WHERE t.role = 'tool' -- Ensure 't' is a tool message
+              AND a.role = 'assistant' -- Ensure 'a' is an assistant message
+              -- Check if the assistant message 'a' contains either standard tool calls or fallback function tags
+              AND (a.content LIKE '%"tool_calls"%' OR a.content LIKE '%<function>%')
+              -- Ensure there are NO other assistant messages between 'a' and 't'
+              -- This prevents matching a tool message to an old assistant request if a newer assistant message exists in between.
+              AND (
+                  SELECT COUNT(*)
+                  FROM messages intervening_a
+                  WHERE intervening_a.id > a.id AND intervening_a.id < t.id AND intervening_a.role = 'assistant'
+              ) = 0
+            -- Note: This doesn't strictly validate the JSON or the specific tool_call_id match here,
+            -- it assumes that if an assistant message requested *any* tool, and a tool message
+            -- immediately follows (without another assistant in between), it's likely valid.
+            -- Stricter validation happens during context reconstruction in makeApiCall.
         )
     )";
 
@@ -164,14 +215,24 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
     }
     sqlite3_finalize(system_stmt);
     
-    // Now get recent messages in chronological order
+    // Get recent user, assistant, and tool messages in chronological order.
+    // Note: This query fetches the last N messages based on ID. It does *not*
+    // perform the strict validation of assistant->tool sequences here; that logic
+    // is handled during context reconstruction in ChatClient::makeApiCall.
+    // This function primarily retrieves a candidate set of recent messages.
     const std::string msgs_sql = R"(
+        -- Use a Common Table Expression (CTE) for clarity
         WITH recent_msgs AS (
-            SELECT * FROM messages 
-            WHERE role IN ('user','assistant', 'tool')
-            ORDER BY id DESC 
+            -- Select all columns from messages
+            SELECT * FROM messages
+            -- Filter for relevant roles
+            WHERE role IN ('user', 'assistant', 'tool')
+            -- Order by ID descending to get the most recent ones
+            ORDER BY id DESC
+            -- Limit the number of messages retrieved (max_pairs * 2, e.g., 10 pairs = 20 messages)
             LIMIT ?
         )
+        -- Select the final columns from the CTE, ordered chronologically (ascending ID)
         SELECT id, role, content, timestamp FROM recent_msgs ORDER BY id ASC
     )";
 

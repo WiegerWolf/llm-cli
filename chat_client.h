@@ -18,10 +18,12 @@ private:
     ToolManager toolManager;
     UserInterface& ui; // Add reference to the UI
     std::string api_base = "https://openrouter.ai/api/v1/chat/completions";
-    std::string model_name = "openai/gpt-4.1-nano"; 
+    std::string model_name = "openai/gpt-4.1-nano";
 
-    std::optional<std::string> promptUserInput();   // lee línea o devuelve nullopt para salir
-    void processTurn(const std::string& user_input); // Handles the entire conversation flow for one turn
+    // Prompts the user for input via the UI interface. Returns nullopt if UI signals exit/shutdown.
+    std::optional<std::string> promptUserInput();
+    // Handles the entire conversation flow for one turn, including API calls and tool execution.
+    void processTurn(const std::string& user_input);
 
     // Helper function to execute a tool and prepare the result message JSON string
     std::string executeAndPrepareToolResult(
@@ -31,22 +33,23 @@ private:
     );
 
     /* ------------- helpers extracted from processTurn ------------- */
+    // Saves the user's input message to the database.
     void saveUserInput(const std::string& input);
 
-    // Devuelve true si la respuesta era un error que obliga a abortar el turno.
+    // Handles potential errors in the API response. Returns true if an error occurred that forces the turn to abort.
     bool handleApiError(const nlohmann::json& api_response,
                         std::string& fallback_content,
                         nlohmann::json& response_message);
 
-    // Devuelve true si se ejecutó al menos un tool_call estándar.
+    // Executes standard tool calls requested in the API response. Returns true if at least one standard tool_call was executed.
     bool executeStandardToolCalls(const nlohmann::json& response_message,
                                   std::vector<Message>& context);
 
-    // Devuelve true si el parser fallback <function> ejecutó algo.
+    // Executes fallback function calls embedded in <function> tags within the content. Returns true if any fallback function was executed.
     bool executeFallbackFunctionTags(const std::string& content,
                                      std::vector<Message>& context);
 
-    // Imprime y guarda el mensaje assistant “normal”.
+    // Displays and saves the "normal" assistant content message.
     void printAndSaveAssistantContent(const nlohmann::json& response_message);
 
 public:
