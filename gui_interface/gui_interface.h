@@ -8,6 +8,8 @@
 #include <mutex>
 #include <utility> // Added for std::pair
 #include <condition_variable>
+#include <thread>  // Added for Stage 4
+#include <atomic>  // Added for Stage 4
 
 // Forward declaration for GLFW window handle
 struct GLFWwindow;
@@ -54,8 +56,11 @@ private:
     std::string status_text = "Ready";
 
     // --- Threading members (for Stage 4) ---
+    // Enum for display message types
+    enum class DisplayMessageType { OUTPUT, ERROR, STATUS }; // Added for Stage 4
+
     // Mutexes for thread safety
-    std::mutex display_mutex; // To protect output_history and status_text
+    std::mutex display_mutex; // To protect display_queue (updated purpose)
     std::mutex input_mutex;   // To protect input_queue and input_ready flag
 
     // Queues for inter-thread communication
@@ -63,8 +68,8 @@ private:
     std::queue<std::string> error_queue;
     std::queue<std::string> status_queue;
     std::queue<std::string> input_queue; // For user input submitted via GUI
-    std::queue<std::pair<std::string, int>> display_queue; // For queuing display updates (text, type)
+    std::queue<std::pair<std::string, DisplayMessageType>> display_queue; // Updated for Stage 4
     std::condition_variable input_cv; // To signal when input is available
-    bool input_ready = false;
-    bool shutdown_requested = false; // Flag to signal shutdown to worker thread
+    std::atomic<bool> input_ready{false}; // Updated for Stage 4
+    std::atomic<bool> shutdown_requested{false}; // Updated for Stage 4
 };
