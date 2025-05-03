@@ -19,6 +19,11 @@ public:
     GuiInterface();
     virtual ~GuiInterface() override;
 
+// Prevent copying/moving
+    GuiInterface(const GuiInterface&)            = delete;
+    GuiInterface& operator=(const GuiInterface&) = delete;
+    GuiInterface(GuiInterface&&)                 = delete;
+    GuiInterface& operator=(GuiInterface&&)      = delete;
     // Implementation of the UserInterface contract
     virtual std::optional<std::string> promptUserInput() override;
     virtual void displayOutput(const std::string& output) override;
