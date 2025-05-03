@@ -7,6 +7,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
+#include "../resources/noto_sans_font.h" // Include the generated font header
 
 // Helper function for GLFW errors
 static void glfw_error_callback(int error, const char* description) {
@@ -107,11 +108,64 @@ void GuiInterface::initialize() {
     }
 
 
-    // Load Fonts (optional - commented out as default font is used)
-    // ImGuiIO& io = ImGui::GetIO();
-    // io.Fonts->AddFontDefault();
-    // io.Fonts->AddFontFromFileTTF("path/to/font.ttf", 16.0f);
-    // io.Fonts->Build(); // Build font atlas if using custom fonts
+    // Load Fonts: Use Noto Sans for better Unicode support
+    // ImGuiIO& io = ImGui::GetIO(); // io is already defined above (line 72)
+    const char* font_path = "resources/NotoSans-Regular.ttf";
+    float font_size = 18.0f;
+
+    ImFontConfig font_cfg;
+    font_cfg.OversampleH = 2; // Improve rendering quality
+    font_cfg.OversampleV = 1;
+    font_cfg.PixelSnapH = true;
+    font_cfg.FontDataOwnedByAtlas = false; // Font data is managed externally (in the header)
+
+    // Load default ranges first (ASCII, basic Latin) from memory
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+
+    // Merge additional ranges (Latin Extended A+B for broader European language support)
+    // Add more ranges (e.g., Cyrillic, Greek) here if needed in the future.
+    static const ImWchar extended_ranges[] =
+    {
+        0x0100, 0x017F, // Latin Extended-A
+        0x0180, 0x024F, // Latin Extended-B
+        0, // Null terminator
+    };
+    // Define additional ranges
+    static const ImWchar cyrillic_ranges[] =
+    {
+        0x0400, 0x052F, // Cyrillic + Cyrillic Supplement
+        0,
+    };
+    // Add common Symbol ranges. Note: AddFontFromMemoryTTF expects ImWchar (16-bit),
+    // so high-code-point Emojis (0x1Fxxx) cannot be added this way directly.
+    // Including only the ranges that fit within ImWchar.
+    static const ImWchar emoji_ranges[] =
+    {
+        0x2600,  0x26FF,  // Miscellaneous Symbols
+        0x2700,  0x27BF,  // Dingbats
+        // Ranges like 0x1F300-0x1F5FF are > 0xFFFF and incompatible here.
+        0,
+    };
+
+    // Merge additional ranges into the default font
+    font_cfg.MergeMode = true; // Set MergeMode before the first merge
+
+    // Merge Latin Extended A+B
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, extended_ranges);
+
+    // Merge Cyrillic
+    // font_cfg.MergeMode = true; // Still true from previous call
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, cyrillic_ranges);
+
+    // Merge Symbols (using ImWchar ranges)
+    // font_cfg.MergeMode = true; // Still true from previous call
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, emoji_ranges);
+
+    // IMPORTANT: Reset MergeMode only after the *last* merge operation
+    font_cfg.MergeMode = false;
+
+    // IMPORTANT: Build the font atlas AFTER adding all fonts/ranges
+    io.Fonts->Build();
 
     imgui_init_done = true; // Mark ImGui as fully initialized
     std::cout << "GUI Initialized Successfully." << std::endl;
