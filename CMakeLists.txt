@@ -5,6 +5,11 @@ project(MyCLIApp VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Set optimization flags for Release builds
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+# You might consider -O2 if -O3 causes issues or significantly increases compile time.
+# set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3") # If you have C code
+
 # Add JSON library
 include(FetchContent)
 FetchContent_Declare(
@@ -45,10 +50,15 @@ target_link_libraries(imgui_lib INTERFACE glfw ${OpenGL_LIBRARIES})
 
 # Find required packages
 find_package(CURL REQUIRED)
-find_package(SQLite3 QUIET)
+find_package(SQLite3 QUIET) # Fallback search implemented below
 find_package(PkgConfig QUIET)
-find_package(OpenGL REQUIRED) # Find OpenGL
-find_package(glfw3 REQUIRED)  # Find GLFW3
+find_package(OpenGL REQUIRED) # Find OpenGL - Assumes system provides runtime libs
+find_package(glfw3 REQUIRED)  # Find GLFW3 - Assumes system provides runtime libs (e.g., libglfw.so.3)
+
+# Platform Checks Note:
+# The current find_package calls handle typical Linux/macOS setups.
+# Windows builds might require more specific handling, potentially using
+# a package manager like vcpkg or providing pre-built dependencies.
 
 # Find Gumbo HTML parser
 if(PKG_CONFIG_FOUND)
@@ -195,6 +205,15 @@ configure_file(
 install(TARGETS llm-cli llm-gui # Install both executables
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+# Installation Notes:
+# - Runtime Libraries: Dependencies like GLFW, CURL, SQLite3, Gumbo, Readline
+#   are expected to be provided by the system or installed by the user
+#   (e.g., via package manager). This install rule does not bundle them.
+#   Ensure README details these runtime dependencies.
+# - Resource Files: No external resources (e.g., fonts) are currently used
+#   by the GUI, so none are installed. If resources are added later,
+#   install rules will be needed here using install(FILES ...).
 
 # Optional: Add tests
 enable_testing()
