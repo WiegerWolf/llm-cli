@@ -11,22 +11,26 @@ This file provides a high-level overview of the project and the expected product
 
 ## Key Features
 
-*   Chat with LLMs (via OpenRouter)
-*   Command-Line Interface (`llm-cli`)
-*   Graphical User Interface (`llm-gui` via ImGui)
-*   Web search (Brave Search, DuckDuckGo, Brave Search API)
-*   Visit URLs (content extraction)
-*   Web research (multi-step synthesis)
-*   Deep research (sub-query breakdown)
-*   Read conversation history (SQLite)
-*   Tool call support (OpenAI function-calling)
-*   .env support for API keys
-*   Multi-threaded
+*   Chat with LLMs (via OpenRouter API using `libcurl`)
+*   Command-Line Interface (`llm-cli` using `libreadline`)
+*   Graphical User Interface (`llm-gui` via Dear ImGui + GLFW + OpenGL)
+*   Web search (Brave Search, DuckDuckGo, Brave Search API - requires `libcurl`)
+*   Visit URLs (content extraction using `libgumbo` and `libcurl`)
+*   Web research (multi-step synthesis, potentially using other tools)
+*   Deep research (sub-query breakdown, potentially using other tools)
+*   Read conversation history (from SQLite database via `PersistenceManager`)
+*   Tool call support (OpenAI standard `tool_calls` and custom `<function>` tag fallback parsing)
+*   .env support and compile-time embedding for API keys (`config.h`)
+*   Multi-threaded (specifically for GUI responsiveness)
 
 ## Overall Architecture
 
-*   **Core Logic:** `chat_client.cpp` (LLM interaction, tool execution), `database.cpp` (SQLite history)
-*   **Interfaces:** `cli_interface.cpp` (CLI), `gui_interface.cpp` (GUI), `ui_interface.h` (base class)
-*   **Entry Points:** `main_cli.cpp` (CLI), `main_gui.cpp` (GUI)
-*   **Tools:** Implementations in `tools_impl/`, registration/definition in `tools.cpp`/`.h`.
-*   **Build System:** CMake, `build.sh`, `install.sh`
+*   **Core Logic:** `llm_core` static library containing:
+    *   `chat_client.cpp`/`.h`: LLM interaction (OpenRouter via `libcurl`), tool execution logic (standard & fallback), history management.
+    *   `database.cpp`/`.h`: SQLite persistence layer (`PersistenceManager` using Pimpl).
+    *   `tools.cpp`/`.h` & `tools_impl/`: Tool registration and implementation (using `libcurl`, `libgumbo`, etc.).
+    *   `curl_utils.h`: Shared `libcurl` utilities.
+*   **Interfaces:** `ui_interface.h` (abstract base class), `cli_interface.cpp`/`.h` (CLI impl using `libreadline`), `gui_interface.cpp`/`.h` (GUI impl using ImGui/GLFW/OpenGL, runs `ChatClient` in worker thread).
+*   **Entry Points:** `main_cli.cpp` (CLI), `main_gui.cpp` (GUI - manages GLFW/ImGui loop and worker thread).
+*   **Configuration:** `config.h.in` -> `config.h` (API keys), `.env` file support (via `getenv`).
+*   **Build System:** CMake (`CMakeLists.txt`), `build.sh`, `install.sh`.
