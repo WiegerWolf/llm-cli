@@ -3,6 +3,8 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <thread> // Added for Stage 4
+#include "chat_client.h" // Added for Stage 4
 
 // Include GUI library headers needed for the main loop
 #include <GLFW/glfw3.h>
@@ -21,8 +23,25 @@ int main(int, char**) {
         return 1;
     }
 
+    // --- Worker Thread Setup (Stage 4) ---
+    ChatClient client(gui_ui); // Create the client, passing the UI interface
+    std::thread worker_thread;
+    try {
+         worker_thread = std::thread(&ChatClient::run, &client); // Launch worker
+    } catch (const std::system_error& e) {
+        std::cerr << "Failed to create worker thread: " << e.what() << " (" << e.code() << ")" << std::endl;
+        gui_ui.shutdown(); // Clean up GUI resources
+        return 1; // Exit if thread creation fails
+    }
+    // --- End Worker Thread Setup ---
+
+
     GLFWwindow* window = gui_ui.getWindow(); // Get the window handle
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f); // Background color
+
+    // --- Local GUI State (managed by main loop, updated from GuiInterface) ---
+    std::vector<std::string> output_history;
+    std::string status_text = "Initializing..."; // Initial status
 
     // --- Main Render Loop ---
     while (!glfwWindowShouldClose(window)) {
@@ -38,7 +57,12 @@ int main(int, char**) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // --- Main UI Layout (Stage 3) ---
+        // --- Process Display Updates from Worker (Stage 4) ---
+        bool new_output_added = gui_ui.processDisplayQueue(output_history, status_text);
+        // --- End Process Display Updates ---
+
+
+        // --- Main UI Layout (Stage 3 / Updated for Stage 4) ---
         const ImVec2 display_size = ImGui::GetIO().DisplaySize;
         const float input_height = 35.0f; // Height for the input text box + button
         const float status_height = 25.0f; // Height for the status bar
@@ -51,18 +75,14 @@ int main(int, char**) {
 
         // --- Output Area ---
         ImGui::BeginChild("Output", ImVec2(0, output_height), true, ImGuiWindowFlags_HorizontalScrollbar);
-        const auto& history = gui_ui.getOutputHistory(); // Get history via getter
-        for (const auto& line : history) {
+        // Use the local output_history vector updated by processDisplayQueue
+        for (const auto& line : output_history) {
             ImGui::TextUnformatted(line.c_str());
         }
-        // Auto-scroll placeholder
-        static size_t prev_history_size = 0;
-        if (history.size() != prev_history_size) {
-            if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) // Only scroll if already near the bottom
-            {
-                 ImGui::SetScrollHereY(1.0f); // 1.0f scrolls to the bottom
-            }
-            prev_history_size = history.size();
+        // Auto-scroll based on the flag set by processDisplayQueue
+        if (new_output_added) {
+            ImGui::SetScrollHereY(1.0f); // Scroll to bottom if new content added
+            new_output_added = false; // Reset flag
         }
         ImGui::EndChild(); // End Output Area
 
@@ -77,19 +97,16 @@ int main(int, char**) {
 
         // --- Status Bar ---
         ImGui::Separator();
-        ImGui::TextUnformatted(gui_ui.getStatusText().c_str()); // Get status via getter
+        ImGui::TextUnformatted(status_text.c_str()); // Use local status_text updated by processDisplayQueue
 
-        // --- Input Handling ---
+        // --- Input Handling (Stage 4) ---
         if (send_pressed || enter_pressed) {
             char* input_buf = gui_ui.getInputBuffer();
             if (input_buf[0] != '\0') {
-                // Placeholder: Just print to console for now
-                std::cout << "Input captured: " << input_buf << std::endl;
+                // Send input to the worker thread via GuiInterface
+                gui_ui.sendInputToWorker(input_buf);
 
-                // TODO: In Stage 4, this input needs to be sent to the worker thread
-                // gui_ui.submitInput(input_buf); // Example for Stage 4
-
-                // Clear the buffer after processing
+                // Clear the buffer after sending
                 input_buf[0] = '\0';
             }
             // Set focus back to the input field for the next input
@@ -126,13 +143,26 @@ int main(int, char**) {
         glfwSwapBuffers(window); // Swap the front and back buffers
     }
 
-    // --- Cleanup ---
+    // --- Cleanup (Stage 4) ---
+    std::cout << "Requesting worker thread shutdown..." << std::endl;
+    gui_ui.requestShutdown(); // Signal the worker thread to exit
+
+    std::cout << "Joining worker thread..." << std::endl;
+    if (worker_thread.joinable()) {
+        worker_thread.join(); // Wait for the worker thread to finish
+        std::cout << "Worker thread joined." << std::endl;
+    } else {
+        std::cerr << "Warning: Worker thread was not joinable upon exit." << std::endl;
+    }
+
+    std::cout << "Shutting down GUI..." << std::endl;
     try {
         gui_ui.shutdown(); // Cleanup ImGui, GLFW
     } catch (const std::exception& e) {
-        std::cerr << "Shutdown failed: " << e.what() << std::endl;
+        std::cerr << "GUI Shutdown failed: " << e.what() << std::endl;
         // Continue execution to ensure main returns, but report error.
     }
+    std::cout << "Main function finished." << std::endl;
 
     return 0; // Success
 }

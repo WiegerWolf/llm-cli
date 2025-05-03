@@ -223,3 +223,32 @@ void GuiInterface::sendInputToWorker(const std::string& input) {
     } // Mutex is released before notifying
     input_cv.notify_one(); // Notify the worker thread waiting in promptUserInput
 }
+
+// --- Method for GUI thread to process display updates (Stage 4) ---
+
+bool GuiInterface::processDisplayQueue(std::vector<std::string>& history, std::string& status) {
+    // Called by the GUI thread in its main loop
+    bool history_updated = false;
+    std::lock_guard<std::mutex> lock(display_mutex); // Lock the queue for processing
+
+    while (!display_queue.empty()) {
+        auto& [message, type] = display_queue.front(); // Get reference to the front pair
+
+        switch (type) {
+            case DisplayMessageType::OUTPUT:
+                history.push_back(message);
+                history_updated = true;
+                break;
+            case DisplayMessageType::ERROR:
+                // Optionally prepend "ERROR: " or handle differently
+                history.push_back("ERROR: " + message);
+                history_updated = true;
+                break;
+            case DisplayMessageType::STATUS:
+                status = message; // Update the status text directly
+                break;
+        }
+        display_queue.pop(); // Remove the processed message
+    }
+    return history_updated; // Return true if history was modified
+}
