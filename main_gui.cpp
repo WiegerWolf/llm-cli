@@ -25,9 +25,9 @@ int main(int, char**) {
 
     // --- Worker Thread Setup (Stage 4) ---
     ChatClient client(gui_ui); // Create the client, passing the UI interface
-    std::thread worker_thread;
+    std::jthread worker_thread; // Use jthread for RAII joining
     try {
-         worker_thread = std::thread(&ChatClient::run, &client); // Launch worker
+         worker_thread = std::jthread(&ChatClient::run, &client); // Launch worker
     } catch (const std::system_error& e) {
         std::cerr << "Failed to create worker thread: " << e.what() << " (" << e.code() << ")" << std::endl;
         gui_ui.shutdown(); // Clean up GUI resources
