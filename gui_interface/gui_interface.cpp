@@ -91,14 +91,18 @@ void GuiInterface::initialize() {
     if (!ImGui_ImplGlfw_InitForOpenGL(window, true)) {
          ImGui::DestroyContext();
          glfwDestroyWindow(window);
+         window = nullptr; // Prevent double free in destructor
          glfwTerminate();
+         imgui_init_done = false; // Ensure flag is false on failure
          throw std::runtime_error("Failed to initialize ImGui GLFW backend");
     }
     if (!ImGui_ImplOpenGL3_Init(glsl_version)) {
          ImGui_ImplGlfw_Shutdown();
          ImGui::DestroyContext();
          glfwDestroyWindow(window);
+         window = nullptr; // Prevent double free in destructor
          glfwTerminate();
+         imgui_init_done = false; // Ensure flag is false on failure
          throw std::runtime_error("Failed to initialize ImGui OpenGL3 backend");
     }
 
