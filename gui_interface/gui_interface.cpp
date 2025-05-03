@@ -162,19 +162,19 @@ std::optional<std::string> GuiInterface::promptUserInput() {
     // 1. `input_cv.notify_one()` is called (by `sendInputToWorker` or `requestShutdown`).
     // 2. The predicate `[this]{ return input_ready.load() || shutdown_requested.load(); }` returns true.
     // The predicate protects against spurious wakeups and ensures we only proceed when input is actually ready or shutdown is signaled.
-    input_cv.wait(lock, [this]{ return input_ready.load() || shutdown_requested.load(); });
+    input_cv.wait(lock, [this]{ return !input_queue.empty() || shutdown_requested.load(); });
 
     // Check if shutdown was requested while waiting.
     if (shutdown_requested.load()) {
         return std::nullopt; // Signal the worker to terminate.
     }
 
-    // If woken up and not shutting down, input should be ready.
-    // Double-check the queue isn't empty (although the predicate should guarantee it).
-    if (input_ready.load() && !input_queue.empty()) {
+    // If woken up and not shutting down, check if there's input in the queue.
+    // The wait predicate now directly checks the queue, so this check is the primary path.
+    if (!input_queue.empty()) {
         std::string input = std::move(input_queue.front()); // Use move for efficiency.
         input_queue.pop();
-        input_ready = false; // Reset the flag: the input has been consumed.
+        // No need to reset input_ready here, as the predicate relies on queue emptiness.
         return input;        // Return the user input to the worker thread.
     }
 
