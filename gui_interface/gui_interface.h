@@ -40,8 +40,6 @@ public:
     void sendInputToWorker(const std::string& input); // Called by GUI thread to send input
 
     // --- Getters for GUI State (Stage 3) ---
-    const std::vector<std::string>& getOutputHistory() const;
-    const std::string& getStatusText() const;
     char* getInputBuffer(); // Returns pointer to internal buffer
     size_t getInputBufferSize() const; // Returns size of internal buffer
 
