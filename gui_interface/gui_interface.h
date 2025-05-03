@@ -67,6 +67,5 @@ private:
     std::queue<std::string> input_queue; // For user input submitted via GUI
     std::queue<std::pair<std::string, DisplayMessageType>> display_queue; // Updated for Stage 4
     std::condition_variable input_cv; // To signal when input is available
-    std::atomic<bool> input_ready{false}; // Updated for Stage 4
     std::atomic<bool> shutdown_requested{false}; // Updated for Stage 4
 };

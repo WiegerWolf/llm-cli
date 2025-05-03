@@ -179,9 +179,8 @@ std::optional<std::string> GuiInterface::promptUserInput() {
     }
 
     // Fallback/Error case: Should not be reached if logic is correct.
-    // If a spurious wakeup occurred and the queue is empty despite input_ready being true (unlikely),
-    // or if input_ready became false between the predicate check and here.
-    input_ready = false; // Ensure flag is reset.
+    // If a spurious wakeup occurred and the queue is empty (unlikely),
+    // or if the queue became empty between the predicate check and here.
     return std::nullopt; // Indicate no input available this time.
 }
 
@@ -231,8 +230,7 @@ void GuiInterface::sendInputToWorker(const std::string& input) {
         std::lock_guard<std::mutex> lock(input_mutex);
         // Add the user's input string to the queue.
         input_queue.push(input);
-        // Atomically set the flag indicating input is ready.
-        input_ready = true;
+        // The condition variable predicate now checks the queue directly.
     } // input_mutex is released here.
 
     // Notify the condition variable. This wakes up the worker thread if it's
