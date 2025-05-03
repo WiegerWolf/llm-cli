@@ -65,7 +65,15 @@ int main(int, char**) {
         ImGui::NewFrame();
 
         // --- Process Display Updates from Worker (Stage 4) ---
-        bool new_output_added = gui_ui.processDisplayQueue(output_history);
+        // Process messages from the worker thread by getting the drained queue
+        std::vector<HistoryMessage> new_messages = gui_ui.processDisplayQueue();
+        bool new_output_added = !new_messages.empty(); // Check if any messages were actually returned
+        if (new_output_added) {
+            // Append the new messages to the history using move iterators for efficiency
+            output_history.insert(output_history.end(),
+                                  std::make_move_iterator(new_messages.begin()),
+                                  std::make_move_iterator(new_messages.end()));
+        }
         // --- End Process Display Updates ---
 
 

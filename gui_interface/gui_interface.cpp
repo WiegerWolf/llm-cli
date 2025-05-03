@@ -300,22 +300,18 @@ void GuiInterface::sendInputToWorker(const std::string& input) {
 
 // Called by the *GUI thread* in its main render loop.
 // Processes all messages currently in the display queue.
-// Returns true if the history vector was modified (used for auto-scrolling).
-bool GuiInterface::processDisplayQueue(std::vector<HistoryMessage>& history) { // Updated for Issue #8
-    bool history_updated = false;
+// Returns a vector containing all messages drained from the internal display queue.
+std::vector<HistoryMessage> GuiInterface::processDisplayQueue() {
+    std::vector<HistoryMessage> transferred_messages; // Local vector to hold drained messages
     // Lock the display mutex to safely access the queue from the GUI thread.
     std::lock_guard<std::mutex> lock(display_mutex);
 
     // Process all messages currently in the queue.
     while (!display_queue.empty()) {
-        // Move the front element to a local variable before popping.
-        // Use the correct type HistoryMessage (Issue #8 Refactor)
-        HistoryMessage message = std::move(display_queue.front());
+        // Move the front element directly into the result vector before popping.
+        transferred_messages.push_back(std::move(display_queue.front()));
         display_queue.pop(); // Now it's safe to pop.
-
-        history.push_back(std::move(message)); // Add the HistoryMessage directly
-        history_updated = true;
     }
-    // Return whether the history content changed, so the GUI can auto-scroll.
-    return history_updated;
+    // Return the vector containing all drained messages.
+    return transferred_messages;
 }
