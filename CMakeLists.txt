@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Set optimization flags for Release builds
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+# Removed global CXX_FLAGS_RELEASE setting - Handled per-target below
 # You might consider -O2 if -O3 causes issues or significantly increases compile time.
 # set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3") # If you have C code
 
@@ -149,6 +149,7 @@ target_include_directories(llm_core PUBLIC
     ${CMAKE_BINARY_DIR} # For config.h
     ${PROJECT_SOURCE_DIR} # For project headers
 )
+target_compile_options(llm_core PRIVATE $<$<CONFIG:Release>:-O3>)
 
 # --- CLI Executable ---
 add_executable(llm-cli
@@ -164,6 +165,7 @@ target_link_libraries(llm-cli PRIVATE
 
 # Include directories needed by the CLI executable itself (if any beyond core)
 # target_include_directories(llm-cli PRIVATE ...)
+target_compile_options(llm-cli PRIVATE $<$<CONFIG:Release>:-O3>)
 
 
 # --- GUI Executable ---
@@ -186,6 +188,7 @@ target_include_directories(llm-gui PRIVATE
     ${PROJECT_SOURCE_DIR} # For project headers like ui_interface.h
     # Add other necessary include paths if needed
 )
+target_compile_options(llm-gui PRIVATE $<$<CONFIG:Release>:-O3>)
 
 
 # Add option for OPENROUTER_API_KEY
