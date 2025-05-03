@@ -93,7 +93,11 @@ int main(int, char**) {
         bool clear_pressed = false;
         const float button_width = 60.0f; // Width for Send button
         const float clear_button_width = 80.0f; // Width for Clear History button
-        const float input_width = display_size.x - button_width - clear_button_width - ImGui::GetStyle().ItemSpacing.x * 2; // Adjust width for both buttons
+        float input_width = display_size.x - button_width - clear_button_width
+                           - ImGui::GetStyle().ItemSpacing.x * 2; // Adjust width for both buttons
+        if (input_width < 50.f) {          // arbitrary minimum width
+            input_width = 50.f;
+        }
 
         ImGui::PushItemWidth(input_width);
         enter_pressed = ImGui::InputText("##Input", gui_ui.getInputBuffer(), gui_ui.getInputBufferSize(), ImGuiInputTextFlags_EnterReturnsTrue);
