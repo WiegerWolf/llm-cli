@@ -713,7 +713,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
                  auto& message = final_response_json["choices"][0]["message"];
                  // Check again for unexpected tool calls in the final response.
                  if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-                     if (attempt == 2) { ui.displayWarning("Final response still contained tool_calls after fallback execution."); break; }
+                     if (attempt == 2) { ui.displayError("Final response still contained tool_calls after fallback execution."); break; }
                      continue; // Retry if tools were unexpectedly called again
                  }
                  // Extract the final content if present.
