@@ -158,96 +158,68 @@ size_t GuiInterface::getInputBufferSize() const {
 }
 // --- Stub implementations ---
 
-std::optional<std::string> GuiInterface::promptUserInput() {
-    // This will be implemented properly in Stage 4 using thread synchronization
-    std::unique_lock<std::mutex> lock(input_mutex); // Use input_mutex
-    input_cv.wait(lock, [this]{ return input_ready || shutdown_requested; });
+// --- Implementation of UserInterface contract (Thread-Safe for Stage 4) ---
 
-    if (shutdown_requested) {
-        return std::nullopt; // Signal exit if shutdown was requested
+std::optional<std::string> GuiInterface::promptUserInput() {
+    // Called by the worker thread to wait for user input from the GUI thread
+    std::unique_lock<std::mutex> lock(input_mutex);
+    input_cv.wait(lock, [this]{ return input_ready.load() || shutdown_requested.load(); });
+
+    if (shutdown_requested.load()) {
+        return std::nullopt; // Shutdown requested while waiting
     }
 
-    if (!input_queue.empty()) {
-        std::string input = input_queue.front();
+    // Input must be ready if shutdown wasn't requested
+    if (input_ready.load() && !input_queue.empty()) {
+        std::string input = std::move(input_queue.front()); // Use move for efficiency
         input_queue.pop();
-        input_ready = !input_queue.empty(); // Reset flag if queue is now empty
+        input_ready = false; // Reset the flag after consuming the input
         return input;
     }
-    // Should not happen if logic is correct, but return nullopt as fallback
+
+    // This state should ideally not be reached if logic is correct
+    // (wait condition implies input_ready or shutdown_requested)
+    // If it happens (e.g., spurious wakeup and queue empty), reset flag and return nullopt
     input_ready = false;
     return std::nullopt;
 }
 
 void GuiInterface::displayOutput(const std::string& output) {
-    // NOT THREAD SAFE - Placeholder for Stage 3
-    // std::lock_guard<std::mutex> lock(display_mutex); // Will add in Stage 4
-    output_history.push_back(output);
+    // Called by the worker thread to queue output for the GUI thread
+    std::lock_guard<std::mutex> lock(display_mutex);
+    display_queue.push({output, DisplayMessageType::OUTPUT});
+    // Note: GUI thread needs to be signaled or periodically check this queue
 }
 
 void GuiInterface::displayError(const std::string& error) {
-    // NOT THREAD SAFE - Placeholder for Stage 3
-    // std::lock_guard<std::mutex> lock(display_mutex); // Will add in Stage 4
-    output_history.push_back("ERROR: " + error); // Prepend "ERROR: " for clarity
+    // Called by the worker thread to queue an error for the GUI thread
+    std::lock_guard<std::mutex> lock(display_mutex);
+    display_queue.push({error, DisplayMessageType::ERROR});
+    // Note: GUI thread needs to be signaled or periodically check this queue
 }
 
 void GuiInterface::displayStatus(const std::string& status) {
-    // NOT THREAD SAFE - Placeholder for Stage 3
-    // std::lock_guard<std::mutex> lock(display_mutex); // Will add in Stage 4
-    status_text = status;
+    // Called by the worker thread to queue a status update for the GUI thread
+    std::lock_guard<std::mutex> lock(display_mutex);
+    display_queue.push({status, DisplayMessageType::STATUS});
+    // Note: GUI thread needs to be signaled or periodically check this queue
 }
 
-// --- Thread-safe queue methods (Implementations for Stage 4) ---
 
-void GuiInterface::queueOutput(const std::string& output) {
-    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex for output queue
-    output_queue.push(output);
+// --- Methods for GUI thread to interact with Worker thread (Stage 4) ---
+
+void GuiInterface::requestShutdown() {
+    // Called by the GUI thread (e.g., when window is closed)
+    shutdown_requested = true;
+    input_cv.notify_one(); // Wake up the worker thread if it's waiting in promptUserInput
 }
 
-void GuiInterface::queueError(const std::string& error) {
-    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex for error queue
-    error_queue.push(error);
-}
-
-void GuiInterface::queueStatus(const std::string& status) {
-    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex for status queue
-    status_queue.push(status);
-}
-
-std::vector<std::string> GuiInterface::getQueuedOutputs() {
-    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex
-    std::vector<std::string> outputs;
-    while (!output_queue.empty()) {
-        outputs.push_back(output_queue.front());
-        output_queue.pop();
-    }
-    return outputs;
- }
-
-std::vector<std::string> GuiInterface::getQueuedErrors() {
-    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex
-    std::vector<std::string> errors;
-    while (!error_queue.empty()) {
-        errors.push_back(error_queue.front());
-        error_queue.pop();
-    }
-    return errors;
-}
-
-std::vector<std::string> GuiInterface::getQueuedStatuses() {
-    std::lock_guard<std::mutex> lock(display_mutex); // Use display_mutex
-    std::vector<std::string> statuses;
-    while (!status_queue.empty()) {
-        statuses.push_back(status_queue.front());
-        status_queue.pop();
-    }
-    return statuses;
-}
-
-void GuiInterface::submitInput(const std::string& input) {
+void GuiInterface::sendInputToWorker(const std::string& input) {
+    // Called by the GUI thread when the user submits input
     {
-        std::lock_guard<std::mutex> lock(input_mutex); // Use input_mutex
+        std::lock_guard<std::mutex> lock(input_mutex);
         input_queue.push(input);
         input_ready = true;
-    }
-    input_cv.notify_one(); // Notify the waiting worker thread
+    } // Mutex is released before notifying
+    input_cv.notify_one(); // Notify the worker thread waiting in promptUserInput
 }

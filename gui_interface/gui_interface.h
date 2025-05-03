@@ -30,15 +30,9 @@ public:
     // Public method to get the window handle (needed by main_gui.cpp)
     GLFWwindow* getWindow() const;
 
-    // Methods for thread-safe communication (placeholders for Stage 4)
-    void queueOutput(const std::string& output);
-    void queueError(const std::string& error);
-    void queueStatus(const std::string& status);
-    std::vector<std::string> getQueuedOutputs();
-    std::vector<std::string> getQueuedErrors();
-    std::vector<std::string> getQueuedStatuses();
-    void submitInput(const std::string& input);
-
+    // --- Thread-safe methods for communication (Stage 4) ---
+    void requestShutdown(); // Called by GUI thread to signal shutdown
+    void sendInputToWorker(const std::string& input); // Called by GUI thread to send input
 
     // --- Getters for GUI State (Stage 3) ---
     const std::vector<std::string>& getOutputHistory() const;
