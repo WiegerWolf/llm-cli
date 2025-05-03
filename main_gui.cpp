@@ -47,6 +47,7 @@ int main(int, char**) {
     // --- Local GUI State (managed by main loop, updated from GuiInterface) ---
     std::vector<std::string> output_history;
     std::string status_text = "Initializing..."; // Initial status
+    static bool request_input_focus = false;
 
     // --- Main Render Loop ---
     while (!glfwWindowShouldClose(window)) {
@@ -101,6 +102,12 @@ int main(int, char**) {
             input_width = 50.f;
         }
 
+        // Request focus for the input field if the flag was set in the previous frame
+        if (request_input_focus) {
+            ImGui::SetKeyboardFocusHere(); // Target the *next* widget (InputText)
+            request_input_focus = false;   // Reset the flag
+        }
+
         ImGui::PushItemWidth(input_width);
         enter_pressed = ImGui::InputText("##Input", gui_ui.getInputBuffer(), gui_ui.getInputBufferSize(), ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemWidth();
@@ -123,9 +130,8 @@ int main(int, char**) {
                 output_history.push_back("User: " + std::string(input_buf));
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
+                request_input_focus = true; // Set flag to request focus next frame
             }
-            // Set focus back to the input field for the next input
-            ImGui::SetKeyboardFocusHere(-1); // -1 means previous item (the InputText)
         }
 
         ImGui::End(); // End Main Window
