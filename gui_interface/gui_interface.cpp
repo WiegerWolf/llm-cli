@@ -130,10 +130,39 @@ void GuiInterface::initialize() {
         0x0180, 0x024F, // Latin Extended-B
         0, // Null terminator
     };
-    font_cfg.MergeMode = true; // Merge new glyphs into the default font
-    // Merge additional ranges from memory
+    // Define additional ranges
+    static const ImWchar cyrillic_ranges[] =
+    {
+        0x0400, 0x052F, // Cyrillic + Cyrillic Supplement
+        0,
+    };
+    // Add common Symbol ranges. Note: AddFontFromMemoryTTF expects ImWchar (16-bit),
+    // so high-code-point Emojis (0x1Fxxx) cannot be added this way directly.
+    // Including only the ranges that fit within ImWchar.
+    static const ImWchar emoji_ranges[] =
+    {
+        0x2600,  0x26FF,  // Miscellaneous Symbols
+        0x2700,  0x27BF,  // Dingbats
+        // Ranges like 0x1F300-0x1F5FF are > 0xFFFF and incompatible here.
+        0,
+    };
+
+    // Merge additional ranges into the default font
+    font_cfg.MergeMode = true; // Set MergeMode before the first merge
+
+    // Merge Latin Extended A+B
     io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, extended_ranges);
-    font_cfg.MergeMode = false; // Reset merge mode
+
+    // Merge Cyrillic
+    // font_cfg.MergeMode = true; // Still true from previous call
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, cyrillic_ranges);
+
+    // Merge Symbols (using ImWchar ranges)
+    // font_cfg.MergeMode = true; // Still true from previous call
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, emoji_ranges);
+
+    // IMPORTANT: Reset MergeMode only after the *last* merge operation
+    font_cfg.MergeMode = false;
 
     // IMPORTANT: Build the font atlas AFTER adding all fonts/ranges
     io.Fonts->Build();
