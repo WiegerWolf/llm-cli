@@ -107,11 +107,33 @@ void GuiInterface::initialize() {
     }
 
 
-    // Load Fonts (optional - commented out as default font is used)
-    // ImGuiIO& io = ImGui::GetIO();
-    // io.Fonts->AddFontDefault();
-    // io.Fonts->AddFontFromFileTTF("path/to/font.ttf", 16.0f);
-    // io.Fonts->Build(); // Build font atlas if using custom fonts
+    // Load Fonts: Use Noto Sans for better Unicode support
+    // ImGuiIO& io = ImGui::GetIO(); // io is already defined above (line 72)
+    const char* font_path = "resources/NotoSans-Regular.ttf";
+    float font_size = 16.0f;
+
+    ImFontConfig font_cfg;
+    font_cfg.OversampleH = 2; // Improve rendering quality
+    font_cfg.OversampleV = 1;
+    font_cfg.PixelSnapH = true;
+
+    // Load default ranges first (ASCII, basic Latin)
+    io.Fonts->AddFontFromFileTTF(font_path, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+
+    // Merge additional ranges (Latin Extended A+B for broader European language support)
+    // Add more ranges (e.g., Cyrillic, Greek) here if needed in the future.
+    static const ImWchar extended_ranges[] =
+    {
+        0x0100, 0x017F, // Latin Extended-A
+        0x0180, 0x024F, // Latin Extended-B
+        0, // Null terminator
+    };
+    font_cfg.MergeMode = true; // Merge new glyphs into the default font
+    io.Fonts->AddFontFromFileTTF(font_path, font_size, &font_cfg, extended_ranges);
+    font_cfg.MergeMode = false; // Reset merge mode
+
+    // IMPORTANT: Build the font atlas AFTER adding all fonts/ranges
+    io.Fonts->Build();
 
     imgui_init_done = true; // Mark ImGui as fully initialized
     std::cout << "GUI Initialized Successfully." << std::endl;
