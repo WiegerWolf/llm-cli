@@ -111,7 +111,6 @@ void GuiInterface::initialize() {
 
     // Load Fonts: Use Noto Sans for better Unicode support
     // ImGuiIO& io = ImGui::GetIO(); // io is already defined above (line 72)
-    const char* font_path = "resources/NotoSans-Regular.ttf";
     float font_size = 18.0f;
 
     ImFontConfig font_cfg;
@@ -124,7 +123,9 @@ void GuiInterface::initialize() {
     ImFont* font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
     if (font == NULL) {
         fprintf(stderr, "Error: Failed to load default font segment from memory.\n");
-        // Optionally, handle the error more gracefully, e.g., return or use a fallback
+        // Fall back to ImGui's default font
+        io.Fonts->AddFontDefault();
+        fprintf(stderr, "Falling back to ImGui default font.\n");
     }
 
     // Merge additional ranges (Latin Extended A+B for broader European language support)
@@ -317,6 +318,7 @@ void GuiInterface::sendInputToWorker(const std::string& input) {
 // Returns a vector containing all messages drained from the internal display queue.
 std::vector<HistoryMessage> GuiInterface::processDisplayQueue() {
     std::vector<HistoryMessage> transferred_messages; // Local vector to hold drained messages
+    transferred_messages.reserve(display_queue.size());
     // Lock the display mutex to safely access the queue from the GUI thread.
     std::lock_guard<std::mutex> lock(display_mutex);
 
