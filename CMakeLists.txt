@@ -155,6 +155,29 @@ target_link_libraries(llm-cli PRIVATE
 # Include directories needed by the CLI executable itself (if any beyond core)
 # target_include_directories(llm-cli PRIVATE ...)
 
+
+# --- GUI Executable ---
+add_executable(llm-gui
+    main_gui.cpp
+    gui_interface/gui_interface.cpp
+    gui_interface/gui_interface.h
+)
+
+target_link_libraries(llm-gui PRIVATE
+    llm_core            # Link against the core library
+    imgui_lib           # Link against our ImGui interface library
+    glfw                # Link against GLFW
+    OpenGL::GL          # Link against OpenGL
+    Threads::Threads    # Link against Threads
+)
+
+# Include directories needed by the GUI executable
+target_include_directories(llm-gui PRIVATE
+    ${PROJECT_SOURCE_DIR} # For project headers like ui_interface.h
+    # Add other necessary include paths if needed
+)
+
+
 # Add option for OPENROUTER_API_KEY
 option(OPENROUTER_API_KEY "OpenRouter LLM API Key to embed at compile time" "")
 
@@ -169,7 +192,7 @@ configure_file(
 )
 
 # Installation setup
-install(TARGETS llm-cli # Install the CLI executable
+install(TARGETS llm-cli llm-gui # Install both executables
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
