@@ -7,6 +7,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
+#include "../resources/noto_sans_font.h" // Include the generated font header
 
 // Helper function for GLFW errors
 static void glfw_error_callback(int error, const char* description) {
@@ -116,9 +117,10 @@ void GuiInterface::initialize() {
     font_cfg.OversampleH = 2; // Improve rendering quality
     font_cfg.OversampleV = 1;
     font_cfg.PixelSnapH = true;
+    font_cfg.FontDataOwnedByAtlas = false; // Font data is managed externally (in the header)
 
-    // Load default ranges first (ASCII, basic Latin)
-    io.Fonts->AddFontFromFileTTF(font_path, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+    // Load default ranges first (ASCII, basic Latin) from memory
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
 
     // Merge additional ranges (Latin Extended A+B for broader European language support)
     // Add more ranges (e.g., Cyrillic, Greek) here if needed in the future.
@@ -129,7 +131,8 @@ void GuiInterface::initialize() {
         0, // Null terminator
     };
     font_cfg.MergeMode = true; // Merge new glyphs into the default font
-    io.Fonts->AddFontFromFileTTF(font_path, font_size, &font_cfg, extended_ranges);
+    // Merge additional ranges from memory
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, extended_ranges);
     font_cfg.MergeMode = false; // Reset merge mode
 
     // IMPORTANT: Build the font atlas AFTER adding all fonts/ranges
