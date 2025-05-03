@@ -247,7 +247,7 @@ void GuiInterface::displayOutput(const std::string& output) {
     // Lock the display mutex to ensure exclusive access to the display queue.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the message and its type onto the queue for the GUI thread to process.
-    display_queue.push({output, DisplayMessageType::OUTPUT});
+    display_queue.push({MessageType::LLM_RESPONSE, output}); // Updated for Issue #8
     // The GUI thread periodically calls processDisplayQueue to check this queue.
 }
 
@@ -256,7 +256,7 @@ void GuiInterface::displayError(const std::string& error) {
     // Lock the display mutex.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the error message and its type onto the queue.
-    display_queue.push({error, DisplayMessageType::ERROR});
+    display_queue.push({MessageType::ERROR, error}); // Updated for Issue #8
 }
 
 // Called by the *worker thread* to update the status text in the display queue.
@@ -264,7 +264,7 @@ void GuiInterface::displayStatus(const std::string& status) {
     // Lock the display mutex.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the status message and its type onto the queue.
-    display_queue.push({status, DisplayMessageType::STATUS});
+    display_queue.push({MessageType::STATUS, status}); // Updated for Issue #8
 }
 
 
@@ -301,7 +301,7 @@ void GuiInterface::sendInputToWorker(const std::string& input) {
 // Called by the *GUI thread* in its main render loop.
 // Processes all messages currently in the display queue.
 // Returns true if the history vector was modified (used for auto-scrolling).
-bool GuiInterface::processDisplayQueue(std::vector<std::string>& history) {
+bool GuiInterface::processDisplayQueue(std::vector<HistoryMessage>& history) { // Updated for Issue #8
     bool history_updated = false;
     // Lock the display mutex to safely access the queue from the GUI thread.
     std::lock_guard<std::mutex> lock(display_mutex);
@@ -309,28 +309,12 @@ bool GuiInterface::processDisplayQueue(std::vector<std::string>& history) {
     // Process all messages currently in the queue.
     while (!display_queue.empty()) {
         // Move the front element to a local variable before popping.
-        auto msgPair = std::move(display_queue.front());
+        // Use the correct type HistoryMessage (Issue #8 Refactor)
+        HistoryMessage message = std::move(display_queue.front());
         display_queue.pop(); // Now it's safe to pop.
 
-        // Use structured binding on the moved pair.
-        const auto& [message, type] = msgPair;
-
-        // Handle the message based on its type.
-        switch (type) {
-            case DisplayMessageType::OUTPUT:
-                history.push_back(message); // Add to the local history vector in main_gui.cpp
-                history_updated = true;
-                break;
-            case DisplayMessageType::ERROR:
-                history.push_back("[ERROR] " + message); // Prepend "[ERROR] " for clarity
-                history_updated = true;
-                break;
-            case DisplayMessageType::STATUS:
-                history.push_back("[STATUS] " + message); // Append status to history
-                history_updated = true; // Mark history as updated
-                break;
-        }
-        // Message is processed, loop continues or exits.
+        history.push_back(std::move(message)); // Add the HistoryMessage directly
+        history_updated = true;
     }
     // Return whether the history content changed, so the GUI can auto-scroll.
     return history_updated;
