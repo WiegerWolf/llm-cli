@@ -26,16 +26,16 @@ public:
     // Needs UserInterface to display status messages
     std::string execute_tool(PersistenceManager& db, class ChatClient& client, UserInterface& ui, const std::string& tool_name, const nlohmann::json& args);
 
-// Tool definitions (JSON schemas for the API)
-// These are initialized in the ToolManager constructor (in tools.cpp)
-// and aggregated by get_tool_definitions().
-// Note: Declared public, but primarily used internally. Could potentially be private.
-nlohmann::json search_web_tool;
-nlohmann::json get_current_datetime_tool;
-nlohmann::json visit_url_tool;
-nlohmann::json read_history_tool;
-nlohmann::json web_research_tool;
-nlohmann::json deep_research_tool; // Added declaration
+private:
+    // Tool definitions (JSON schemas for the API)
+    // These are initialized in the ToolManager constructor (in tools.cpp)
+    // and aggregated by get_tool_definitions().
+    nlohmann::json search_web_tool;
+    nlohmann::json get_current_datetime_tool;
+    nlohmann::json visit_url_tool;
+    nlohmann::json read_history_tool;
+    nlohmann::json web_research_tool;
+    nlohmann::json deep_research_tool; // Added declaration
 };
 
 // Tool implementations (free functions)
