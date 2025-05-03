@@ -155,12 +155,22 @@ int main(int, char**) {
 
     std::cout << "Joining worker thread..." << std::endl;
     if (worker_thread.joinable()) {
-        worker_thread.join(); // Wait for the worker thread to finish
-        std::cout << "Worker thread joined." << std::endl;
+        try {
+            worker_thread.join(); // Wait for the worker thread to finish
+            std::cout << "Worker thread joined." << std::endl;
+        } catch (const std::system_error& e) {
+            // std::thread::join can throw std::system_error
+            std::cerr << "Exception caught while joining worker thread: " << e.what() << " (code: " << e.code() << ")" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Generic exception caught while joining worker thread: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "Unknown exception caught while joining worker thread." << std::endl;
+        }
     } else {
         std::cerr << "Warning: Worker thread was not joinable upon exit." << std::endl;
     }
 
+    // Ensure GUI shutdown happens regardless of join success/failure/exception
     std::cout << "Shutting down GUI..." << std::endl;
     try {
         gui_ui.shutdown(); // Cleanup ImGui, GLFW
