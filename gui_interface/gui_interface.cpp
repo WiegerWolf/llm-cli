@@ -246,8 +246,12 @@ bool GuiInterface::processDisplayQueue(std::vector<std::string>& history, std::s
 
     // Process all messages currently in the queue.
     while (!display_queue.empty()) {
-        // Get a reference to the front message pair (avoids copying).
-        auto& [message, type] = display_queue.front();
+        // Move the front element to a local variable before popping.
+        auto msgPair = std::move(display_queue.front());
+        display_queue.pop(); // Now it's safe to pop.
+
+        // Use structured binding on the moved pair.
+        const auto& [message, type] = msgPair;
 
         // Handle the message based on its type.
         switch (type) {
@@ -263,8 +267,7 @@ bool GuiInterface::processDisplayQueue(std::vector<std::string>& history, std::s
                 status = message; // Update the local status string in main_gui.cpp
                 break;
         }
-        // Remove the processed message from the front of the queue.
-        display_queue.pop();
+        // Message is processed, loop continues or exits.
     }
     // Return whether the history content changed, so the GUI can auto-scroll.
     return history_updated;
