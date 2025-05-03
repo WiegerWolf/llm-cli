@@ -16,30 +16,63 @@ LLM-CLI is a command-line chat assistant that connects to OpenRouter LLM APIs (e
 ## Quick Start
 
 ### Prerequisites
-- Linux (tested on Ubuntu)
+
+**Common:**
 - C++17 compiler
 - [CMake](https://cmake.org/) >= 3.15
-- [libcurl](https://curl.se/libcurl/), [libsqlite3](https://www.sqlite.org/), [libreadline](https://tiswww.case.edu/php/chet/readline/rltop.html), [libgumbo](https://github.com/google/gumbo-parser)
 
-Install dependencies (Ubuntu):
-```sh
-sudo apt-get install build-essential cmake libcurl4-openssl-dev libsqlite3-dev libreadline-dev libgumbo-dev
+**For `llm-cli` (Command-Line Interface):**
+- [libcurl](https://curl.se/libcurl/)
+- [libsqlite3](https://www.sqlite.org/)
+- [libreadline](https://tiswww.case.edu/php/chet/readline/rltop.html)
+- [libgumbo](https://github.com/google/gumbo-parser)
+
+**For `llm-gui` (Graphical User Interface):**
+- All `llm-cli` dependencies above
+- [GLFW](https://www.glfw.org/) (Windowing and Input)
+- OpenGL drivers (Graphics Rendering)
+
+**Installation Examples:**
+
+*   **Ubuntu/Debian:**
+    ```sh
+    sudo apt-get update
+    sudo apt-get install build-essential cmake libcurl4-openssl-dev libsqlite3-dev libreadline-dev libgumbo-dev libglfw3-dev
+    # OpenGL drivers are typically installed via your graphics card manufacturer's instructions or system driver manager.
+    ```
+*   **macOS (using Homebrew):**
+    ```sh
+    brew install cmake curl sqlite readline gumbo-parser glfw
+    # OpenGL is typically included with macOS.
+    ```
+
+### Build & Installation
+
+This project builds two executables: `llm-cli` (command-line) and `llm-gui` (graphical).
+
+**1. API Key Setup (Required):**
+Create a `.env` file in the project root to provide API keys at runtime (recommended):
+```dotenv
+OPENROUTER_API_KEY=sk-or-...
+BRAVE_SEARCH_API_KEY=bsk-... # Optional: For Brave Search API fallback
 ```
+Copy the example file: `cp .env.example .env` and edit it with your keys.
+Alternatively, you can embed keys at compile time using CMake flags (less secure, see `CMakeLists.txt`).
 
-### Build
+**2. Build Only (Local Development):**
+If you just want to build the executables in the `build/` directory without installing them system-wide, use the `build.sh` script:
 ```sh
-# Clone repo and enter directory
-# git clone ...
-cd llm-cli
-
-# Set your API keys in .env (see below) or provide them at compile time
-cp .env.example .env  # or create .env manually
-
-# Build (Release by default)
-# You can optionally embed API keys at compile time (see CMakeLists.txt)
-# Example: ./build.sh -DOPENROUTER_API_KEY=your_key -DBRAVE_SEARCH_API_KEY=your_key
 ./build.sh
+# Executables will be in ./build/llm-cli and ./build/llm-gui
 ```
+
+**3. Build and Install (System-Wide):**
+To build *and* install both `llm-cli` and `llm-gui` to your system's standard binary location (e.g., `/usr/local/bin`), use the `install.sh` script. This requires `sudo` privileges for the installation step.
+```sh
+chmod +x install.sh
+./install.sh
+```
+This script handles creating the build directory, running CMake configuration, building both targets, and installing them.
 
 ### API Key Setup
 Create a `.env` file in the project root to provide API keys at runtime (recommended):
@@ -50,8 +83,22 @@ BRAVE_SEARCH_API_KEY=bsk-... # Optional: For Brave Search API fallback
 Alternatively, you can embed keys at compile time using CMake flags (less secure, not recommended for shared environments).
 
 ### Run
+
+**After using `install.sh`:**
+If you installed the applications using `./install.sh`, they should be available in your system PATH:
 ```sh
-./build/llm
+# Run the command-line version
+llm-cli
+
+# Run the graphical version
+llm-gui
+```
+
+**After using `build.sh` (local build):**
+If you only built locally using `./build.sh`, run them from the `build` directory:
+```sh
+./build/llm-cli
+./build/llm-gui
 ```
 
 ## Usage
