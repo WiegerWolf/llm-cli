@@ -95,11 +95,8 @@ int main(int, char**) {
         // --- Input Area ---
         bool enter_pressed = false;
         bool send_pressed = false;
-        bool clear_pressed = false;
         const float button_width = 60.0f; // Width for Send button
-        const float clear_button_width = 80.0f; // Width for Clear History button
-        float input_width = display_size.x - button_width - clear_button_width
-                           - ImGui::GetStyle().ItemSpacing.x * 2; // Adjust width for both buttons
+        float input_width = display_size.x - button_width - ImGui::GetStyle().ItemSpacing.x; // Adjust width for Send button only
         if (input_width < 50.f) {          // arbitrary minimum width
             input_width = 50.f;
         }
@@ -109,8 +106,6 @@ int main(int, char**) {
         ImGui::PopItemWidth();
         ImGui::SameLine();
         send_pressed = ImGui::Button("Send", ImVec2(button_width, 0));
-        ImGui::SameLine();
-        clear_pressed = ImGui::Button("Clear History", ImVec2(clear_button_width, 0));
 
         // --- Status Bar ---
         ImGui::Separator();
@@ -131,11 +126,6 @@ int main(int, char**) {
             }
             // Set focus back to the input field for the next input
             ImGui::SetKeyboardFocusHere(-1); // -1 means previous item (the InputText)
-        } else if (clear_pressed) {
-            // Clear the local history vector
-            output_history.clear();
-            // Optionally, add a message indicating history was cleared
-            // output_history.push_back("--- History Cleared ---");
         }
 
         ImGui::End(); // End Main Window
