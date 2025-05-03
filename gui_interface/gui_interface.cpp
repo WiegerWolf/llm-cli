@@ -13,6 +13,9 @@ static void glfw_error_callback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
 
+// Flag to track if ImGui backends were successfully initialized
+static bool imgui_init_done = false;
+
 GuiInterface::GuiInterface() {
     // Initialize the input buffer
     input_buf[0] = '\0';
@@ -106,6 +109,7 @@ void GuiInterface::initialize() {
     // io.Fonts->AddFontFromFileTTF("path/to/font.ttf", 16.0f);
     // io.Fonts->Build(); // Build font atlas if using custom fonts
 
+    imgui_init_done = true; // Mark ImGui as fully initialized
     std::cout << "GUI Initialized Successfully." << std::endl;
 }
 
@@ -114,10 +118,12 @@ void GuiInterface::shutdown() {
 
     std::cout << "Shutting down GUI..." << std::endl;
 
-    // Cleanup ImGui
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
+    // Cleanup ImGui only if it was successfully initialized
+    if (imgui_init_done) {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+    }
 
     // Cleanup GLFW
     glfwDestroyWindow(window);
