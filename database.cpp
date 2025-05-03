@@ -234,8 +234,10 @@ std::vector<Message> PersistenceManager::getHistoryRange(const std::string& star
         }
         sqlite3_finalize(stmt);
     } else {
-        // std::cerr << "Warning: Failed to prepare statement for history range query: " << sqlite3_errmsg(impl->db) << std::endl; // Debug removed
-        // Consider throwing an exception
+        std::string error_msg = "Failed to prepare statement for history range query: ";
+        error_msg += sqlite3_errmsg(impl->db);
+        sqlite3_finalize(stmt); // Ensure statement is finalized even on prepare error
+        throw std::runtime_error(error_msg);
     }
     return history_range;
 }

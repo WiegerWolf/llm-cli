@@ -200,10 +200,19 @@ void ChatClient::run() {
     db.cleanupOrphanedToolMessages();
     ui.displayOutput("Chatting with " + this->model_name + " - Type your message (Ctrl+D to exit)\n"); // Use UI
     while (true) {
-        auto input_opt = promptUserInput();
-        if (!input_opt) break;          // salir con Ctrl‑D
-        if (input_opt->empty()) continue;
-        processTurn(*input_opt);
+        try {
+            auto input_opt = promptUserInput();
+            if (!input_opt) break;          // salir con Ctrl‑D
+            if (input_opt->empty()) continue;
+            processTurn(*input_opt);
+        } catch (const std::exception& e) {
+            // Catch potential exceptions escaping processTurn or from promptUserInput itself
+            ui.displayError("Unhandled error in main loop: " + std::string(e.what()));
+            // Optionally add a small delay or other recovery mechanism here
+        } catch (...) {
+            // Catch any non-standard exceptions
+            ui.displayError("An unknown, non-standard error occurred in the main loop.");
+        }
     }
 }
 
