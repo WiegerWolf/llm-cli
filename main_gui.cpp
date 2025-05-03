@@ -47,6 +47,7 @@ int main(int, char**) {
     // --- Local GUI State (managed by main loop, updated from GuiInterface) ---
     std::vector<std::string> output_history;
     std::string status_text = "Initializing..."; // Initial status
+    static bool initial_focus_set = false; // Added for Issue #5
     static bool request_input_focus = false;
 
     // --- Main Render Loop ---
@@ -106,6 +107,12 @@ int main(int, char**) {
         if (request_input_focus) {
             ImGui::SetKeyboardFocusHere(); // Target the *next* widget (InputText)
             request_input_focus = false;   // Reset the flag
+        }
+
+        // Set focus to the input field on the first frame (Issue #5)
+        if (!initial_focus_set) {
+            ImGui::SetKeyboardFocusHere(0); // Target the next widget (InputText)
+            initial_focus_set = true;
         }
 
         ImGui::PushItemWidth(input_width);
