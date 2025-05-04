@@ -18,3 +18,4 @@ This file tracks the project's progress using a task list format.
 ## Next Steps
 
 *
+[2025-05-04 01:59:40] - Completed planning phase for GitHub issue #16 (GUI: Enable text selection/copying in dialogue history). Plan documented in the issue body.

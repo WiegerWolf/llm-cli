@@ -73,3 +73,4 @@ Parsing and execution logic implemented within `ChatClient::processTurn` and hel
 ## Implementation Details
 
 *
+[2025-05-04 01:59:52] - Decision: Formulated and documented the implementation plan for GitHub issue #16 (GUI text selection) within the issue body itself.
