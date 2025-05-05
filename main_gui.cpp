@@ -99,6 +99,27 @@ int main(int, char**) {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+// --- Font Size Control Handling (Issue #19) ---
+        ImGuiIO& io = ImGui::GetIO();
+        // Check if Ctrl is pressed and ImGui doesn't want keyboard input
+        if (!io.WantCaptureKeyboard && io.KeyCtrl) {
+            // Increase font size (Ctrl + '+')
+            if (ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)) {
+                gui_ui.changeFontSize(+1.0f);
+            }
+            // Decrease font size (Ctrl + '-')
+            else if (ImGui::IsKeyPressed(ImGuiKey_Minus) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)) {
+                gui_ui.changeFontSize(-1.0f);
+            }
+            // Reset font size (Ctrl + '0')
+            else if (ImGui::IsKeyPressed(ImGuiKey_0) || ImGui::IsKeyPressed(ImGuiKey_Keypad0)) {
+                // Check if already default to avoid unnecessary rebuild
+                if (std::abs(gui_ui.current_font_size - 18.0f) > 0.01f) {
+                     gui_ui.rebuildFontAtlas(18.0f); // Reset to default size
+                }
+            }
+        }
+        // --- End Font Size Control Handling ---
 
         // --- Process Display Updates from Worker (Stage 4) ---
         // Process messages from the worker thread by getting the drained queue

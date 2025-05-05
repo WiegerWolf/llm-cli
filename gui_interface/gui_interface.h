@@ -63,6 +63,9 @@ public:
     void setTheme(ThemeType theme);
     // --- End Theme Setting Method ---
 
+// --- Font Size Control (Issue #19) ---
+    void changeFontSize(float delta);
+    // --- End Font Size Control ---
     // --- Thread-safe methods for communication (Stage 4) ---
     void requestShutdown(); // Called by GUI thread to signal shutdown
     void sendInputToWorker(const std::string& input); // Called by GUI thread to send input
@@ -97,4 +100,11 @@ public: // Changed from private to allow access from static callback
     std::queue<HistoryMessage> display_queue; // Updated for Issue #8
     std::condition_variable input_cv; // To signal when input is available
     std::atomic<bool> shutdown_requested{false}; // Updated for Stage 4
+private:
+    // --- Font Size State & Helpers (Issue #19) ---
+    float current_font_size = 18.0f; // Default font size
+
+    void loadFonts(float size);
+    void rebuildFontAtlas(float new_size);
+    // --- End Font Size State & Helpers ---
 };
