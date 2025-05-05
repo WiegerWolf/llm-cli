@@ -381,7 +381,6 @@ int main(int, char**) {
             font_size_str.pop_back(); // Remove trailing decimal point if it exists (e.g., "18.")
         }
         db_manager.saveSetting("font_size", font_size_str);
-        std::cout << "Saved font size: " << font_size_str << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Warning: Failed to save font_size setting: " << e.what() << std::endl;
     }
