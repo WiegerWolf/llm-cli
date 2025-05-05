@@ -1,5 +1,6 @@
 #include "gui_interface/gui_interface.h"
 #include <stdexcept>
+#include <cmath>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -45,10 +46,36 @@ int main(int, char**) {
         std::cerr << "Warning: Failed to load theme setting from database: " << e.what() << std::endl;
         // Continue with default theme
     }
-
+ 
+    // --- Load Font Size (Issue #19 Persistence) ---
+    float initial_font_size = 18.0f; // Default font size
+    try {
+        std::optional<std::string> font_size_value = db_manager.loadSetting("font_size");
+        if (font_size_value.has_value()) {
+            try {
+                initial_font_size = std::stof(font_size_value.value());
+                // Add basic validation for loaded font size
+                if (initial_font_size < 8.0f || initial_font_size > 72.0f) {
+                     std::cerr << "Warning: Loaded font size (" << initial_font_size << ") out of reasonable bounds (8-72). Resetting to default." << std::endl;
+                     initial_font_size = 18.0f;
+                }
+            } catch (const std::invalid_argument& ia) {
+                std::cerr << "Warning: Invalid font size value in database: '" << font_size_value.value() << "'. Using default." << std::endl;
+                initial_font_size = 18.0f;
+            } catch (const std::out_of_range& oor) {
+                std::cerr << "Warning: Font size value in database out of range: '" << font_size_value.value() << "'. Using default." << std::endl;
+                initial_font_size = 18.0f;
+            }
+        } // Else: keep the default font size if setting not found
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to load font_size setting from database: " << e.what() << std::endl;
+        // Continue with default font size
+    }
+ 
     // --- GUI Initialization ---
     GuiInterface gui_ui; // Instantiate the GUI interface AFTER DB manager
-
+    gui_ui.setInitialFontSize(initial_font_size); // Apply loaded/default font size BEFORE init
+ 
     try {
         gui_ui.initialize(); // Initialize GLFW, ImGui, etc.
         // Theme is loaded above, before GUI init potentially uses it
@@ -95,10 +122,41 @@ int main(int, char**) {
         // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         glfwPollEvents();
 
+        // --- Process Deferred Font Rebuild (Issue #19 Fix) ---
+        // Check if a font rebuild was requested in the previous frame and execute it
+        // *before* starting the new ImGui frame.
+        gui_ui.processFontRebuildRequest();
+        // --- End Process Deferred Font Rebuild ---
+
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+// --- Font Size Control Handling (Issue #19) ---
+        ImGuiIO& io = ImGui::GetIO();
+
+        // Check if Ctrl is pressed. Allow font resizing even if a widget has keyboard focus.
+        if (io.KeyCtrl) {
+            // Increase font size (Ctrl + '+')
+            // Use 'false' for repeat parameter in IsKeyPressed if continuous resizing on hold is desired,
+            // otherwise 'true' (default) or omit for single press detection.
+            if (ImGui::IsKeyPressed(ImGuiKey_Equal, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd, false)) {
+                gui_ui.changeFontSize(+1.0f);
+            }
+            // Decrease font size (Ctrl + '-')
+            else if (ImGui::IsKeyPressed(ImGuiKey_Minus, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract, false)) {
+                gui_ui.changeFontSize(-1.0f);
+            }
+            // Reset font size (Ctrl + '0')
+            else if (ImGui::IsKeyPressed(ImGuiKey_0, false) || ImGui::IsKeyPressed(ImGuiKey_Keypad0, false)) {
+                constexpr float kDefaultSize = 18.0f;
+                float delta = kDefaultSize - gui_ui.getCurrentFontSize();
+                if (std::fabs(delta) > 0.01f) {
+                     gui_ui.changeFontSize(delta);   // Reset via public API
+                }
+            }
+        }
+        // --- End Font Size Control Handling ---
 
         // --- Process Display Updates from Worker (Stage 4) ---
         // Process messages from the worker thread by getting the drained queue
@@ -312,6 +370,22 @@ int main(int, char**) {
     std::cout << "Joining worker thread..." << std::endl;
     // No explicit join needed - std::jthread handles this in its destructor (RAII)
 
+    // --- Save Font Size (Issue #19 Persistence) ---
+    try {
+        float final_font_size = gui_ui.getCurrentFontSize();
+        // Convert float to string for saving
+        std::string font_size_str = std::to_string(final_font_size);
+        // Remove trailing zeros after decimal point for cleaner storage
+        font_size_str.erase(font_size_str.find_last_not_of('0') + 1, std::string::npos);
+        if (font_size_str.back() == '.') {
+            font_size_str.pop_back(); // Remove trailing decimal point if it exists (e.g., "18.")
+        }
+        db_manager.saveSetting("font_size", font_size_str);
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to save font_size setting: " << e.what() << std::endl;
+    }
+    // --- End Save Font Size ---
+ 
     // Ensure GUI shutdown happens regardless of join success/failure/exception
     std::cout << "Shutting down GUI..." << std::endl;
     try {

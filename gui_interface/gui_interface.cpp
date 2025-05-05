@@ -1,7 +1,9 @@
+#include <cmath>
 #include <cstdio> // For fprintf
 #include "gui_interface.h"
 #include <stdexcept>
 #include <iostream> // For error reporting during init/shutdown
+#include <algorithm> // For std::clamp (Issue #19)
 
 // Include GUI library headers
 #include <GLFW/glfw3.h>
@@ -134,75 +136,8 @@ void GuiInterface::initialize() {
     }
 
 
-    // Load Fonts: Use Noto Sans for better Unicode support
-    // ImGuiIO& io = ImGui::GetIO(); // io is already defined above (line 72)
-    float font_size = 18.0f;
-
-    ImFontConfig font_cfg;
-    font_cfg.OversampleH = 2; // Improve rendering quality
-    font_cfg.OversampleV = 1;
-    font_cfg.PixelSnapH = true;
-    font_cfg.FontDataOwnedByAtlas = false; // Font data is managed externally (in the header)
-
-    // Load default ranges first (ASCII, basic Latin) from memory
-    ImFont* font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
-    if (font == NULL) {
-        fprintf(stderr, "Error: Failed to load default font segment from memory.\n");
-        // Fall back to ImGui's default font
-        io.Fonts->AddFontDefault();
-        fprintf(stderr, "Falling back to ImGui default font.\n");
-    }
-
-    // Merge additional ranges (Latin Extended A+B for broader European language support)
-    // Add more ranges (e.g., Cyrillic, Greek) here if needed in the future.
-    static const ImWchar extended_ranges[] =
-    {
-        0x0100, 0x017F, // Latin Extended-A
-        0x0180, 0x024F, // Latin Extended-B
-        0, // Null terminator
-    };
-    // Define additional ranges
-    static const ImWchar cyrillic_ranges[] =
-    {
-        0x0400, 0x052F, // Cyrillic + Cyrillic Supplement
-        0,
-    };
-    // Add common Symbol ranges. Note: AddFontFromMemoryTTF expects ImWchar (16-bit),
-    // so high-code-point Emojis (0x1Fxxx) cannot be added this way directly.
-    // Including only the ranges that fit within ImWchar.
-    static const ImWchar emoji_ranges[] =
-    {
-        0x2600,  0x26FF,  // Miscellaneous Symbols
-        0x2700,  0x27BF,  // Dingbats
-        // Ranges like 0x1F300-0x1F5FF are > 0xFFFF and incompatible here.
-        0,
-    };
-
-    // Merge additional ranges into the default font
-    font_cfg.MergeMode = true; // Set MergeMode before the first merge
-
-    // Merge Latin Extended A+B
-    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, extended_ranges);
-    if (font == NULL) {
-        fprintf(stderr, "Error: Failed to load Latin Extended font segment from memory.\n");
-    }
-
-    // Merge Cyrillic
-    // font_cfg.MergeMode = true; // Still true from previous call
-    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, cyrillic_ranges);
-    if (font == NULL) {
-        fprintf(stderr, "Error: Failed to load Cyrillic font segment from memory.\n");
-    }
-
-    // Merge Symbols (using ImWchar ranges)
-    // font_cfg.MergeMode = true; // Still true from previous call
-    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, font_size, &font_cfg, emoji_ranges);
-    if (font == NULL) {
-        fprintf(stderr, "Error: Failed to load Symbols font segment from memory.\n");
-    }
-
-    // IMPORTANT: Reset MergeMode only after the *last* merge operation
-    font_cfg.MergeMode = false;
+    // Load Fonts using the helper function (Issue #19)
+    this->loadFonts(this->current_font_size);
 
     // IMPORTANT: Build the font atlas AFTER adding all fonts/ranges
     io.Fonts->Build();
@@ -525,3 +460,167 @@ void GuiInterface::setTheme(ThemeType theme) {
     }
 }
 // --- End Theme Setting Method Implementation ---
+// --- Font Size Persistence Helper (Issue #19 Persistence) ---
+void GuiInterface::setInitialFontSize(float size) {
+    // Set the font size *before* initialize() calls loadFonts()
+    // Clamp the value to reasonable bounds to prevent issues from corrupted settings
+    constexpr float min_font_size = 8.0f;
+    constexpr float max_font_size = 72.0f;
+    this->current_font_size = std::clamp(size, min_font_size, max_font_size);
+    // No need to request rebuild here, as initialize() will handle the initial load
+}
+// --- End Font Size Persistence Helper ---
+// --- Font Size Control Implementation (Issue #19) ---
+
+// Helper function to load fonts with a specific size
+void GuiInterface::loadFonts(float size) {
+    ImGuiIO& io = ImGui::GetIO();
+    // Ensure font data is available (basic check)
+    if (!resources_NotoSans_Regular_ttf || resources_NotoSans_Regular_ttf_len == 0) {
+         fprintf(stderr, "Error: Font resource data is missing or empty.\n");
+         io.Fonts->AddFontDefault(); // Fallback
+         fprintf(stderr, "Falling back to ImGui default font.\n");
+         return;
+    }
+
+    ImFontConfig font_cfg;
+    font_cfg.OversampleH = 2; // Improve rendering quality
+    font_cfg.OversampleV = 1;
+    font_cfg.PixelSnapH = true;
+    font_cfg.FontDataOwnedByAtlas = false; // Font data is managed externally (in the header)
+
+    // Load default ranges first (ASCII, basic Latin) from memory
+    ImFont* font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to load default font segment from memory (size %.1f).\n", size);
+        // Fall back to ImGui's default font if primary fails
+        io.Fonts->AddFontDefault();
+        fprintf(stderr, "Falling back to ImGui default font.\n");
+        return; // Don't attempt merges if default load failed
+    }
+
+    // Define additional ranges (static to avoid redefinition)
+    static const ImWchar extended_ranges[] =
+    {
+        0x0100, 0x017F, // Latin Extended-A
+        0x0180, 0x024F, // Latin Extended-B
+        0, // Null terminator
+    };
+    static const ImWchar cyrillic_ranges[] =
+    {
+        0x0400, 0x052F, // Cyrillic + Cyrillic Supplement
+        0,
+    };
+    static const ImWchar emoji_ranges[] =
+    {
+        0x2600,  0x26FF,  // Miscellaneous Symbols
+        0x2700,  0x27BF,  // Dingbats
+        0,
+    };
+
+    // Merge additional ranges into the default font
+    font_cfg.MergeMode = true; // Set MergeMode before the first merge
+
+    // Merge Latin Extended A+B
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, extended_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to merge Latin Extended font segment (size %.1f).\n", size);
+    }
+
+    // Merge Cyrillic
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, cyrillic_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to merge Cyrillic font segment (size %.1f).\n", size);
+    }
+
+    // Merge Symbols
+    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, emoji_ranges);
+    if (font == NULL) {
+        fprintf(stderr, "Error: Failed to merge Symbols font segment (size %.1f).\n", size);
+    }
+
+    // IMPORTANT: Reset MergeMode only after the *last* merge operation
+    font_cfg.MergeMode = false;
+
+    // Note: io.Fonts->Build() is called in rebuildFontAtlas or initialize
+}
+
+// Rebuilds the font atlas with a new size
+void GuiInterface::rebuildFontAtlas(float new_size) {
+    // Ensure ImGui is initialized before proceeding
+    if (!imgui_init_done) {
+        fprintf(stderr, "Error: Attempted to rebuild font atlas before ImGui initialization.\n");
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Update the current font size state
+    current_font_size = new_size;
+
+    // 1. Destroy the existing GPU texture *before* we lose the handle
+    if (io.Fonts->TexID)
+        ImGui_ImplOpenGL3_DestroyFontsTexture();
+
+    // 2. Clear existing fonts
+    io.Fonts->Clear();
+
+    // 3. Load fonts with the new size using the helper
+    loadFonts(current_font_size);
+
+    // 4. Build the new software-side font atlas
+    if (!io.Fonts->Build()) {
+        fprintf(stderr, "Error: Failed to build font atlas.\n");
+        // Attempt to recover by adding default font
+        io.Fonts->Clear();
+        io.Fonts->AddFontDefault();
+        io.Fonts->Build();
+    }
+
+    // 5. Create the new GPU texture
+    if (!ImGui_ImplOpenGL3_CreateFontsTexture()) {
+         fprintf(stderr, "Error: Failed to create GPU font texture.\n");
+         // Consider how to handle this failure - maybe revert to a default?
+    }
+}
+
+
+// Method to request resetting font size to default
+void GuiInterface::resetFontSize() {
+    // Request rebuild with the default size (18.0f)
+    if (std::abs(18.0f - current_font_size) > 0.01f) {
+        requested_font_size = 18.0f;
+        font_rebuild_requested = true;
+    }
+}
+
+
+// Public method to request changing the font size
+void GuiInterface::changeFontSize(float delta) {
+    const float min_font_size = 8.0f;
+    const float max_font_size = 72.0f;
+    float desired_size = current_font_size + delta;
+
+    // Clamp the desired size to the allowed range
+    float clamped_size = std::clamp(desired_size, min_font_size, max_font_size);
+
+    // Request rebuild only if the clamped size is actually different
+    if (std::abs(clamped_size - current_font_size) > 0.01f) { // Use epsilon for float comparison
+        requested_font_size = clamped_size;
+        font_rebuild_requested = true;
+        // std::cout << "DEBUG: Font rebuild requested for size: " << requested_font_size << std::endl;
+    } else {
+         // Optional: Log if the size didn't change (e.g., already at min/max)
+         // std::cout << "Font size change requested (" << delta << "), but size remains " << current_font_size << std::endl;
+    }
+}
+
+// Method called by main loop to perform the actual rebuild if requested
+void GuiInterface::processFontRebuildRequest() {
+    if (font_rebuild_requested) {
+        rebuildFontAtlas(requested_font_size);
+        font_rebuild_requested = false; // Reset the flag
+    }
+}
+
+// --- End Font Size Control Implementation ---
