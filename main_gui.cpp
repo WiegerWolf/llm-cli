@@ -78,80 +78,90 @@ int main(int, char**) {
             output_history.insert(output_history.end(),
                                   std::make_move_iterator(new_messages.begin()),
                                   std::make_move_iterator(new_messages.end()));
-        }
-        // --- End Process Display Updates ---
+      }
+      // --- End Process Display Updates ---
 
+      // --- Retrieve and Apply Scroll Offsets (Comment 1) ---
+      ImVec2 scroll_offsets = gui_ui.getAndClearScrollOffsets();
+      // --- End Retrieve and Apply Scroll Offsets ---
 
-        // --- Main UI Layout (Stage 3 / Updated for Stage 4) ---
-        const ImVec2 display_size = ImGui::GetIO().DisplaySize;
-        const float input_height = 35.0f; // Height for the input text box + button
-        // Calculate height needed for elements below the output area
-        const float bottom_elements_height = input_height; // Only input height now
+      // --- Main UI Layout (Stage 3 / Updated for Stage 4) ---
+      const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+      const float input_height = 35.0f; // Height for the input text box + button
+      // Calculate height needed for elements below the output area
+      const float bottom_elements_height = input_height; // Only input height now
 
-        // Create a full-window container
-        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-        ImGui::SetNextWindowSize(display_size);
-        ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+      // Create a full-window container
+      ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+      ImGui::SetNextWindowSize(display_size);
+      ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-        // --- Output Area ---
-        // Use negative height to automatically fill space minus the bottom elements
-        ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
+      // --- Output Area ---
+      // Use negative height to automatically fill space minus the bottom elements
+      ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
 
-        // Implement touch scrolling by dragging within the child window
-        // Check if the left mouse button is held down and the mouse is being dragged
-        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-            ImGuiIO& io = ImGui::GetIO();
-            // Adjust scroll position based on mouse delta
-            ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
-            ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
-        }
+       // Implement touch scrolling by dragging within the child window
+       // Check if the left mouse button is held down and the mouse is being dragged
+       if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+           ImGuiIO& io = ImGui::GetIO();
+           // Adjust scroll position based on mouse delta
+           ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
+           ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
+       }
 
-        // Iterate over HistoryMessage objects (Issue #8 Refactor)
-        for (const auto& message : output_history) {
-            bool color_pushed = false;
-            std::string display_text;
+       // Iterate over HistoryMessage objects (Issue #8 Refactor)
+       for (const auto& message : output_history) {
+           bool color_pushed = false;
+           std::string display_text;
 
-            // Determine color and display text based on message type
-            switch (message.type) {
-                case MessageType::USER_INPUT:
-                    ImGui::PushStyleColor(ImGuiCol_Text, USER_INPUT_COLOR); // Green
-                    color_pushed = true;
-                    display_text = "User: " + message.content;
-                    break;
-                case MessageType::STATUS:
-                    ImGui::PushStyleColor(ImGuiCol_Text, STATUS_COLOR); // Yellow
-                    color_pushed = true;
-                    display_text = "[STATUS] " + message.content; // Add prefix for display only
-                    break;
-                case MessageType::ERROR:
-                    ImGui::PushStyleColor(ImGuiCol_Text, ERROR_COLOR); // Red
-                    color_pushed = true;
-                    display_text = "ERROR: " + message.content; // Add prefix for display only
-                    break;
-                case MessageType::LLM_RESPONSE:
-                default: // Default includes LLM_RESPONSE
-                    display_text = message.content; // No prefix, default color
-                    break;
-            }
+           // Determine color and display text based on message type
+           switch (message.type) {
+               case MessageType::USER_INPUT:
+                   ImGui::PushStyleColor(ImGuiCol_Text, USER_INPUT_COLOR); // Green
+                   color_pushed = true;
+                   display_text = "User: " + message.content;
+                   break;
+               case MessageType::STATUS:
+                   ImGui::PushStyleColor(ImGuiCol_Text, STATUS_COLOR); // Yellow
+                   color_pushed = true;
+                   display_text = "[STATUS] " + message.content; // Add prefix for display only
+                   break;
+               case MessageType::ERROR:
+                   ImGui::PushStyleColor(ImGuiCol_Text, ERROR_COLOR); // Red
+                   color_pushed = true;
+                   display_text = "ERROR: " + message.content; // Add prefix for display only
+                   break;
+               case MessageType::LLM_RESPONSE:
+               default: // Default includes LLM_RESPONSE
+                   display_text = message.content; // No prefix, default color
+                   break;
+           }
 
-            // Use Selectable to enable text selection/copying
-            // Use GetContentRegionAvail().x for width to wrap text within the child window
-            if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-                // On click, copy text to clipboard
-                ImGui::SetClipboardText(display_text.c_str());
-            }
+           // Use Selectable to enable text selection/copying
+           // Use GetContentRegionAvail().x for width to wrap text within the child window
+           if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+               // On click, copy text to clipboard
+               ImGui::SetClipboardText(display_text.c_str());
+           }
 
-            // Pop color if one was pushed
-            if (color_pushed) {
-                ImGui::PopStyleColor();
-            }
-        }
-        // Auto-scroll based on the flag set by processDisplayQueue
-        if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) { // Only auto-scroll if near the bottom
-            ImGui::SetScrollHereY(1.0f); // Scroll to bottom if new content added
-            new_output_added = false; // Reset flag
-        }
-        ImGui::EndChild(); // End Output Area
+           // Pop color if one was pushed
+           if (color_pushed) {
+               ImGui::PopStyleColor();
+           }
+       }
+       // Auto-scroll based on the flag set by processDisplayQueue
+       if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) { // Only auto-scroll if near the bottom
+           ImGui::SetScrollHereY(1.0f); // Scroll to bottom if new content added
+           new_output_added = false; // Reset flag
+       }
+
+       // Apply accumulated scroll offsets (Comment 1)
+       if (scroll_offsets.x != 0.0f || scroll_offsets.y != 0.0f) {
+            ImGui::SetScrollY(ImGui::GetScrollY() + scroll_offsets.y);
+            ImGui::SetScrollX(ImGui::GetScrollX() + scroll_offsets.x);
+       }
+
+       ImGui::EndChild(); // End Output Area
 
         // --- Input Area ---
         bool enter_pressed = false;
