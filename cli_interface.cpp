@@ -9,6 +9,7 @@
 void CliInterface::initialize() {
     // Readline library initializes itself implicitly on first use.
     // History loading could be added here if desired.
+    displayOutput("Chatting with model - Type your message (Ctrl+D to exit)\n");
 }
 
 // Performs any necessary cleanup for the CLI.

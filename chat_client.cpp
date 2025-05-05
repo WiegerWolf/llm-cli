@@ -218,7 +218,7 @@ std::string ChatClient::executeAndPrepareToolResult(
 // Accept the stop_token for cooperative cancellation
 void ChatClient::run(std::stop_token st) {
     db.cleanupOrphanedToolMessages();
-    ui.displayOutput("Chatting with " + this->model_name + " - Type your message (Ctrl+D to exit)\n"); // Use UI
+    // Initial message is now handled by the specific UI implementation (CLI or GUI)
     while (true) {
         // Check for stop request at the beginning of each loop iteration
         if (st.stop_requested()) {
