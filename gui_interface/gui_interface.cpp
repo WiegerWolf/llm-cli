@@ -460,6 +460,16 @@ void GuiInterface::setTheme(ThemeType theme) {
     }
 }
 // --- End Theme Setting Method Implementation ---
+// --- Font Size Persistence Helper (Issue #19 Persistence) ---
+void GuiInterface::setInitialFontSize(float size) {
+    // Set the font size *before* initialize() calls loadFonts()
+    // Clamp the value to reasonable bounds to prevent issues from corrupted settings
+    constexpr float min_font_size = 8.0f;
+    constexpr float max_font_size = 72.0f;
+    this->current_font_size = std::clamp(size, min_font_size, max_font_size);
+    // No need to request rebuild here, as initialize() will handle the initial load
+}
+// --- End Font Size Persistence Helper ---
 // --- Font Size Control Implementation (Issue #19) ---
 
 // Helper function to load fonts with a specific size
@@ -578,14 +588,17 @@ void GuiInterface::rebuildFontAtlas(float new_size) {
 }
 
 
-// Method to reset font size to default (Issue #19 Fix)
+// Method to request resetting font size to default
 void GuiInterface::resetFontSize() {
-    // Call the private helper to rebuild with the default size (18.0f)
-    rebuildFontAtlas(18.0f);
+    // Request rebuild with the default size (18.0f)
+    if (std::abs(18.0f - current_font_size) > 0.01f) {
+        requested_font_size = 18.0f;
+        font_rebuild_requested = true;
+    }
 }
 
 
-// Public method to change the font size
+// Public method to request changing the font size
 void GuiInterface::changeFontSize(float delta) {
     const float min_font_size = 8.0f;
     const float max_font_size = 72.0f;
@@ -594,12 +607,22 @@ void GuiInterface::changeFontSize(float delta) {
     // Clamp the desired size to the allowed range
     float clamped_size = std::clamp(desired_size, min_font_size, max_font_size);
 
-    // Only rebuild if the clamped size is actually different
+    // Request rebuild only if the clamped size is actually different
     if (std::abs(clamped_size - current_font_size) > 0.01f) { // Use epsilon for float comparison
-        rebuildFontAtlas(clamped_size);
+        requested_font_size = clamped_size;
+        font_rebuild_requested = true;
+        // std::cout << "DEBUG: Font rebuild requested for size: " << requested_font_size << std::endl;
     } else {
          // Optional: Log if the size didn't change (e.g., already at min/max)
          // std::cout << "Font size change requested (" << delta << "), but size remains " << current_font_size << std::endl;
+    }
+}
+
+// Method called by main loop to perform the actual rebuild if requested
+void GuiInterface::processFontRebuildRequest() {
+    if (font_rebuild_requested) {
+        rebuildFontAtlas(requested_font_size);
+        font_rebuild_requested = false; // Reset the flag
     }
 }
 
