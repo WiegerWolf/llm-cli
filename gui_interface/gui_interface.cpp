@@ -109,8 +109,8 @@ void GuiInterface::initialize() {
     // }
 
 
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
+    // Setup Dear ImGui style - REMOVED HARDCODED STYLE (Issue #18)
+    // ImGui::StyleColorsDark(); // This is now handled by setTheme
     // ImGui::StyleColorsClassic(); // Alternative style
 
 
@@ -370,3 +370,37 @@ ImVec2 GuiInterface::getAndClearScrollOffsets() {
 bool GuiInterface::isGuiMode() const {
     return true;
 }
+
+// --- Theme Helper Functions (Issue #18) ---
+void applyDarkTheme() {
+    ImGui::StyleColorsDark();
+    // Optional: Add custom dark theme adjustments here
+}
+
+void applyWhiteTheme() {
+    ImGui::StyleColorsLight(); // Use ImGui's built-in light theme
+    // Optional: Define a fully custom white theme here if needed
+    // Example:
+    // ImGuiStyle& style = ImGui::GetStyle();
+    // style.Colors[ImGuiCol_WindowBg] = ImVec4(0.94f, 0.94f, 0.94f, 1.00f);
+    // style.Colors[ImGuiCol_Text] = ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
+    // ... other color adjustments ...
+}
+// --- End Theme Helper Functions ---
+
+// --- Theme Setting Method Implementation (Issue #18) ---
+void GuiInterface::setTheme(ThemeType theme) {
+    switch (theme) {
+        case ThemeType::DARK:
+            applyDarkTheme();
+            break;
+        case ThemeType::WHITE:
+            applyWhiteTheme();
+            break;
+        default:
+            // Handle potential unknown theme type, maybe default to dark
+            applyDarkTheme();
+            break;
+    }
+}
+// --- End Theme Setting Method Implementation ---

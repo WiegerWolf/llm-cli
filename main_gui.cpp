@@ -17,13 +17,18 @@
 const ImVec4 USER_INPUT_COLOR = ImVec4(0.1f, 1.0f, 0.1f, 1.0f);
 const ImVec4 STATUS_COLOR = ImVec4(1.0f, 1.0f, 0.2f, 1.0f);
 const ImVec4 ERROR_COLOR = ImVec4(1.0f, 0.2f, 0.2f, 1.0f);
-const ImVec4 DEFAULT_TEXT_COLOR = ImGui::GetStyleColorVec4(ImGuiCol_Text); // Use default text color
+// Note: Default text color is now handled by the theme
+
+// --- Theme State (Issue #18) ---
+static ThemeType currentTheme = ThemeType::DARK; // Default theme
+// --- End Theme State ---
 
 int main(int, char**) {
     GuiInterface gui_ui; // Instantiate the GUI interface
 
     try {
         gui_ui.initialize(); // Initialize GLFW, ImGui, etc.
+        // TODO: Load theme preference from config (Issue #18)
     } catch (const std::exception& e) {
         std::cerr << "Initialization failed: " << e.what() << std::endl;
         return 1;
@@ -48,7 +53,10 @@ int main(int, char**) {
 
 
     GLFWwindow* window = gui_ui.getWindow(); // Get the window handle
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f); // Background color
+    // Apply initial theme (Issue #18)
+    gui_ui.setTheme(currentTheme);
+    // Background color will be set by the theme, but keep a default clear color
+    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // --- Local GUI State (managed by main loop, updated from GuiInterface) ---
     std::vector<HistoryMessage> output_history; // Updated for Issue #8
@@ -85,16 +93,51 @@ int main(int, char**) {
       ImVec2 scroll_offsets = gui_ui.getAndClearScrollOffsets();
       // --- End Retrieve and Apply Scroll Offsets ---
 
-      // --- Main UI Layout (Stage 3 / Updated for Stage 4) ---
+      // --- Main UI Layout (Stage 3 / Updated for Stage 4 & 18) ---
       const ImVec2 display_size = ImGui::GetIO().DisplaySize;
       const float input_height = 35.0f; // Height for the input text box + button
       // Calculate height needed for elements below the output area
-      const float bottom_elements_height = input_height; // Only input height now
+      // Add space for the settings header if it's open
+      float settings_height = 0.0f;
+      // We need to estimate the settings height. This is tricky without rendering it first.
+      // Let's approximate based on typical ImGui item heights.
+      // A CollapsingHeader + Text + 2 RadioButtons + SameLine spacing.
+      // This is just an estimate for layout calculation.
+      const float estimated_settings_section_height = ImGui::GetTextLineHeightWithSpacing() * 3 + ImGui::GetStyle().FramePadding.y * 4;
+
 
       // Create a full-window container
       ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
       ImGui::SetNextWindowSize(display_size);
       ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+      // --- Settings Area (Issue #18) ---
+      if (ImGui::CollapsingHeader("Settings")) {
+          settings_height = ImGui::GetItemRectSize().y; // Get actual height after rendering header
+          ImGui::Indent();
+          ImGui::Text("Theme:");
+          ImGui::SameLine();
+          if (ImGui::RadioButton("Dark", currentTheme == ThemeType::DARK)) {
+              currentTheme = ThemeType::DARK;
+              gui_ui.setTheme(currentTheme);
+              // TODO: Save theme preference to config (Issue #18)
+          }
+          ImGui::SameLine();
+          if (ImGui::RadioButton("White", currentTheme == ThemeType::WHITE)) {
+              currentTheme = ThemeType::WHITE;
+              gui_ui.setTheme(currentTheme);
+              // TODO: Save theme preference to config (Issue #18)
+          }
+          ImGui::Unindent();
+          settings_height += ImGui::GetItemRectSize().y; // Add height of the radio button line
+          settings_height += ImGui::GetStyle().ItemSpacing.y; // Add spacing
+      } else {
+          settings_height = ImGui::GetItemRectSize().y; // Height of the collapsed header
+      }
+      // --- End Settings Area ---
+
+      // Calculate height for the output area dynamically
+      const float bottom_elements_height = input_height + settings_height + ImGui::GetStyle().ItemSpacing.y; // Add spacing between settings and input
 
       // --- Output Area ---
       // Use negative height to automatically fill space minus the bottom elements
@@ -133,7 +176,8 @@ int main(int, char**) {
                    break;
                case MessageType::LLM_RESPONSE:
                default: // Default includes LLM_RESPONSE
-                   display_text = message.content; // No prefix, default color
+                   // Use the theme's default text color (no PushStyleColor needed)
+                   display_text = message.content; // No prefix
                    break;
            }
 
@@ -167,7 +211,8 @@ int main(int, char**) {
         bool enter_pressed = false;
         bool send_pressed = false;
         const float button_width = 60.0f; // Width for Send button
-        float input_width = display_size.x - button_width - ImGui::GetStyle().ItemSpacing.x; // Adjust width for Send button only
+        // Calculate input width dynamically, considering the button and spacing
+        float input_width = ImGui::GetContentRegionAvail().x - button_width - ImGui::GetStyle().ItemSpacing.x;
         if (input_width < 50.f) {          // arbitrary minimum width
             input_width = 50.f;
         }
@@ -198,7 +243,7 @@ int main(int, char**) {
             if (input_buf[0] != '\0') {
                 // Send input to the worker thread via GuiInterface
                 gui_ui.sendInputToWorker(input_buf);
-                
+
                 // Add user input to history (Issue #8 Refactor)
 // Add the user's message to the history for display
                 output_history.push_back({MessageType::USER_INPUT, std::string(input_buf)});
@@ -218,6 +263,8 @@ int main(int, char**) {
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h); // Get window size
         glViewport(0, 0, display_w, display_h); // Set OpenGL viewport
+        // Get the current background color from the theme
+        clear_color = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
         glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT); // Clear the screen
 
