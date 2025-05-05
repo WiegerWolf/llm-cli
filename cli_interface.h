@@ -17,4 +17,5 @@ public:
     virtual void displayStatus(const std::string& status) override;                                                                                                      
     virtual void initialize() override;                                                                                                                                  
     virtual void shutdown() override;                                                                                                                                    
+virtual bool isGuiMode() const override;
 };          

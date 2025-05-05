@@ -13,6 +13,7 @@ This file tracks the project's progress using a task list format.
 *   [2025-05-04 02:08:45] - Completed planning phase for GitHub issue #15 (Touch scrolling GUI bug). Plan added to issue description on GitHub.
 
 ## Current Tasks
+*   [2025-05-05 15:43:10] - Started work on issue #17 (GUI: Remove or adapt 'Ctrl-D to exit' message) on branch fix/issue-17-gui-ctrl-d-message.
 
 *   [COMPLETED - 2025-05-04 01:44:05] Populate Memory Bank with initial project details (using README.md).
 
