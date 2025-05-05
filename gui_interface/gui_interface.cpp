@@ -610,6 +610,3 @@ void GuiInterface::changeFontSize(float delta) {
 
 // --- End Font Size Control Implementation ---
 
-float GuiInterface::getCurrentFontSize() const {
-    return current_font_size;
-}
