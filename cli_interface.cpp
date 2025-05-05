@@ -70,3 +70,8 @@ void CliInterface::displayStatus(const std::string& status) {
     }                                                                                                                                                                    
     std::cout.flush(); // Ensure status is displayed immediately                                                                                                         
 }       
+
+// Implementation for isGuiMode - CLI is never GUI mode.
+bool CliInterface::isGuiMode() const {
+    return false;
+}

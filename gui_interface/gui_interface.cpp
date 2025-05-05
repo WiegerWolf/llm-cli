@@ -365,3 +365,8 @@ ImVec2 GuiInterface::getAndClearScrollOffsets() {
     accumulated_scroll_y = 0.0f;
     return offsets;
 }
+
+// Implementation for isGuiMode - GUI is always GUI mode.
+bool GuiInterface::isGuiMode() const {
+    return true;
+}

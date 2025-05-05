@@ -46,6 +46,7 @@ public:
     virtual void displayStatus(const std::string& status) override;
     virtual void initialize() override;
     virtual void shutdown() override;
+virtual bool isGuiMode() const override;
 
     // Public method to get the window handle (needed by main_gui.cpp)
     GLFWwindow* getWindow() const;

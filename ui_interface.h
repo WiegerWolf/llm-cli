@@ -26,6 +26,8 @@ public:
     // Performs any necessary cleanup for the UI.                                                                                                                        
     virtual void shutdown() = 0;                                                                                                                                         
                                                                                                                                                                          
+// Returns true if the UI is a graphical interface, false otherwise.
+    virtual bool isGuiMode() const = 0;
     // Virtual destructor to ensure proper cleanup of derived classes.                                                                                                   
     virtual ~UserInterface() = default;                                                                                                                                  
 };                                          
