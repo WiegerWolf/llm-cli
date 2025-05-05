@@ -1,10 +1,7 @@
-# System Patterns *Optional*
+# System Patterns
 
 This file documents recurring patterns and standards used in the project.
 It is optional, but recommended to be updated as the project evolves.
-2025-05-04 01:43:08 - Log of updates made.
-2025-05-04 01:44:13 - Added initial architectural patterns from README.md.
-
 *
 
 ## Coding Patterns
