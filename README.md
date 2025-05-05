@@ -19,8 +19,8 @@ LLM-CLI/GUI is a chat assistant that connects to OpenRouter LLM APIs (e.g., GPT-
 ## Screenshots (LLM-GUI)
 
 The main window displays the conversation history, user input field, and status indicators:
-![Screenshot from 2025-05-03 23-09-17](https://github.com/user-attachments/assets/00d012c3-c1e6-474a-ad32-09f177464b0d)
 
+![Screenshot from 2025-05-05 19-26-59](https://github.com/user-attachments/assets/ea840a3a-7dd9-45dc-9cd3-0b55b0804f15)
 
 ## Quick Start
 
