@@ -186,7 +186,7 @@ int main(int, char**) {
                // Use TextWrapped for automatic wrapping and default theme color
                // Selectable still works with TextWrapped content if needed for copy
                ImGui::PushTextWrapPos(ImGui::GetContentRegionAvail().x); // Enable wrapping
-               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_SpanAvailWidth)) {
+               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick)) {
                    ImGui::SetClipboardText(display_text.c_str());
                }
                ImGui::PopTextWrapPos();
