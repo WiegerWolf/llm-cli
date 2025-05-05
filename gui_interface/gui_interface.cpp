@@ -208,6 +208,7 @@ void GuiInterface::initialize() {
     io.Fonts->Build();
 
     imgui_init_done = true; // Mark ImGui as fully initialized
+displayOutput("Welcome to the LLM Client GUI!\n");
     std::cout << "GUI Initialized Successfully." << std::endl;
 }
 
