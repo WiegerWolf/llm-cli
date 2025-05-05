@@ -5,6 +5,8 @@
 #include <string>
 #include <thread> // Added for Stage 4
 #include "chat_client.h" // Added for Stage 4
+#include "database.h"    // Added for Issue #18 (DB Persistence)
+#include <optional>     // Added for Issue #18 (DB Persistence)
 
 // Include GUI library headers needed for the main loop
 #include <GLFW/glfw3.h>
@@ -13,24 +15,50 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
 
-// Message type colors
-const ImVec4 USER_INPUT_COLOR = ImVec4(0.1f, 1.0f, 0.1f, 1.0f);
-const ImVec4 STATUS_COLOR = ImVec4(1.0f, 1.0f, 0.2f, 1.0f);
-const ImVec4 ERROR_COLOR = ImVec4(1.0f, 0.2f, 0.2f, 1.0f);
-const ImVec4 DEFAULT_TEXT_COLOR = ImGui::GetStyleColorVec4(ImGuiCol_Text); // Use default text color
+// --- Theme State (Issue #18) ---
+static ThemeType currentTheme = ThemeType::DARK; // Default theme
+
+// --- Theme-Dependent Message Colors (Issue #18 Fix) ---
+const ImVec4 darkUserColor = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green
+const ImVec4 darkStatusColor = ImVec4(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
+// Response/Error will use default theme text color via TextWrapped
+
+const ImVec4 lightUserColor = ImVec4(0.0f, 0.5f, 0.0f, 1.0f); // Dark Green
+const ImVec4 lightStatusColor = ImVec4(0.8f, 0.4f, 0.0f, 1.0f); // Orange/Brown
+// Response/Error will use default theme text color via TextWrapped
+// --- End Theme-Dependent Colors ---
 
 int main(int, char**) {
-    GuiInterface gui_ui; // Instantiate the GUI interface
+    // --- Database Initialization (Issue #18 DB Persistence) ---
+    PersistenceManager db_manager; // Instantiate DB manager first
+    try {
+        // Load theme preference from database
+        std::optional<std::string> theme_value = db_manager.loadSetting("theme");
+        if (theme_value.has_value()) {
+            if (theme_value.value() == "WHITE") {
+                currentTheme = ThemeType::WHITE;
+            } else {
+                currentTheme = ThemeType::DARK; // Default to DARK if value is unexpected
+            }
+        } // Else: keep the default DARK theme if setting not found
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to load theme setting from database: " << e.what() << std::endl;
+        // Continue with default theme
+    }
+
+    // --- GUI Initialization ---
+    GuiInterface gui_ui; // Instantiate the GUI interface AFTER DB manager
 
     try {
         gui_ui.initialize(); // Initialize GLFW, ImGui, etc.
+        // Theme is loaded above, before GUI init potentially uses it
     } catch (const std::exception& e) {
-        std::cerr << "Initialization failed: " << e.what() << std::endl;
+        std::cerr << "GUI Initialization failed: " << e.what() << std::endl;
         return 1;
     }
 
-    // --- Worker Thread Setup (Stage 4) ---
-    ChatClient client(gui_ui); // Create the client, passing the UI interface
+    // --- Worker Thread Setup (Stage 4 / Issue #18 DB Persistence) ---
+    ChatClient client(gui_ui, db_manager); // Pass DB manager reference
     // Use jthread with RAII: construct in-place with lambda, joins automatically on destruction
     // Pass the stop_token provided by jthread to the lambda and client.run()
     std::jthread worker_thread([&client](std::stop_token st){
@@ -48,7 +76,10 @@ int main(int, char**) {
 
 
     GLFWwindow* window = gui_ui.getWindow(); // Get the window handle
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f); // Background color
+    // Apply initial theme (Issue #18)
+    gui_ui.setTheme(currentTheme);
+    // Background color will be set by the theme, but keep a default clear color
+    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // --- Local GUI State (managed by main loop, updated from GuiInterface) ---
     std::vector<HistoryMessage> output_history; // Updated for Issue #8
@@ -85,16 +116,59 @@ int main(int, char**) {
       ImVec2 scroll_offsets = gui_ui.getAndClearScrollOffsets();
       // --- End Retrieve and Apply Scroll Offsets ---
 
-      // --- Main UI Layout (Stage 3 / Updated for Stage 4) ---
+      // --- Main UI Layout (Stage 3 / Updated for Stage 4 & 18) ---
       const ImVec2 display_size = ImGui::GetIO().DisplaySize;
       const float input_height = 35.0f; // Height for the input text box + button
       // Calculate height needed for elements below the output area
-      const float bottom_elements_height = input_height; // Only input height now
+      // Add space for the settings header if it's open
+      float settings_height = 0.0f;
+      // We need to estimate the settings height. This is tricky without rendering it first.
+      // Let's approximate based on typical ImGui item heights.
+      // A CollapsingHeader + Text + 2 RadioButtons + SameLine spacing.
+      // This is just an estimate for layout calculation.
+      const float estimated_settings_section_height = ImGui::GetTextLineHeightWithSpacing() * 3 + ImGui::GetStyle().FramePadding.y * 4;
+
 
       // Create a full-window container
       ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
       ImGui::SetNextWindowSize(display_size);
       ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+      // --- Settings Area (Issue #18) ---
+      if (ImGui::CollapsingHeader("Settings")) {
+          settings_height = ImGui::GetItemRectSize().y; // Get actual height after rendering header
+          ImGui::Indent();
+          ImGui::Text("Theme:");
+          ImGui::SameLine();
+          if (ImGui::RadioButton("Dark", currentTheme == ThemeType::DARK)) {
+              currentTheme = ThemeType::DARK;
+              gui_ui.setTheme(currentTheme);
+              try {
+                  db_manager.saveSetting("theme", "DARK");
+              } catch (const std::exception& e) {
+                  std::cerr << "Warning: Failed to save theme setting: " << e.what() << std::endl;
+              }
+          }
+          ImGui::SameLine();
+          if (ImGui::RadioButton("White", currentTheme == ThemeType::WHITE)) {
+              currentTheme = ThemeType::WHITE;
+              gui_ui.setTheme(currentTheme);
+              try {
+                  db_manager.saveSetting("theme", "WHITE");
+              } catch (const std::exception& e) {
+                  std::cerr << "Warning: Failed to save theme setting: " << e.what() << std::endl;
+              }
+          }
+          ImGui::Unindent();
+          settings_height += ImGui::GetItemRectSize().y; // Add height of the radio button line
+          settings_height += ImGui::GetStyle().ItemSpacing.y; // Add spacing
+      } else {
+          settings_height = ImGui::GetItemRectSize().y; // Height of the collapsed header
+      }
+      // --- End Settings Area ---
+
+      // Calculate height for the output area dynamically
+      const float bottom_elements_height = input_height + settings_height + ImGui::GetStyle().ItemSpacing.y; // Add spacing between settings and input
 
       // --- Output Area ---
       // Use negative height to automatically fill space minus the bottom elements
@@ -109,44 +183,41 @@ int main(int, char**) {
            ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
        }
 
-       // Iterate over HistoryMessage objects (Issue #8 Refactor)
+       // Iterate over HistoryMessage objects (Issue #8 Refactor / Issue #18 Color Fix)
        for (const auto& message : output_history) {
-           bool color_pushed = false;
-           std::string display_text;
+           std::string display_text; // Temporary buffer for formatted text
 
-           // Determine color and display text based on message type
-           switch (message.type) {
-               case MessageType::USER_INPUT:
-                   ImGui::PushStyleColor(ImGuiCol_Text, USER_INPUT_COLOR); // Green
-                   color_pushed = true;
-                   display_text = "User: " + message.content;
-                   break;
-               case MessageType::STATUS:
-                   ImGui::PushStyleColor(ImGuiCol_Text, STATUS_COLOR); // Yellow
-                   color_pushed = true;
-                   display_text = "[STATUS] " + message.content; // Add prefix for display only
-                   break;
-               case MessageType::ERROR:
-                   ImGui::PushStyleColor(ImGuiCol_Text, ERROR_COLOR); // Red
-                   color_pushed = true;
-                   display_text = "ERROR: " + message.content; // Add prefix for display only
-                   break;
-               case MessageType::LLM_RESPONSE:
-               default: // Default includes LLM_RESPONSE
-                   display_text = message.content; // No prefix, default color
-                   break;
-           }
-
-           // Use Selectable to enable text selection/copying
-           // Use GetContentRegionAvail().x for width to wrap text within the child window
-           if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-               // On click, copy text to clipboard
-               ImGui::SetClipboardText(display_text.c_str());
-           }
-
-           // Pop color if one was pushed
-           if (color_pushed) {
-               ImGui::PopStyleColor();
+           if (message.type == MessageType::USER_INPUT) {
+               ImVec4 color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
+               // Format text before passing to TextColored
+               display_text = "User: " + message.content;
+               ImGui::PushStyleColor(ImGuiCol_Text, color); // Push color for Selectable highlighting
+               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+                   ImGui::SetClipboardText(display_text.c_str());
+               }
+               ImGui::PopStyleColor(); // Pop color after Selectable
+           } else if (message.type == MessageType::STATUS) {
+               ImVec4 color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
+               // Format text before passing to TextColored
+               display_text = "[STATUS] " + message.content;
+               ImGui::PushStyleColor(ImGuiCol_Text, color); // Push color for Selectable highlighting
+               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+                   ImGui::SetClipboardText(display_text.c_str());
+               }
+               ImGui::PopStyleColor(); // Pop color after Selectable
+           } else { // LLM_RESPONSE or ERROR - use default theme text color and wrapping
+               if (message.type == MessageType::ERROR) {
+                   display_text = "ERROR: " + message.content;
+               } else {
+                   display_text = message.content;
+               }
+               // Use TextWrapped for automatic wrapping and default theme color
+               // Selectable still works with TextWrapped content if needed for copy
+               ImGui::PushTextWrapPos(ImGui::GetContentRegionAvail().x); // Enable wrapping
+               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick)) {
+                   ImGui::SetClipboardText(display_text.c_str());
+               }
+               ImGui::PopTextWrapPos();
            }
        }
        // Auto-scroll based on the flag set by processDisplayQueue
@@ -167,7 +238,8 @@ int main(int, char**) {
         bool enter_pressed = false;
         bool send_pressed = false;
         const float button_width = 60.0f; // Width for Send button
-        float input_width = display_size.x - button_width - ImGui::GetStyle().ItemSpacing.x; // Adjust width for Send button only
+        // Calculate input width dynamically, considering the button and spacing
+        float input_width = ImGui::GetContentRegionAvail().x - button_width - ImGui::GetStyle().ItemSpacing.x;
         if (input_width < 50.f) {          // arbitrary minimum width
             input_width = 50.f;
         }
@@ -198,7 +270,7 @@ int main(int, char**) {
             if (input_buf[0] != '\0') {
                 // Send input to the worker thread via GuiInterface
                 gui_ui.sendInputToWorker(input_buf);
-                
+
                 // Add user input to history (Issue #8 Refactor)
 // Add the user's message to the history for display
                 output_history.push_back({MessageType::USER_INPUT, std::string(input_buf)});
@@ -218,7 +290,9 @@ int main(int, char**) {
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h); // Get window size
         glViewport(0, 0, display_w, display_h); // Set OpenGL viewport
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        // Get the current background color from the theme
+        clear_color = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+        glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT); // Clear the screen
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); // Render ImGui draw data

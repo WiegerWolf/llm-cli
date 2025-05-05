@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <optional> // Added for std::optional
 
 struct Message {
     std::string role;
@@ -27,6 +28,9 @@ public:
     void beginTransaction();
     void commitTransaction();
     void rollbackTransaction();
+// Settings management
+    void saveSetting(const std::string& key, const std::string& value);
+    std::optional<std::string> loadSetting(const std::string& key);
 
 private:
     // Forward declaration for the Pimpl (Pointer to Implementation) idiom

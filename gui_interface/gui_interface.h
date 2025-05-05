@@ -26,6 +26,14 @@ struct HistoryMessage {
     std::string content;
 };
 // --- End Message History Structure ---
+
+// --- Theme Type Enum (Issue #18) ---
+enum class ThemeType {
+    DARK,
+    WHITE
+};
+// --- End Theme Type Enum ---
+
 // Forward declaration for GLFW window handle
 struct GLFWwindow;
 
@@ -46,10 +54,14 @@ public:
     virtual void displayStatus(const std::string& status) override;
     virtual void initialize() override;
     virtual void shutdown() override;
-virtual bool isGuiMode() const override;
+    virtual bool isGuiMode() const override;
 
     // Public method to get the window handle (needed by main_gui.cpp)
     GLFWwindow* getWindow() const;
+
+    // --- Theme Setting Method (Issue #18) ---
+    void setTheme(ThemeType theme);
+    // --- End Theme Setting Method ---
 
     // --- Thread-safe methods for communication (Stage 4) ---
     void requestShutdown(); // Called by GUI thread to signal shutdown

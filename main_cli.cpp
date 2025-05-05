@@ -3,6 +3,7 @@
 #include <stdexcept> // For runtime_error
 #include "chat_client.h" // Include the ChatClient header
 #include "cli_interface.h" // Include the CLI UI implementation header
+#include "database.h"    // Include the PersistenceManager header
 #include <stop_token>      // Include for std::stop_token
 
 // Use std namespace explicitly to avoid potential conflicts
@@ -12,10 +13,11 @@ using std::string;
 
 int main() {
     CliInterface cli_ui; // Instantiate the CLI UI
+    PersistenceManager db_manager; // Instantiate the DB manager
     try {
         cli_ui.initialize(); // Initialize the UI
 
-        ChatClient client(cli_ui); // Inject the UI into the client
+        ChatClient client(cli_ui, db_manager); // Inject the UI and DB manager into the client
         // Pass a default (non-stoppable) stop_token as the CLI uses Ctrl+D for exit
         client.run(std::stop_token{});
 
