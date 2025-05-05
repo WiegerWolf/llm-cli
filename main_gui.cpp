@@ -13,15 +13,18 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
 
-// Message type colors
-const ImVec4 USER_INPUT_COLOR = ImVec4(0.1f, 1.0f, 0.1f, 1.0f);
-const ImVec4 STATUS_COLOR = ImVec4(1.0f, 1.0f, 0.2f, 1.0f);
-const ImVec4 ERROR_COLOR = ImVec4(1.0f, 0.2f, 0.2f, 1.0f);
-// Note: Default text color is now handled by the theme
-
 // --- Theme State (Issue #18) ---
 static ThemeType currentTheme = ThemeType::DARK; // Default theme
-// --- End Theme State ---
+
+// --- Theme-Dependent Message Colors (Issue #18 Fix) ---
+const ImVec4 darkUserColor = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green
+const ImVec4 darkStatusColor = ImVec4(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
+// Response/Error will use default theme text color via TextWrapped
+
+const ImVec4 lightUserColor = ImVec4(0.0f, 0.5f, 0.0f, 1.0f); // Dark Green
+const ImVec4 lightStatusColor = ImVec4(0.8f, 0.4f, 0.0f, 1.0f); // Orange/Brown
+// Response/Error will use default theme text color via TextWrapped
+// --- End Theme-Dependent Colors ---
 
 int main(int, char**) {
     GuiInterface gui_ui; // Instantiate the GUI interface
@@ -152,45 +155,41 @@ int main(int, char**) {
            ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
        }
 
-       // Iterate over HistoryMessage objects (Issue #8 Refactor)
+       // Iterate over HistoryMessage objects (Issue #8 Refactor / Issue #18 Color Fix)
        for (const auto& message : output_history) {
-           bool color_pushed = false;
-           std::string display_text;
+           std::string display_text; // Temporary buffer for formatted text
 
-           // Determine color and display text based on message type
-           switch (message.type) {
-               case MessageType::USER_INPUT:
-                   ImGui::PushStyleColor(ImGuiCol_Text, USER_INPUT_COLOR); // Green
-                   color_pushed = true;
-                   display_text = "User: " + message.content;
-                   break;
-               case MessageType::STATUS:
-                   ImGui::PushStyleColor(ImGuiCol_Text, STATUS_COLOR); // Yellow
-                   color_pushed = true;
-                   display_text = "[STATUS] " + message.content; // Add prefix for display only
-                   break;
-               case MessageType::ERROR:
-                   ImGui::PushStyleColor(ImGuiCol_Text, ERROR_COLOR); // Red
-                   color_pushed = true;
-                   display_text = "ERROR: " + message.content; // Add prefix for display only
-                   break;
-               case MessageType::LLM_RESPONSE:
-               default: // Default includes LLM_RESPONSE
-                   // Use the theme's default text color (no PushStyleColor needed)
-                   display_text = message.content; // No prefix
-                   break;
-           }
-
-           // Use Selectable to enable text selection/copying
-           // Use GetContentRegionAvail().x for width to wrap text within the child window
-           if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-               // On click, copy text to clipboard
-               ImGui::SetClipboardText(display_text.c_str());
-           }
-
-           // Pop color if one was pushed
-           if (color_pushed) {
-               ImGui::PopStyleColor();
+           if (message.type == MessageType::USER_INPUT) {
+               ImVec4 color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
+               // Format text before passing to TextColored
+               display_text = "User: " + message.content;
+               ImGui::PushStyleColor(ImGuiCol_Text, color); // Push color for Selectable highlighting
+               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+                   ImGui::SetClipboardText(display_text.c_str());
+               }
+               ImGui::PopStyleColor(); // Pop color after Selectable
+           } else if (message.type == MessageType::STATUS) {
+               ImVec4 color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
+               // Format text before passing to TextColored
+               display_text = "[STATUS] " + message.content;
+               ImGui::PushStyleColor(ImGuiCol_Text, color); // Push color for Selectable highlighting
+               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+                   ImGui::SetClipboardText(display_text.c_str());
+               }
+               ImGui::PopStyleColor(); // Pop color after Selectable
+           } else { // LLM_RESPONSE or ERROR - use default theme text color and wrapping
+               if (message.type == MessageType::ERROR) {
+                   display_text = "ERROR: " + message.content;
+               } else {
+                   display_text = message.content;
+               }
+               // Use TextWrapped for automatic wrapping and default theme color
+               // Selectable still works with TextWrapped content if needed for copy
+               ImGui::PushTextWrapPos(ImGui::GetContentRegionAvail().x); // Enable wrapping
+               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_SpanAvailWidth)) {
+                   ImGui::SetClipboardText(display_text.c_str());
+               }
+               ImGui::PopTextWrapPos();
            }
        }
        // Auto-scroll based on the flag set by processDisplayQueue
