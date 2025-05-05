@@ -10,6 +10,25 @@
 #include <backends/imgui_impl_opengl3.h>
 #include "../resources/noto_sans_font.h" // Include the generated font header
 
+// Forward declaration
+class GuiInterface;
+
+// Custom GLFW scroll callback
+static void custom_glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+    GuiInterface* gui_ui = static_cast<GuiInterface*>(glfwGetWindowUserPointer(window));
+    if (gui_ui) {
+        // Accumulate scroll offsets with mutex protection
+        std::lock_guard<std::mutex> lock(gui_ui->input_mutex);
+        gui_ui->accumulated_scroll_x += static_cast<float>(xoffset);
+        gui_ui->accumulated_scroll_y += static_cast<float>(yoffset);
+    }
+    // Allow ImGui's backend to also process the scroll event if needed
+    // Note: ImGui's backend also uses the scroll callback to update its internal state.
+    // Chaining the callback ensures ImGui receives the event.
+    // ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset); // Removed to avoid potential conflicts
+}
+
+
 // Helper function for GLFW errors
 static void glfw_error_callback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
@@ -67,6 +86,12 @@ void GuiInterface::initialize() {
     }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync
+
+    // Set the window user pointer to the GuiInterface instance
+    glfwSetWindowUserPointer(window, this);
+
+    // Set the custom scroll callback
+    glfwSetScrollCallback(window, custom_glfw_scroll_callback);
 
     // --- Initialize ImGui ---
     IMGUI_CHECKVERSION();
@@ -330,4 +355,13 @@ std::vector<HistoryMessage> GuiInterface::processDisplayQueue() {
     }
     // Return the vector containing all drained messages.
     return transferred_messages;
+}
+
+ImVec2 GuiInterface::getAndClearScrollOffsets() {
+    // Lock the input mutex as accumulated_scroll_x/y are modified by the scroll callback
+    std::lock_guard<std::mutex> lock(input_mutex);
+    ImVec2 offsets(accumulated_scroll_x, accumulated_scroll_y);
+    accumulated_scroll_x = 0.0f;
+    accumulated_scroll_y = 0.0f;
+    return offsets;
 }

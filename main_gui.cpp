@@ -96,6 +96,16 @@ int main(int, char**) {
         // --- Output Area ---
         // Use negative height to automatically fill space minus the bottom elements
         ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
+
+        // Implement touch scrolling by dragging within the child window
+        // Check if the left mouse button is held down and the mouse is being dragged
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            ImGuiIO& io = ImGui::GetIO();
+            // Adjust scroll position based on mouse delta
+            ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
+            ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
+        }
+
         // Iterate over HistoryMessage objects (Issue #8 Refactor)
         for (const auto& message : output_history) {
             bool color_pushed = false;
