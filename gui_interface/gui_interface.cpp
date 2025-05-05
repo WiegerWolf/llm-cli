@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdio> // For fprintf
 #include "gui_interface.h"
 #include <stdexcept>
@@ -548,13 +549,17 @@ void GuiInterface::rebuildFontAtlas(float new_size) {
     current_font_size = new_size;
     std::cout << "Rebuilding font atlas with size: " << current_font_size << std::endl;
 
-    // 1. Clear existing fonts
+    // 1. Destroy the existing GPU texture *before* we lose the handle
+    if (io.Fonts->TexID)
+        ImGui_ImplOpenGL3_DestroyFontsTexture();
+
+    // 2. Clear existing fonts
     io.Fonts->Clear();
 
-    // 2. Load fonts with the new size using the helper
+    // 3. Load fonts with the new size using the helper
     loadFonts(current_font_size);
 
-    // 3. Build the new software-side font atlas
+    // 4. Build the new software-side font atlas
     if (!io.Fonts->Build()) {
         fprintf(stderr, "Error: Failed to build font atlas.\n");
         // Attempt to recover by adding default font
@@ -562,16 +567,6 @@ void GuiInterface::rebuildFontAtlas(float new_size) {
         io.Fonts->AddFontDefault();
         io.Fonts->Build();
     }
-
-    // 4. Destroy the old GPU texture
-    // Check if the texture ID is valid before destroying
-    // (ImGui_ImplOpenGL3_DestroyFontsTexture might handle null internally, but explicit check is safer)
-    if (io.Fonts->TexID != 0) { // Assuming TexID is the handle/identifier
-         ImGui_ImplOpenGL3_DestroyFontsTexture(); // Use the correct backend function
-    } else {
-         fprintf(stderr, "Warning: Attempted to destroy null font texture.\n");
-    }
-
 
     // 5. Create the new GPU texture
     if (!ImGui_ImplOpenGL3_CreateFontsTexture()) {
@@ -609,4 +604,3 @@ void GuiInterface::changeFontSize(float delta) {
 }
 
 // --- End Font Size Control Implementation ---
-
