@@ -6,6 +6,6 @@ then you need to tell it to get the issue using the github tools (get_issue, get
 
 then form a task for coder to come up with a new git branch name to switch to for fixing this issue. checkout into fix branch and work there.
 
-then form a task for architect to read the relevant code files and using coder you need to implement the fix as it's proposed in the issue plan.
+then form a task for architect to read the relevant code files and using coder you need to implement the fix as it's proposed in the issue plan. commit your fix
 
 after that your task is to submit a new pull request using tools you have (create_pull_request) with the branch on which we fixed the issue into `main` branch.
