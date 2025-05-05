@@ -28,7 +28,7 @@ struct HistoryMessage {
 // --- End Message History Structure ---
 
 // --- Theme Type Enum (Issue #18) ---
-enum ThemeType {
+enum class ThemeType {
     DARK,
     WHITE
 };

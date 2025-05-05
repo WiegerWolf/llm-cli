@@ -264,7 +264,7 @@ int main(int, char**) {
         glViewport(0, 0, display_w, display_h); // Set OpenGL viewport
         // Get the current background color from the theme
         clear_color = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT); // Clear the screen
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); // Render ImGui draw data
