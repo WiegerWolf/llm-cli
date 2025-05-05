@@ -7,7 +7,8 @@
         "search_imgui_documentation",
         "search_imgui_code",
         "fetch_generic_url_content"
-      ]
+      ],
+      "disabled": true
     }
   }
 }
