@@ -1,5 +1,6 @@
 #include "gui_interface/gui_interface.h"
 #include <stdexcept>
+#include <cmath>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -113,9 +114,10 @@ int main(int, char**) {
             }
             // Reset font size (Ctrl + '0')
             else if (ImGui::IsKeyPressed(ImGuiKey_0) || ImGui::IsKeyPressed(ImGuiKey_Keypad0)) {
-                // Check if already default to avoid unnecessary rebuild
-                if (std::abs(gui_ui.current_font_size - 18.0f) > 0.01f) {
-                     gui_ui.rebuildFontAtlas(18.0f); // Reset to default size
+                constexpr float kDefaultSize = 18.0f;
+                float delta = kDefaultSize - gui_ui.getCurrentFontSize(); // Note: getCurrentFontSize needs to be added
+                if (std::fabs(delta) > 0.01f) {
+                     gui_ui.changeFontSize(delta);   // Reset via public API
                 }
             }
         }

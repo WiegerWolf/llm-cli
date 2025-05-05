@@ -583,11 +583,17 @@ void GuiInterface::rebuildFontAtlas(float new_size) {
 }
 
 
+// Method to reset font size to default (Issue #19 Fix)
+void GuiInterface::resetFontSize() {
+    // Call the private helper to rebuild with the default size (18.0f)
+    rebuildFontAtlas(18.0f);
+}
+
+
 // Public method to change the font size
 void GuiInterface::changeFontSize(float delta) {
     const float min_font_size = 8.0f;
     const float max_font_size = 72.0f;
-
     float desired_size = current_font_size + delta;
 
     // Clamp the desired size to the allowed range
@@ -603,3 +609,7 @@ void GuiInterface::changeFontSize(float delta) {
 }
 
 // --- End Font Size Control Implementation ---
+
+float GuiInterface::getCurrentFontSize() const {
+    return current_font_size;
+}

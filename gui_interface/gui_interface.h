@@ -65,6 +65,8 @@ public:
 
 // --- Font Size Control (Issue #19) ---
     void changeFontSize(float delta);
+void resetFontSize();
+float getCurrentFontSize() const;
     // --- End Font Size Control ---
     // --- Thread-safe methods for communication (Stage 4) ---
     void requestShutdown(); // Called by GUI thread to signal shutdown
