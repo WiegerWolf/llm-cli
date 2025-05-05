@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <thread>  // Added for Stage 4
 #include <atomic>  // Added for Stage 4
+#include <imgui.h> // Required for ImVec2
 
 // --- Message History Structure (Issue #8 Refactor) ---
 // Moved from main_gui.cpp
@@ -60,8 +61,13 @@ public:
     // --- Thread-safe methods for communication (Stage 4) ---
     std::vector<HistoryMessage> processDisplayQueue(); // Returns drained messages
 
-private:
+    // Method for GUI thread to get and clear accumulated scroll offsets
+    ImVec2 getAndClearScrollOffsets();
+
+public: // Changed from private to allow access from static callback
     GLFWwindow* window = nullptr;
+    float accumulated_scroll_x = 0.0f;
+    float accumulated_scroll_y = 0.0f;
 
     // --- GUI State Members (Stage 3) ---
     static constexpr size_t INPUT_BUFFER_SIZE = 1024;
