@@ -39,6 +39,11 @@ struct PersistenceManager::Impl {
                 role TEXT CHECK(role IN ('system','user','assistant', 'tool')), -- Ensure valid roles
                 content TEXT -- Store message content (can be plain text or JSON string for tool/assistant)
             );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT
+            );
         )";
         // Execute the schema creation statement
         exec(schema);
@@ -303,3 +308,52 @@ std::vector<Message> PersistenceManager::getHistoryRange(const std::string& star
     return history_range;
 }
 
+
+// Settings Management Implementation
+void PersistenceManager::saveSetting(const std::string& key, const std::string& value) {
+    const char* sql = "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)";
+    sqlite3_stmt* stmt = nullptr;
+
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error("Failed to prepare saveSetting statement: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+    // Use RAII for statement finalization
+    auto stmt_guard = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>{stmt, sqlite3_finalize};
+
+    sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_STATIC);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        // stmt_guard will finalize the statement automatically
+        throw std::runtime_error("saveSetting failed: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+    // Statement finalized automatically by stmt_guard
+}
+
+std::optional<std::string> PersistenceManager::loadSetting(const std::string& key) {
+    const char* sql = "SELECT value FROM settings WHERE key = ?";
+    sqlite3_stmt* stmt = nullptr;
+    std::optional<std::string> result = std::nullopt;
+
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error("Failed to prepare loadSetting statement: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+    // Use RAII for statement finalization
+    auto stmt_guard = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>{stmt, sqlite3_finalize};
+
+    sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_STATIC);
+
+    int step_result = sqlite3_step(stmt);
+    if (step_result == SQLITE_ROW) {
+        const unsigned char* text = sqlite3_column_text(stmt, 0);
+        if (text) {
+            result = reinterpret_cast<const char*>(text);
+        }
+    } else if (step_result != SQLITE_DONE) {
+        // stmt_guard will finalize the statement automatically
+        throw std::runtime_error("loadSetting failed: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+    // Statement finalized automatically by stmt_guard
+
+    return result;
+}

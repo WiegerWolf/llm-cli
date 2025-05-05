@@ -30,8 +30,8 @@ std::string get_openrouter_api_key() {
 }
 
 // --- ChatClient Constructor ---
-ChatClient::ChatClient(UserInterface& ui_ref) :
-    db(),              // Initialize PersistenceManager
+ChatClient::ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref) :
+    db(db_ref),        // Initialize PersistenceManager reference
     toolManager(),     // Initialize ToolManager
     ui(ui_ref)         // Initialize the UI reference
 {

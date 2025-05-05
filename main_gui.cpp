@@ -5,6 +5,8 @@
 #include <string>
 #include <thread> // Added for Stage 4
 #include "chat_client.h" // Added for Stage 4
+#include "database.h"    // Added for Issue #18 (DB Persistence)
+#include <optional>     // Added for Issue #18 (DB Persistence)
 
 // Include GUI library headers needed for the main loop
 #include <GLFW/glfw3.h>
@@ -27,18 +29,36 @@ const ImVec4 lightStatusColor = ImVec4(0.8f, 0.4f, 0.0f, 1.0f); // Orange/Brown
 // --- End Theme-Dependent Colors ---
 
 int main(int, char**) {
-    GuiInterface gui_ui; // Instantiate the GUI interface
+    // --- Database Initialization (Issue #18 DB Persistence) ---
+    PersistenceManager db_manager; // Instantiate DB manager first
+    try {
+        // Load theme preference from database
+        std::optional<std::string> theme_value = db_manager.loadSetting("theme");
+        if (theme_value.has_value()) {
+            if (theme_value.value() == "WHITE") {
+                currentTheme = ThemeType::WHITE;
+            } else {
+                currentTheme = ThemeType::DARK; // Default to DARK if value is unexpected
+            }
+        } // Else: keep the default DARK theme if setting not found
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to load theme setting from database: " << e.what() << std::endl;
+        // Continue with default theme
+    }
+
+    // --- GUI Initialization ---
+    GuiInterface gui_ui; // Instantiate the GUI interface AFTER DB manager
 
     try {
         gui_ui.initialize(); // Initialize GLFW, ImGui, etc.
-        // TODO: Load theme preference from config (Issue #18)
+        // Theme is loaded above, before GUI init potentially uses it
     } catch (const std::exception& e) {
-        std::cerr << "Initialization failed: " << e.what() << std::endl;
+        std::cerr << "GUI Initialization failed: " << e.what() << std::endl;
         return 1;
     }
 
-    // --- Worker Thread Setup (Stage 4) ---
-    ChatClient client(gui_ui); // Create the client, passing the UI interface
+    // --- Worker Thread Setup (Stage 4 / Issue #18 DB Persistence) ---
+    ChatClient client(gui_ui, db_manager); // Pass DB manager reference
     // Use jthread with RAII: construct in-place with lambda, joins automatically on destruction
     // Pass the stop_token provided by jthread to the lambda and client.run()
     std::jthread worker_thread([&client](std::stop_token st){
@@ -123,13 +143,21 @@ int main(int, char**) {
           if (ImGui::RadioButton("Dark", currentTheme == ThemeType::DARK)) {
               currentTheme = ThemeType::DARK;
               gui_ui.setTheme(currentTheme);
-              // TODO: Save theme preference to config (Issue #18)
+              try {
+                  db_manager.saveSetting("theme", "DARK");
+              } catch (const std::exception& e) {
+                  std::cerr << "Warning: Failed to save theme setting: " << e.what() << std::endl;
+              }
           }
           ImGui::SameLine();
           if (ImGui::RadioButton("White", currentTheme == ThemeType::WHITE)) {
               currentTheme = ThemeType::WHITE;
               gui_ui.setTheme(currentTheme);
-              // TODO: Save theme preference to config (Issue #18)
+              try {
+                  db_manager.saveSetting("theme", "WHITE");
+              } catch (const std::exception& e) {
+                  std::cerr << "Warning: Failed to save theme setting: " << e.what() << std::endl;
+              }
           }
           ImGui::Unindent();
           settings_height += ImGui::GetItemRectSize().y; // Add height of the radio button line
