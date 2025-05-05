@@ -124,8 +124,12 @@ int main(int, char**) {
                     break;
             }
 
-            // Use TextWrapped for better readability of long lines
-            ImGui::TextWrapped("%s", display_text.c_str());
+            // Use Selectable to enable text selection/copying
+            // Use GetContentRegionAvail().x for width to wrap text within the child window
+            if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+                // On click, copy text to clipboard
+                ImGui::SetClipboardText(display_text.c_str());
+            }
 
             // Pop color if one was pushed
             if (color_pushed) {
