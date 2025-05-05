@@ -557,7 +557,6 @@ void GuiInterface::rebuildFontAtlas(float new_size) {
 
     // Update the current font size state
     current_font_size = new_size;
-    std::cout << "Rebuilding font atlas with size: " << current_font_size << std::endl;
 
     // 1. Destroy the existing GPU texture *before* we lose the handle
     if (io.Fonts->TexID)
@@ -582,8 +581,6 @@ void GuiInterface::rebuildFontAtlas(float new_size) {
     if (!ImGui_ImplOpenGL3_CreateFontsTexture()) {
          fprintf(stderr, "Error: Failed to create GPU font texture.\n");
          // Consider how to handle this failure - maybe revert to a default?
-    } else {
-         std::cout << "Font atlas rebuilt and GPU texture updated successfully." << std::endl;
     }
 }
 
