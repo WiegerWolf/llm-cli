@@ -21,13 +21,14 @@ Developers and power users often need:
 | ID | Goal / Requirement | Priority |
 |----|--------------------|----------|
 | G1 | Provide a CLI binary (`llm-cli`) with fast, readline-driven chat. | Must |
-| G2 | Provide a GUI binary (`llm-gui`) using Dear ImGui + GLFW. | Must |
+| G2 | Provide a GUI binary (`llm-gui`) using Dear ImGui (vendored as a Git submodule in `extern/imgui`, compiled directly) + GLFW. | Must |
 | G3 | Connect to OpenRouter (default GPT-4.1-nano) via HTTPS (`libcurl`). | Must |
 | G4 | Support tool calls (OpenAI function-calling API). | Must |
 | G5 | Offer web-research tools: `search_web`, `visit_url`, `web_research`, `deep_research`. | Must |
 | G6 | Persist conversation history in a local SQLite DB. | Should |
 | G7 | Load API keys from a `.env` file; allow compile-time embedding. | Should |
 | G8 | Keep UI responsive through multi-threading (GUI main loop + worker). | Should |
+| G9 | Initialize Git Submodules (Required after cloning for Dear ImGui). Command: `git submodule update --init --recursive` | Must |
 | G10| Scriptable install & build (`build.sh`, `install.sh`). | Should |
 | G11| Make the code base extendable: easy addition of new tools. | Should |
 
