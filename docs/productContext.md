@@ -12,7 +12,7 @@ This file provides a high-level overview of the project and the expected product
 
 *   Chat with LLMs (via OpenRouter API using `libcurl`)
 *   Command-Line Interface (`llm-cli` using `libreadline`)
-*   Graphical User Interface (`llm-gui` via Dear ImGui + GLFW + OpenGL)
+*   Graphical User Interface (`llm-gui` via Dear ImGui (vendored as a Git submodule in `extern/imgui`, compiled directly) + GLFW + OpenGL)
 *   Web search (Brave Search, DuckDuckGo, Brave Search API - requires `libcurl`)
 *   Visit URLs (content extraction using `libgumbo` and `libcurl`)
 *   Web research (multi-step synthesis, potentially using other tools)
@@ -29,7 +29,10 @@ This file provides a high-level overview of the project and the expected product
     *   `database.cpp`/`.h`: SQLite persistence layer (`PersistenceManager` using Pimpl).
     *   `tools.cpp`/`.h` & `tools_impl/`: Tool registration and implementation (using `libcurl`, `libgumbo`, etc.).
     *   `curl_utils.h`: Shared `libcurl` utilities.
-*   **Interfaces:** `ui_interface.h` (abstract base class), `cli_interface.cpp`/`.h` (CLI impl using `libreadline`), `gui_interface.cpp`/`.h` (GUI impl using ImGui/GLFW/OpenGL, runs `ChatClient` in worker thread).
+*   **Interfaces:** `ui_interface.h` (abstract base class), `cli_interface.cpp`/`.h` (CLI impl using `libreadline`), `gui_interface.cpp`/`.h` (GUI impl using Dear ImGui (vendored as a Git submodule in `extern/imgui`, compiled directly)/GLFW/OpenGL, runs `ChatClient` in worker thread).
 *   **Entry Points:** `main_cli.cpp` (CLI), `main_gui.cpp` (GUI - manages GLFW/ImGui loop and worker thread).
 *   **Configuration:** `config.h.in` -> `config.h` (API keys), `.env` file support (via `getenv`).
 *   **Build System:** CMake (`CMakeLists.txt`), `build.sh`, `install.sh`.
+    *   **Submodule Initialization:** After cloning the repository, you need to initialize and update the Git submodules (which includes Dear ImGui for the graphical interface). Run the following command in the project root directory:
+        ```sh
+        git submodule update --init --recursive
