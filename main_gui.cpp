@@ -85,8 +85,32 @@ bool MapScreenCoordsToTextIndices(
 
     // --- Simulate text layout and store character bounding boxes ---
     while (current_char_ptr < text_end) {
-        const char* next_char_ptr = current_char_ptr + 1; // Assuming single-byte for now
-        // TODO: Add proper UTF-8 handling here if needed later.
+        // Correctly advance to the next UTF-8 character
+        unsigned int codepoint; // To store the decoded Unicode codepoint.
+        int char_byte_count = ImTextCharFromUtf8(&codepoint, current_char_ptr, text_end);
+        const char* next_char_ptr;
+
+        if (char_byte_count > 0) {
+            // Successfully decoded a UTF-8 character.
+            next_char_ptr = current_char_ptr + char_byte_count;
+            // Ensure next_char_ptr does not exceed text_end.
+            // ImTextCharFromUtf8 is expected to respect text_end, so char_byte_count should be appropriate.
+            // This check is an additional safeguard.
+            if (next_char_ptr > text_end) {
+                 next_char_ptr = text_end;
+            }
+        } else {
+            // ImTextCharFromUtf8 returned 0 or a non-positive value, indicating:
+            // - End of input string (e.g., *current_char_ptr == '\0' and current_char_ptr < text_end)
+            // - Invalid UTF-8 sequence
+            // - current_char_ptr >= text_end (though the outer loop `while (current_char_ptr < text_end)` should prevent this)
+            // In such cases, advance by one byte to ensure progress and prevent infinite loops.
+            next_char_ptr = current_char_ptr + 1;
+            // Final clamp to ensure we absolutely do not go past text_end.
+            if (next_char_ptr > text_end) {
+                next_char_ptr = text_end;
+            }
+        }
 
         // Calculate size of the current character
         // Use CalcTextSize without wrapping for individual characters.
