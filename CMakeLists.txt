@@ -24,7 +24,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 # Find required packages
 find_package(CURL REQUIRED)
 find_package(SQLite3 QUIET) # Fallback search implemented below
-# find_package(PkgConfig REQUIRED) # PkgConfig is needed for ImGui discovery now (Commented out as ImGui is now vendored)
+find_package(PkgConfig REQUIRED) # PkgConfig is needed for ImGui discovery now
 find_package(OpenGL REQUIRED) # Find OpenGL - Assumes system provides runtime libs
 find_package(glfw3 REQUIRED)  # Find GLFW3 - Assumes system provides runtime libs (e.g., libglfw.so.3)
 
@@ -36,7 +36,7 @@ find_package(glfw3 REQUIRED)  # Find GLFW3 - Assumes system provides runtime lib
 # Find Gumbo HTML parser
 if(PKG_CONFIG_FOUND)
     pkg_check_modules(GUMBO gumbo)
-    # pkg_check_modules(IMGUI REQUIRED imgui) # Find ImGui using pkg-config (Commented out as ImGui is now vendored)
+    pkg_check_modules(IMGUI REQUIRED imgui) # Find ImGui using pkg-config
 endif()
 
 if(NOT PKG_CONFIG_FOUND)
@@ -146,8 +146,6 @@ target_link_libraries(llm-cli PRIVATE
 target_compile_options(llm-cli PRIVATE $<$<CONFIG:Release>:-O3>)
 
 
-add_subdirectory(extern/imgui)
-
 # --- GUI Executable ---
 add_executable(llm-gui
     main_gui.cpp
@@ -157,8 +155,7 @@ add_executable(llm-gui
 
 target_link_libraries(llm-gui PRIVATE
     llm_core            # Link against the core library
-    imgui               # Link against vendored ImGui
-    # ${IMGUI_LIBRARIES}  # Link against system ImGui via pkg-config (Commented out)
+    ${IMGUI_LIBRARIES}  # Link against system ImGui via pkg-config
     glfw                # Link against GLFW
     OpenGL::GL          # Link against OpenGL
     Threads::Threads    # Link against Threads
@@ -167,7 +164,7 @@ target_link_libraries(llm-gui PRIVATE
 # Include directories needed by the GUI executable
 target_include_directories(llm-gui PRIVATE
     ${PROJECT_SOURCE_DIR} # For project headers like ui_interface.h
-    # ${IMGUI_INCLUDE_DIRS} # Include system ImGui headers via pkg-config (Commented out as ImGui is now vendored)
+    ${IMGUI_INCLUDE_DIRS} # Include system ImGui headers via pkg-config
 )
 target_compile_options(llm-gui PRIVATE $<$<CONFIG:Release>:-O3>)
 
