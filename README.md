@@ -40,6 +40,7 @@ The main window displays the conversation history, user input field, and status 
 - All `llm-cli` dependencies above
 - [GLFW](https://www.glfw.org/) (Windowing and Input)
 - OpenGL drivers (Graphics Rendering)
+- Dear ImGui (for the GUI) is included as a Git submodule (located in `extern/imgui`) and is compiled directly as part of the project.
 
 **Installation Examples:**
 
@@ -62,6 +63,14 @@ The main window displays the conversation history, user input field, and status 
     # Ensure you have appropriate graphics drivers installed.
     ```
     *Note: Windows build might require additional configuration in CMakeLists.txt for library paths.*
+
+### Initialize Git Submodules (Required after cloning)
+
+After cloning the repository, you need to initialize and update the Git submodules (which includes Dear ImGui for the graphical interface). Run the following command in the project root directory:
+
+```sh
+git submodule update --init --recursive
+```
 
 ### API Key Setup (Required)
 
