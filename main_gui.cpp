@@ -121,7 +121,7 @@ bool MapScreenCoordsToTextIndices(
         if (cursor_pos.x > selectable_min.x && (cursor_pos.x + char_size.x) > (selectable_min.x + wrap_width)) {
             cursor_pos.x = selectable_min.x;
             // Advance Y by font size + spacing for the new line
-            cursor_pos.y += line_height + line_spacing;
+            cursor_pos.y += line_height; // Corrected: ItemSpacing.y is not added between wrapped lines of the same text block
         }
 
         // Store the bounding box for this character
