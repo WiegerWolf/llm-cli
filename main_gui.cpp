@@ -8,10 +8,12 @@
 #include "chat_client.h" // Added for Stage 4
 #include "database.h"    // Added for Issue #18 (DB Persistence)
 #include <optional>     // Added for Issue #18 (DB Persistence)
-
-// Include GUI library headers needed for the main loop
-#include <GLFW/glfw3.h>
+#include <cstring>      // Added for Phase 3 (strlen)
+ 
+ // Include GUI library headers needed for the main loop
+ #include <GLFW/glfw3.h>
 #include <imgui.h>
+#include <imgui_internal.h> // Added to fix build errors from using internal ImGui structures
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
@@ -28,6 +30,144 @@ const ImVec4 lightUserColor = ImVec4(0.0f, 0.5f, 0.0f, 1.0f); // Dark Green
 const ImVec4 lightStatusColor = ImVec4(0.8f, 0.4f, 0.0f, 1.0f); // Orange/Brown
 // Response/Error will use default theme text color via TextWrapped
 // --- End Theme-Dependent Colors ---
+
+
+// --- Helper Function for Coordinate Mapping (Phase 3 - Placeholder) ---
+// Helper function to map screen coordinates to text indices within wrapped text
+// Returns true if valid indices were found, false otherwise.
+// TODO: Implement the actual mapping logic here. This is complex and currently a placeholder.
+// Helper function to map screen coordinates to text indices within wrapped text.
+// Returns true if valid indices were found (overlap exists), false otherwise.
+// Calculates bounding boxes for each character considering wrapping and finds the
+// first and last character indices whose boxes overlap the selection rectangle.
+// --- Helper Function for Coordinate Mapping (Phase 3 - Placeholder / Phase 5 Update) ---
+// Helper function to map screen coordinates to text indices within wrapped text.
+// Returns true if valid indices were found (overlap exists), false otherwise.
+// Calculates bounding boxes for each character considering wrapping and finds the
+// first and last character indices whose boxes overlap the selection rectangle.
+// Also outputs the calculated character bounding boxes.
+bool MapScreenCoordsToTextIndices(
+    const char* text,
+    float wrap_width,
+    const ImVec2& selectable_min, // Top-left of the text block's drawing area
+    const ImVec2& selection_rect_min, // Top-left of the *clamped* selection rectangle
+    const ImVec2& selection_rect_max, // Bottom-right of the *clamped* selection rectangle
+    int& out_start_index,
+    int& out_end_index,
+    std::vector<ImRect>& out_char_rects) // Phase 5: Output parameter for char rects
+{
+    out_start_index = -1;
+    out_end_index = -1;
+    out_char_rects.clear(); // Phase 5: Clear output vector
+    if (!text || text[0] == '\0' || wrap_width <= 0) {
+        return false;
+    }
+
+    // Basic check: If the selection rectangle is invalid, return false
+    if (selection_rect_min.x >= selection_rect_max.x || selection_rect_min.y >= selection_rect_max.y) {
+        return false;
+    }
+
+    ImGuiContext& g = *GImGui;
+    // Use FontSize directly for height calculation, as TextWrapped doesn't add ItemSpacing.y vertically between lines itself.
+    // Line spacing is handled by the cursor advancement during layout.
+    const float line_height = g.FontSize; // Use font size as the primary line height determinant
+    const float line_spacing = g.Style.ItemSpacing.y; // Get vertical spacing between lines/widgets
+
+    ImVec2 cursor_pos = selectable_min;
+    int text_len = static_cast<int>(strlen(text));
+    // std::vector<ImRect> char_rects; // Phase 5: Removed, using out_char_rects instead
+    out_char_rects.reserve(text_len); // Phase 5: Reserve space in the output vector
+
+    int current_char_index = 0;
+    const char* current_char_ptr = text;
+    const char* text_end = text + text_len;
+
+    // --- Simulate text layout and store character bounding boxes ---
+    while (current_char_ptr < text_end) {
+        // Correctly advance to the next UTF-8 character
+        unsigned int codepoint; // To store the decoded Unicode codepoint.
+        int char_byte_count = ImTextCharFromUtf8(&codepoint, current_char_ptr, text_end);
+        const char* next_char_ptr;
+
+        if (char_byte_count > 0) {
+            // Successfully decoded a UTF-8 character.
+            next_char_ptr = current_char_ptr + char_byte_count;
+            // Ensure next_char_ptr does not exceed text_end.
+            // ImTextCharFromUtf8 is expected to respect text_end, so char_byte_count should be appropriate.
+            // This check is an additional safeguard.
+            if (next_char_ptr > text_end) {
+                 next_char_ptr = text_end;
+            }
+        } else {
+            // ImTextCharFromUtf8 returned 0 or a non-positive value, indicating:
+            // - End of input string (e.g., *current_char_ptr == '\0' and current_char_ptr < text_end)
+            // - Invalid UTF-8 sequence
+            // - current_char_ptr >= text_end (though the outer loop `while (current_char_ptr < text_end)` should prevent this)
+            // In such cases, advance by one byte to ensure progress and prevent infinite loops.
+            next_char_ptr = current_char_ptr + 1;
+            // Final clamp to ensure we absolutely do not go past text_end.
+            if (next_char_ptr > text_end) {
+                next_char_ptr = text_end;
+            }
+        }
+
+        // Calculate size of the current character
+        // Use CalcTextSize without wrapping for individual characters.
+        ImVec2 char_size = ImGui::CalcTextSize(current_char_ptr, next_char_ptr, false, 0.0f);
+
+        // Handle line wrapping *before* placing the character
+        // Check if this character *would* exceed the wrap width, but only if it's not the first char on the line.
+        if (cursor_pos.x > selectable_min.x && (cursor_pos.x + char_size.x) > (selectable_min.x + wrap_width)) {
+            cursor_pos.x = selectable_min.x;
+            // Advance Y by font size + spacing for the new line
+            cursor_pos.y += line_height; // Corrected: ItemSpacing.y is not added between wrapped lines of the same text block
+        }
+
+        // Store the bounding box for this character
+        // The height of the box should be the line height (FontSize)
+        ImRect char_rect = ImRect(cursor_pos, ImVec2(cursor_pos.x + char_size.x, cursor_pos.y + line_height));
+        out_char_rects.push_back(char_rect); // Phase 5: Add to output vector
+
+        // Advance cursor position for the next character horizontally
+        cursor_pos.x += char_size.x;
+
+        // Move to the next character in the input string
+        current_char_ptr = next_char_ptr;
+        current_char_index++;
+    }
+
+    // --- Find start and end indices based on selection rectangle overlap ---
+    int first_intersecting_idx = -1;
+    int last_intersecting_idx = -1;
+
+    for (int k = 0; k < out_char_rects.size(); ++k) { // Phase 5: Iterate using out_char_rects
+        // Check for intersection between character rect and selection rect
+        // Use a slightly expanded check vertically to be more lenient with mouse Y position
+        ImRect selection_imrect(selection_rect_min, selection_rect_max);
+        if (out_char_rects[k].Overlaps(selection_imrect)) { // Phase 5: Check using out_char_rects
+             if (first_intersecting_idx == -1) {
+                first_intersecting_idx = k; // Record the first character that overlaps
+            }
+            last_intersecting_idx = k; // Always update to the last character that overlaps
+        }
+    }
+
+    // If any intersection was found
+    if (first_intersecting_idx != -1) {
+        out_start_index = first_intersecting_idx;
+        // The end index should be *after* the last selected character for substr
+        out_end_index = last_intersecting_idx + 1;
+        return true; // Indicate success
+    }
+
+    // If no direct overlap, consider finding the closest character (more complex, omitted for now)
+    // For instance, find the character whose center is closest to selection_rect_min/max.
+
+    return false; // No overlap found
+}
+// --- End Helper Function ---
+
 
 int main(int, char**) {
     // --- Database Initialization (Issue #18 DB Persistence) ---
@@ -241,41 +381,170 @@ int main(int, char**) {
            ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
        }
 
-       // Iterate over HistoryMessage objects (Issue #8 Refactor / Issue #18 Color Fix)
-       for (const auto& message : output_history) {
-           std::string display_text; // Temporary buffer for formatted text
+       // --- Selection State (Issue #26 / Phase 3 Update) ---
+       static bool is_selecting = false;
+       static int selecting_message_index = -1;
+       static ImVec2 selection_start_pos; // Store where selection drag started
+       static int selection_start_char_index = -1; // Index of the first selected character
+       static int selection_end_char_index = -1;   // Index of the character AFTER the last selected one
 
+       // Iterate over HistoryMessage objects (Issue #8 Refactor / Issue #18 Color Fix / Issue #26 Wrap+Select Fix)
+       for (int i = 0; i < output_history.size(); ++i) {
+           const auto& message = output_history[i];
+           std::string display_text;
+           ImVec4 text_color = ImGui::GetStyleColorVec4(ImGuiCol_Text); // Default color
+           bool use_color = false;
+
+           // Determine text and color based on message type
            if (message.type == MessageType::USER_INPUT) {
-               ImVec4 color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
-               // Format text before passing to TextColored
+               text_color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
                display_text = "User: " + message.content;
-               ImGui::PushStyleColor(ImGuiCol_Text, color); // Push color for Selectable highlighting
-               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-                   ImGui::SetClipboardText(display_text.c_str());
-               }
-               ImGui::PopStyleColor(); // Pop color after Selectable
+               use_color = true;
            } else if (message.type == MessageType::STATUS) {
-               ImVec4 color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
-               // Format text before passing to TextColored
+               text_color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
                display_text = "[STATUS] " + message.content;
-               ImGui::PushStyleColor(ImGuiCol_Text, color); // Push color for Selectable highlighting
-               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-                   ImGui::SetClipboardText(display_text.c_str());
-               }
-               ImGui::PopStyleColor(); // Pop color after Selectable
-           } else { // LLM_RESPONSE or ERROR - use default theme text color and wrapping
+               use_color = true;
+           } else { // LLM_RESPONSE or ERROR
                if (message.type == MessageType::ERROR) {
                    display_text = "ERROR: " + message.content;
                } else {
                    display_text = message.content;
                }
-               // Use TextWrapped for automatic wrapping and default theme color
-               // Selectable still works with TextWrapped content if needed for copy
-               ImGui::PushTextWrapPos(ImGui::GetContentRegionAvail().x); // Enable wrapping
-               if (ImGui::Selectable(display_text.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick)) {
-                   ImGui::SetClipboardText(display_text.c_str());
+               // Use default text color (already set)
+           }
+
+           // Calculate selectable height based on wrapped text
+           float wrap_width = ImGui::GetContentRegionAvail().x;
+           ImVec2 text_size = ImGui::CalcTextSize(display_text.c_str(), NULL, false, wrap_width);
+           // Use text_size.y directly, Selectable doesn't need extra FramePadding like InputTextMultiline
+           float calculated_height = text_size.y;
+            // Add a minimum height to prevent zero-height selectables for empty messages
+           if (calculated_height < ImGui::GetTextLineHeight()) {
+               calculated_height = ImGui::GetTextLineHeight();
+           }
+
+
+           // Create a unique ID for the selectable
+           std::string selectable_id = "##msg_" + std::to_string(i);
+
+           // Store cursor position before selectable to position text later
+           ImVec2 text_pos = ImGui::GetCursorScreenPos();
+
+           // Render the selectable area
+           ImGui::Selectable(selectable_id.c_str(),
+                             is_selecting && selecting_message_index == i, // Highlight if it's the one being selected
+                             ImGuiSelectableFlags_AllowItemOverlap,        // Allow text to be drawn over it
+                             ImVec2(wrap_width, calculated_height));
+
+           // --- Input Handling for Selection (Phase 1: Drag Detection) ---
+           if (ImGui::IsItemHovered()) {
+               // Start selection on drag *within* this selectable
+               if (ImGui::IsMouseDragging(0) && !is_selecting) { // Start drag only if not already selecting
+                   is_selecting = true;
+                   selecting_message_index = i;
+                   selection_start_pos = ImGui::GetMousePos(); // Record start position
+                   selection_start_char_index = -1; // Reset indices on new selection start
+                   selection_end_char_index = -1;
+                   // Prevent parent window scroll while dragging *within* the selectable
+                   ImGui::SetScrollY(ImGui::GetScrollY());
                }
-               ImGui::PopTextWrapPos();
+           }
+
+           // Stop selection on mouse release (anywhere)
+           if (!ImGui::IsMouseDown(0) && is_selecting) {
+               // --- Clipboard Copy Logic (Phase 3) ---
+               if (selecting_message_index == i && // Ensure this is the message that was being selected
+                   selection_start_char_index != -1 &&
+                   selection_end_char_index != -1 &&
+                   selection_start_char_index < selection_end_char_index)
+               {
+                   // Extract the substring
+                   std::string selected_substring = display_text.substr(
+                       selection_start_char_index,
+                       selection_end_char_index - selection_start_char_index
+                   );
+
+                   // Copy to clipboard
+                   if (!selected_substring.empty()) {
+                       ImGui::SetClipboardText(selected_substring.c_str());
+                   }
+               }
+               // --- End Clipboard Copy Logic ---
+
+               // Reset selection state *after* potential clipboard copy
+               is_selecting = false;
+               selecting_message_index = -1;
+               selection_start_char_index = -1;
+               selection_end_char_index = -1;
+           }
+           // --- End Input Handling ---
+
+           // --- Selection Rendering & Coordinate Mapping (Phase 2 & 3 / Phase 5 Update) ---
+           if (is_selecting && selecting_message_index == i) {
+               ImVec2 current_mouse_pos = ImGui::GetMousePos();
+               ImVec2 selectable_min = ImGui::GetItemRectMin(); // Bounds of the *last* item (the Selectable)
+               ImVec2 selectable_max = ImGui::GetItemRectMax();
+
+               // Determine selection rectangle corners, ensuring min is top-left and max is bottom-right
+               ImVec2 rect_min = ImVec2(std::min(selection_start_pos.x, current_mouse_pos.x),
+                                        std::min(selection_start_pos.y, current_mouse_pos.y));
+               ImVec2 rect_max = ImVec2(std::max(selection_start_pos.x, current_mouse_pos.x),
+                                        std::max(selection_start_pos.y, current_mouse_pos.y));
+
+               // Clamp the selection rectangle to the bounds of the current selectable item
+               rect_min.x = std::max(rect_min.x, selectable_min.x);
+               rect_min.y = std::max(rect_min.y, selectable_min.y);
+               rect_max.x = std::min(rect_max.x, selectable_max.x);
+               rect_max.y = std::min(rect_max.y, selectable_max.y);
+
+               // Only draw and map if the clamped rectangle is valid (min < max)
+               if (rect_min.x < rect_max.x && rect_min.y < rect_max.y) {
+                   // Phase 5: Declare vector to store character rects for this message
+                   std::vector<ImRect> current_char_rects;
+
+                   // --- Coordinate Mapping (Phase 3 / Phase 5 Update) ---
+                   // Call the helper function to map screen coords to text indices AND get char rects
+                   bool indices_found = MapScreenCoordsToTextIndices(
+                       display_text.c_str(),
+                       wrap_width,
+                       selectable_min, // Pass the top-left corner of the selectable
+                       rect_min,       // Pass the clamped selection rectangle
+                       rect_max,
+                       selection_start_char_index, // Update state variables
+                       selection_end_char_index,
+                       current_char_rects);        // Phase 5: Get char rects
+                   // --- End Coordinate Mapping ---
+
+                   // --- Selection Rendering (Phase 5: Per-Character Highlighting) ---
+                   if (indices_found && selection_start_char_index != -1 && selection_end_char_index != -1 && selection_start_char_index < selection_end_char_index) {
+                       ImDrawList* draw_list = ImGui::GetForegroundDrawList(); // Draw on top
+                       for (int k = selection_start_char_index; k < selection_end_char_index; ++k) {
+                           // Ensure index is valid before accessing (safety check)
+                           if (k >= 0 && k < current_char_rects.size()) {
+                                draw_list->AddRectFilled(current_char_rects[k].Min, current_char_rects[k].Max, ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
+                           }
+                       }
+                   }
+                   // --- End Selection Rendering ---
+
+               } else {
+                    // If the rectangle becomes invalid (e.g., mouse moved outside), reset indices
+                    selection_start_char_index = -1;
+                    selection_end_char_index = -1;
+               }
+           }
+           // --- End Selection Rendering & Coordinate Mapping ---
+
+           // Render the text *over* the selectable area
+           ImGui::SetCursorScreenPos(text_pos); // Reset cursor to where it was before the Selectable
+           if (use_color) {
+               ImGui::PushStyleColor(ImGuiCol_Text, text_color);
+           }
+           ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrap_width); // Ensure TextWrapped respects the width
+           ImGui::TextWrapped("%s", display_text.c_str());
+           ImGui::PopTextWrapPos();
+           if (use_color) {
+               ImGui::PopStyleColor();
            }
        }
        // Auto-scroll based on the flag set by processDisplayQueue
