@@ -16,6 +16,10 @@ if [ ! -z "$OPENROUTER_API_KEY" ]; then
   CMAKE_OPENROUTER_API_KEY="-DOPENROUTER_API_KEY=$OPENROUTER_API_KEY"
 fi
 
+# Initialize and update submodules
+echo "Updating submodules..."
+git submodule update --init --recursive
+
 mkdir -p build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE $CMAKE_OPENROUTER_API_KEY
