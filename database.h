@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <optional> // Added for std::optional
+struct sqlite3; // Forward declaration for SQLite database handle
 
 struct Message {
     std::string role;
@@ -65,6 +66,15 @@ private:
     // Forward declaration for the Pimpl (Pointer to Implementation) idiom
     // This hides the private implementation details (like the SQLite handle)
     // from the header file, reducing compile-time dependencies.
-    struct Impl;
+    struct Impl {
+        Impl(); // Constructor
+        ~Impl(); // Destructor
+
+        sqlite3* db = nullptr; // Pointer to the SQLite database connection
+
+        // Settings management
+        void saveSetting(const std::string& key, const std::string& value);
+        std::optional<std::string> loadSetting(const std::string& key);
+    };
     std::unique_ptr<Impl> impl; // Owning pointer to the implementation object
 };
