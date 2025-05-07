@@ -75,6 +75,13 @@ private:
         // Settings management
         void saveSetting(const std::string& key, const std::string& value);
         std::optional<std::string> loadSetting(const std::string& key);
+
+        // General SQL execution
+        void exec(const std::string& sql);
+        void exec(const char* sql); // Overload for const char*
+
+        // Message insertion
+        void insertMessage(const Message& msg);
     };
     std::unique_ptr<Impl> impl; // Owning pointer to the implementation object
 };
