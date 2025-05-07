@@ -24,6 +24,7 @@ The main window displays the conversation history, user input field, and status 
 
 ## Quick Start
 
+A version of up to date wiki on this codebase can be found at [https://deepwiki.com/WiegerWolf/llm-cli](https://deepwiki.com/WiegerWolf/llm-cli)
 ### Prerequisites
 
 **Common:**
