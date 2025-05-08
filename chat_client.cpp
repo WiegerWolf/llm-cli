@@ -210,6 +210,16 @@ std::vector<ModelData> ChatClient::parseModelsFromAPIResponse(const std::string&
             ui.displayError("Failed to parse models: 'data' field not found or not an array in API response. Response: " + api_response.substr(0, 500));
         }
     } catch (const nlohmann::json::parse_error& e) {
+// Handle the JSON parsing error
+        ui.displayError("JSON parsing error in parseModelsFromAPIResponse: " + std::string(e.what()));
+        // parseModelsFromAPIResponse should return std::vector<ModelData>
+        return {}; // Return an empty vector in case of error
+    } // Closing brace for the catch block
+
+    // Assuming 'parsed_models' is the variable holding the successfully parsed models
+    // from the try block of parseModelsFromAPIResponse. This is the normal return path.
+    return parsed_models;
+} // Closing brace for the parseModelsFromAPIResponse function
 void ChatClient::cacheModelsToDB(const std::vector<ModelData>& models) {
     if (models.empty()) {
         ui.displayStatus("No models to cache.");
