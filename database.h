@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <optional> // Added for std::optional
+#include "model_types.h" // For ModelData struct
 struct sqlite3; // Forward declaration for SQLite database handle
 
 struct Message {
@@ -13,23 +14,7 @@ struct Message {
     std::optional<std::string> model_id;
 };
 
-// Represents an AI model's data
-struct Model {
-    std::string id;
-    std::string name;
-    std::string description;
-    int context_length;
-    std::string pricing_prompt;
-    std::string pricing_completion;
-    std::string architecture_input_modalities; // JSON string
-    std::string architecture_output_modalities; // JSON string
-    std::string architecture_tokenizer;
-    int top_provider_is_moderated; // 0 or 1 (boolean)
-    std::string per_request_limits; // JSON string
-    std::string supported_parameters; // JSON string
-    long long created_at_api; // UNIX Timestamp (INTEGER)
-    std::string last_updated_db; // Timestamp string (YYYY-MM-DD HH:MM:SS), retrieved from DB
-};
+// Model struct is now ModelData, defined in model_types.h
 
 class PersistenceManager {
 public:
@@ -45,10 +30,14 @@ public:
     std::vector<Message> getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit = 50);
 
     // Model specific operations
-    void saveOrUpdateModel(const Model& model);
-    std::optional<Model> getModelById(const std::string& id);
-    std::vector<Model> getAllModels(bool orderByName = true);
-    void clearAllModels();
+    // void saveOrUpdateModel(const Model& model); // Replaced by insertOrUpdateModel
+    // std::optional<Model> getModelById(const std::string& id); // To be updated or removed if not used by new logic
+    // std::vector<Model> getAllModels(bool orderByName = true); // Replaced by getAllModels()
+    // void clearAllModels(); // Replaced by clearModelsTable()
+
+    void clearModelsTable();
+    void insertOrUpdateModel(const ModelData& model);
+    std::vector<ModelData> getAllModels(); // New signature
 
     // Transaction management
     void beginTransaction();

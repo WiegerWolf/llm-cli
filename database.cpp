@@ -384,6 +384,7 @@ std::vector<Message> PersistenceManager::getHistoryRange(const std::string& star
     return history_range;
 }
 
+/*
 void PersistenceManager::saveOrUpdateModel(const Model& model) {
     const char* sql = "INSERT OR REPLACE INTO models (id, name, description, context_length, pricing_prompt, pricing_completion, architecture_input_modalities, architecture_output_modalities, architecture_tokenizer, top_provider_is_moderated, per_request_limits, supported_parameters, created_at_api) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     sqlite3_stmt* stmt = nullptr;
@@ -491,8 +492,68 @@ std::vector<Model> PersistenceManager::getAllModels(bool orderByName) {
     return models;
 }
 
-void PersistenceManager::clearAllModels() {
+void PersistenceManager::clearAllModels() { // Renamed to clearModelsTable
     impl->exec("DELETE FROM models;");
+}
+*/
+
+// New model methods using ModelData
+void PersistenceManager::clearModelsTable() {
+    impl->exec("DELETE FROM models;");
+}
+
+void PersistenceManager::insertOrUpdateModel(const ModelData& model) {
+    // Using only id and name as per current ModelData definition
+    const char* sql = "INSERT INTO models (id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name;";
+    sqlite3_stmt* stmt = nullptr;
+
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error("Failed to prepare insertOrUpdateModel statement: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+    auto stmt_guard = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>{stmt, sqlite3_finalize};
+
+    sqlite3_bind_text(stmt, 1, model.id.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, model.name.c_str(), -1, SQLITE_STATIC);
+    // If ModelData is expanded, bind other parameters here. E.g.:
+    // sqlite3_bind_int(stmt, 3, model.context_length);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        throw std::runtime_error("insertOrUpdateModel failed: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+}
+
+std::vector<ModelData> PersistenceManager::getAllModels() {
+    // Using only id and name as per current ModelData definition
+    const char* sql = "SELECT id, name FROM models ORDER BY name ASC;"; // Added ORDER BY name ASC
+    sqlite3_stmt* stmt = nullptr;
+    std::vector<ModelData> models;
+
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error("Failed to prepare getAllModels (ModelData) statement: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+    auto stmt_guard = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>{stmt, sqlite3_finalize};
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ModelData model;
+        const unsigned char* id_text = sqlite3_column_text(stmt, 0);
+        model.id = id_text ? reinterpret_cast<const char*>(id_text) : "";
+        
+        const unsigned char* name_text = sqlite3_column_text(stmt, 1);
+        model.name = name_text ? reinterpret_cast<const char*>(name_text) : "";
+        
+        // If ModelData is expanded, retrieve other columns here. E.g.:
+        // model.context_length = sqlite3_column_int(stmt, 2);
+
+        if (!model.id.empty()) { // Basic validation
+            models.push_back(model);
+        }
+    }
+    
+    if (sqlite3_errcode(impl->db) != SQLITE_OK && sqlite3_errcode(impl->db) != SQLITE_DONE) {
+         throw std::runtime_error("getAllModels (ModelData) failed during step: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+
+    return models;
 }
 
 // Selected model ID management

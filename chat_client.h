@@ -1,5 +1,5 @@
 #pragma once
-#include <stop_token> // Added for cooperative cancellation
+// #include <stop_token> // Removed for now due to potential C++20 incompatibility
 
 #include <optional>
 #include <string>
@@ -8,6 +8,10 @@
 #include "database.h" // Includes Message struct
 #include "tools.h"    // Includes ToolManager
 #include "ui_interface.h" // Include the UI abstraction
+#include "config.h"       // For OPENROUTER_API_URL_MODELS and DEFAULT_MODEL_ID
+#include "model_types.h"  // For ModelData struct
+#include <thread>         // For std::thread
+#include <atomic>         // For std::atomic
 
 // Forward declaration needed by ToolManager::execute_tool
 class ChatClient;
@@ -20,6 +24,17 @@ private:
     UserInterface& ui; // Add reference to the UI
     std::string api_base = "https://openrouter.ai/api/v1/chat/completions";
     std::string model_name = "openai/gpt-4.1-nano";
+
+    // For model initialization
+    std::thread model_init_thread;
+    std::atomic<bool> models_initialized_successfully{false};
+    std::atomic<bool> model_initialization_attempted{false};
+
+    // Methods for model fetching, parsing, and caching
+    std::string fetchModelsFromAPI();
+    std::vector<ModelData> parseModelsFromAPIResponse(const std::string& api_response);
+    void cacheModelsToDB(const std::vector<ModelData>& models);
+    void initializeModels(); // Orchestrates fetching, parsing, and caching
 
     // Prompts the user for input via the UI interface. Returns nullopt if UI signals exit/shutdown.
     std::optional<std::string> promptUserInput();
@@ -61,6 +76,6 @@ public:
     std::string makeApiCall(const std::vector<Message>& context, bool use_tools = false);
 
     // Main application loop
-    // Main application loop, now accepts a stop_token for cooperative cancellation
-    void run(std::stop_token st);
+    // Main application loop
+    void run(); // Removed std::stop_token for now
 };

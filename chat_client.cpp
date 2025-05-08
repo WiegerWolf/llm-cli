@@ -1,6 +1,7 @@
 #include "chat_client.h"
-#include <stop_token> // Added for cooperative cancellation
+// #include <stop_token> // Removed for now
 #include "ui_interface.h" // Include UI interface
+#include "config.h"       // For API URLs, DEFAULT_MODEL_ID
 #include <string>
 #include <vector>
 #include <curl/curl.h>
@@ -10,7 +11,6 @@
 #include <unordered_set>   // To track valid tool_call IDs during context reconstruction
 #include "database.h" // For PersistenceManager and Message
 #include "tools.h"    // For ToolManager
-#include "config.h"   // For OPENROUTER_API_KEY
 #include "curl_utils.h" // Include the shared callback
 
 static int synthetic_tool_call_counter = 0;
@@ -35,9 +35,210 @@ ChatClient::ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref) :
     toolManager(),     // Initialize ToolManager
     ui(ui_ref)         // Initialize the UI reference
 {
-    // Constructor body (if any) - currently empty
+    // Constructor body
+    // Launch model initialization in a separate thread
+    if (model_init_thread.joinable()) {
+        model_init_thread.join();
+    }
+    model_init_thread = std::thread(&ChatClient::initializeModels, this);
+    model_init_thread.detach(); // Detach to run in background
 }
 
+// --- Model Initialization Methods ---
+
+void ChatClient::initializeModels() {
+    model_initialization_attempted = true;
+    ui.displayStatus("Initializing models...");
+
+    std::string api_response_str = fetchModelsFromAPI();
+
+    if (api_response_str.empty()) {
+        ui.displayStatus("Failed to fetch models from API. Attempting to load from cache...");
+        std::vector<ModelData> cached_models = db.getAllModels(); // Needs to be implemented in PersistenceManager
+
+        if (cached_models.empty()) {
+            ui.displayError("Failed to load models from cache. Falling back to default model: " + std::string(DEFAULT_MODEL_ID));
+            this->model_name = DEFAULT_MODEL_ID; // Ensure model_name is a member that can be set
+            models_initialized_successfully = false;
+        } else {
+            ui.displayStatus("Successfully loaded " + std::to_string(cached_models.size()) + " models from cache.");
+            // Optional: Populate an internal list of available models from cached_models
+            // For now, we assume the first cached model or a default logic will pick one.
+            // If a specific model was previously selected and is in cache, that would be ideal.
+            // For simplicity, if DEFAULT_MODEL_ID is in cache, use it, otherwise, maybe the first one.
+            bool default_found = false;
+            for(const auto& model : cached_models) {
+                if (model.id == DEFAULT_MODEL_ID) {
+                    this->model_name = DEFAULT_MODEL_ID;
+                    default_found = true;
+                    break;
+                }
+            }
+            if (!default_found && !cached_models.empty()) {
+                 this->model_name = cached_models[0].id; // Fallback to the first cached model
+                 ui.displayStatus("Default model not in cache. Using first cached model: " + this->model_name);
+            } else if (cached_models.empty()) { // Should not happen due to outer if, but defensive
+                 this->model_name = DEFAULT_MODEL_ID;
+            }
+            models_initialized_successfully = true;
+        }
+    } else {
+        ui.displayStatus("Fetched model data from API. Parsing...");
+        std::vector<ModelData> fetched_models = parseModelsFromAPIResponse(api_response_str);
+
+        if (fetched_models.empty()) {
+            ui.displayError("Fetched models from API, but failed to parse or no models found. Check API response format. Falling back to default model.");
+            // Consider fallback to cache here as well, or just use default.
+            // For now, using default as per plan if parse fails.
+            this->model_name = DEFAULT_MODEL_ID;
+            models_initialized_successfully = false;
+        } else {
+            ui.displayStatus("Successfully parsed " + std::to_string(fetched_models.size()) + " models from API. Caching to DB...");
+            cacheModelsToDB(fetched_models);
+            ui.displayStatus("Successfully fetched and cached models from API.");
+            // Optional: Populate internal list of available models
+            // Set current model (e.g., to default if available, or first fetched)
+            bool default_found = false;
+            for(const auto& model : fetched_models) {
+                if (model.id == DEFAULT_MODEL_ID) {
+                    this->model_name = DEFAULT_MODEL_ID;
+                    default_found = true;
+                    break;
+                }
+            }
+            if (!default_found && !fetched_models.empty()) {
+                 this->model_name = fetched_models[0].id; // Fallback to the first fetched model
+                 ui.displayStatus("Default model not among fetched. Using first fetched model: " + this->model_name);
+            } else if (fetched_models.empty()) { // Should not happen
+                 this->model_name = DEFAULT_MODEL_ID;
+            }
+            models_initialized_successfully = true;
+        }
+    }
+    if (models_initialized_successfully) {
+        ui.displayStatus("Model initialization completed. Current model: " + this->model_name);
+    } else {
+        ui.displayError("Model initialization failed. Current model: " + this->model_name);
+    }
+}
+
+std::string ChatClient::fetchModelsFromAPI() {
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        ui.displayError("Failed to initialize CURL for fetching models.");
+        return "";
+    }
+    auto curl_guard = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>{curl, curl_easy_cleanup};
+
+    std::string api_key;
+    try {
+        api_key = get_openrouter_api_key();
+    } catch (const std::runtime_error& e) {
+        ui.displayError("Failed to get API key for fetching models: " + std::string(e.what()));
+        return "";
+    }
+
+    struct curl_slist* headers = nullptr;
+    auto headers_guard = std::unique_ptr<struct curl_slist, decltype(&curl_slist_free_all)>{nullptr, curl_slist_free_all};
+
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+    headers = curl_slist_append(headers, "HTTP-Referer: https://llm-cli.tsatsin.com"); // As per plan's example headers
+    headers = curl_slist_append(headers, "X-Title: LLM-cli"); // As per plan's example headers
+    // Content-Type is not typically needed for a GET request without a body.
+    headers_guard.reset(headers);
+
+    std::string response_buffer;
+    const char* api_url = OPENROUTER_API_URL_MODELS;
+
+    curl_easy_setopt(curl, CURLOPT_URL, api_url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    // GET is the default, but can be explicit: curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback); // From curl_utils.h
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
+    // It's good practice to set a timeout
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L); // 30 seconds timeout
+
+    CURLcode res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+        ui.displayError("API request to fetch models failed: " + std::string(curl_easy_strerror(res)));
+        return "";
+    }
+
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    if (http_code != 200) {
+        ui.displayError("API request to fetch models returned HTTP status " + std::to_string(http_code) + ". Response: " + response_buffer);
+        return ""; // Return empty on non-200 status
+    }
+
+    return response_buffer;
+}
+std::vector<ModelData> ChatClient::parseModelsFromAPIResponse(const std::string& api_response) {
+    std::vector<ModelData> parsed_models;
+    if (api_response.empty()) {
+        ui.displayError("API response string is empty, cannot parse models.");
+        return parsed_models;
+    }
+
+    try {
+        nlohmann::json j = nlohmann::json::parse(api_response);
+
+        if (j.contains("data") && j["data"].is_array()) {
+            for (const auto& model_obj : j["data"]) {
+                ModelData model_item;
+                model_item.id = model_obj.value("id", "");
+                // Fallback name to id if 'name' is not present or empty
+                model_item.name = model_obj.value("name", "");
+                if (model_item.name.empty()) {
+                    model_item.name = model_item.id;
+                }
+                
+                // Example of extracting other fields (add as needed based on ModelData struct)
+                // model_item.context_length = model_obj.value("context_length", 0);
+                // if (model_obj.contains("pricing") && model_obj["pricing"].is_object()) {
+                //     model_item.input_cost_per_mtok = std::stod(model_obj["pricing"].value("input", "0.0"));
+                //     model_item.output_cost_per_mtok = std::stod(model_obj["pricing"].value("output", "0.0"));
+                // }
+
+
+                if (!model_item.id.empty()) {
+                    parsed_models.push_back(model_item);
+                }
+            }
+        } else {
+            ui.displayError("Failed to parse models: 'data' field not found or not an array in API response. Response: " + api_response.substr(0, 500));
+        }
+    } catch (const nlohmann::json::parse_error& e) {
+void ChatClient::cacheModelsToDB(const std::vector<ModelData>& models) {
+    if (models.empty()) {
+        ui.displayStatus("No models to cache.");
+        return;
+    }
+    try {
+        ui.displayStatus("Clearing existing models table...");
+        db.clearModelsTable(); // This method needs to be implemented in PersistenceManager
+
+        ui.displayStatus("Caching " + std::to_string(models.size()) + " models to database...");
+        for (const ModelData& model_item : models) {
+            if (model_item.id.empty()) {
+                ui.displayError("Skipping model with empty ID during caching.");
+                continue;
+            }
+            db.insertOrUpdateModel(model_item); // This method needs to be implemented in PersistenceManager
+        }
+        ui.displayStatus("Finished caching models to DB.");
+    } catch (const std::exception& e) {
+        ui.displayError("Error during model caching: " + std::string(e.what()));
+        // Depending on the error, we might want to indicate that the cache could be incomplete.
+    }
+}
+        ui.displayError("Failed to parse models API response JSON: " + std::string(e.what()) + ". Response snippet: " + api_response.substr(0, 500));
+    } catch (const std::exception& e) {
+        ui.displayError("An unexpected error occurred during model parsing: " + std::string(e.what()));
+    }
+    return parsed_models;
+}
 // --- ChatClient Method Implementations ---
 
 std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool use_tools) {
@@ -215,8 +416,8 @@ std::string ChatClient::executeAndPrepareToolResult(
 }
 
 
-// Accept the stop_token for cooperative cancellation
-void ChatClient::run(std::stop_token st) {
+// Main application loop
+void ChatClient::run() { // Removed std::stop_token
     db.cleanupOrphanedToolMessages();
     std::string initial_message = "Chatting with " + this->model_name + " - Type your message";
     if (!ui.isGuiMode()) {
@@ -225,15 +426,9 @@ void ChatClient::run(std::stop_token st) {
     initial_message += "\n";
     ui.displayOutput(initial_message); // Use UI, message adapted for CLI/GUI
     while (true) {
-        // Check for stop request at the beginning of each loop iteration
-        if (st.stop_requested()) {
-            ui.displayStatus("Shutdown requested, exiting run loop..."); // Inform UI
-            break; // Exit the loop cleanly
-        }
+        // Stop request check removed
         try {
-            // Pass the stop token to promptUserInput as well, in case it needs to check
-            // (Assuming promptUserInput might be modified later to accept it)
-            auto input_opt = promptUserInput(); // TODO: Consider passing 'st' here if promptUserInput becomes blocking
+            auto input_opt = promptUserInput();
             if (!input_opt) break;          // Exit loop if UI signals shutdown (e.g., Ctrl+D or window close)
             if (input_opt->empty()) continue; // Ignore empty input lines
             processTurn(*input_opt);        // Process the user's input for this turn
