@@ -11,7 +11,7 @@ struct Message {
     std::string content;
     int id = 0;
     std::string timestamp; // Added timestamp field
-    std::optional<std::string> model_id;
+    std::string model_id; // <-- New field (changed from optional)
 };
 
 // Model struct is now ModelData, defined in model_types.h
@@ -22,7 +22,7 @@ public:
     ~PersistenceManager();
     
     void saveUserMessage(const std::string& content);
-    void saveAssistantMessage(const std::string& content);
+    void saveAssistantMessage(const std::string& content, const std::string& model_id);
     void saveToolMessage(const std::string& content); // Added for tool results
     void cleanupOrphanedToolMessages(); // Added to clean up orphaned tool messages
     std::vector<Message> getContextHistory(size_t max_pairs = 10); // Gets recent context for API call
@@ -38,6 +38,7 @@ public:
     void clearModelsTable();
     void insertOrUpdateModel(const ModelData& model);
     std::vector<ModelData> getAllModels(); // New signature
+    std::optional<std::string> getModelNameById(const std::string& model_id); // For GUI display
 
     // Transaction management
     void beginTransaction();

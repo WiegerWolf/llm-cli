@@ -34,7 +34,8 @@ PersistenceManager::Impl::Impl() : db(nullptr) { // Initialize db pointer
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             role TEXT CHECK(role IN ('system','user','assistant', 'tool')),
-            content TEXT
+            content TEXT,
+            model_id TEXT -- <-- New column
         );
 
         CREATE TABLE IF NOT EXISTS settings (
@@ -134,8 +135,9 @@ void PersistenceManager::Impl::insertMessage(const Message& msg) {
     // Bind the role and content parameters.
     sqlite3_bind_text(stmt, 1, msg.role.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, msg.content.c_str(), -1, SQLITE_STATIC);
-    if (msg.model_id.has_value()) {
-        sqlite3_bind_text(stmt, 3, msg.model_id.value().c_str(), -1, SQLITE_STATIC);
+    // Bind model_id
+    if (!msg.model_id.empty()) {
+        sqlite3_bind_text(stmt, 3, msg.model_id.c_str(), -1, SQLITE_STATIC);
     } else {
         sqlite3_bind_null(stmt, 3);
     }
@@ -216,16 +218,15 @@ void PersistenceManager::saveUserMessage(const std::string& content) {
     Message msg;
     msg.role = "user";
     msg.content = content;
-    // msg.id is auto-incremented by DB
-    // msg.timestamp is defaulted by DB
-    // msg.model_id defaults to std::nullopt
+    msg.model_id = ""; // Empty model_id for user messages
     impl->insertMessage(msg);
 }
 
-void PersistenceManager::saveAssistantMessage(const std::string& content) {
+void PersistenceManager::saveAssistantMessage(const std::string& content, const std::string& model_id) {
     Message msg;
     msg.role = "assistant";
     msg.content = content;
+    msg.model_id = model_id;
     impl->insertMessage(msg);
 }
 
@@ -245,6 +246,7 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
     Message msg;
     msg.role = "tool";
     msg.content = content;
+    msg.model_id = ""; // Empty model_id for tool messages
     impl->insertMessage(msg);
 }
 
@@ -293,7 +295,7 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
         if (model_id_text) {
             system_msg.model_id = reinterpret_cast<const char*>(model_id_text);
         } else {
-            system_msg.model_id = std::nullopt;
+            system_msg.model_id = ""; // Assign empty string if null
         }
         history.push_back(system_msg);
     }
@@ -327,7 +329,7 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
         if (model_id_text) {
             msg.model_id = reinterpret_cast<const char*>(model_id_text);
         } else {
-            msg.model_id = std::nullopt;
+            msg.model_id = ""; // Assign empty string if null
         }
         recent_messages.push_back(msg);
     }
@@ -340,7 +342,7 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
         default_system_msg.content = "You are a helpful assistant.";
         default_system_msg.id = 0; // Or some other appropriate default or leave to DB
         default_system_msg.timestamp = ""; // Or a current timestamp
-        default_system_msg.model_id = std::nullopt;
+        default_system_msg.model_id = ""; // Assign empty string
         history.push_back(default_system_msg);
     }
     
@@ -377,7 +379,7 @@ std::vector<Message> PersistenceManager::getHistoryRange(const std::string& star
         if (model_id_text) {
             msg.model_id = reinterpret_cast<const char*>(model_id_text);
         } else {
-            msg.model_id = std::nullopt;
+            msg.model_id = ""; // Assign empty string if null
         }
         history_range.push_back(msg);
     }
@@ -535,26 +537,59 @@ std::vector<ModelData> PersistenceManager::getAllModels() {
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         ModelData model;
-        const unsigned char* id_text = sqlite3_column_text(stmt, 0);
-        model.id = id_text ? reinterpret_cast<const char*>(id_text) : "";
-        
+        model.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
         const unsigned char* name_text = sqlite3_column_text(stmt, 1);
-        model.name = name_text ? reinterpret_cast<const char*>(name_text) : "";
-        
-        // If ModelData is expanded, retrieve other columns here. E.g.:
-        // model.context_length = sqlite3_column_int(stmt, 2);
-
-        if (!model.id.empty()) { // Basic validation
-            models.push_back(model);
-        }
+        model.name = name_text ? reinterpret_cast<const char*>(name_text) : model.id; // Fallback to ID if name is NULL
+        // If ModelData is expanded, retrieve other parameters here.
+        models.push_back(model);
     }
-    
+
     if (sqlite3_errcode(impl->db) != SQLITE_OK && sqlite3_errcode(impl->db) != SQLITE_DONE) {
          throw std::runtime_error("getAllModels (ModelData) failed during step: " + std::string(sqlite3_errmsg(impl->db)));
     }
-
     return models;
+} // <<< --- ADDED CLOSING BRACE FOR getAllModels()
+
+// Method to get model name by ID (for GUI display, placeholder)
+std::optional<std::string> PersistenceManager::getModelNameById(const std::string& model_id) {
+    // Placeholder implementation:
+    // In a real scenario, this would query the 'models' table:
+    // const char* sql = "SELECT name FROM models WHERE id = ?";
+    // sqlite3_stmt* stmt;
+    // if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    //     sqlite3_bind_text(stmt, 1, model_id.c_str(), -1, SQLITE_STATIC);
+    //     if (sqlite3_step(stmt) == SQLITE_ROW) {
+    //         const unsigned char* name = sqlite3_column_text(stmt, 0);
+    //         if (name) {
+    //             sqlite3_finalize(stmt);
+    //             return reinterpret_cast<const char*>(name);
+    //         }
+    //     }
+    //     sqlite3_finalize(stmt);
+    // }
+    // For now, as the 'models' table might not be fully populated or its exact schema for 'name'
+    // might vary, we'll return the model_id itself if it's not empty, or nullopt.
+    // This allows the GUI to at least display the ID if the name isn't found.
+    if (!model_id.empty()) {
+        // Simulate a DB lookup for a "friendly name" if available, otherwise return ID
+        // This part would be replaced by actual DB query to 'models' table
+        if (model_id == "phi3:mini") return "Phi-3 Mini";
+        if (model_id == "gpt-4-turbo") return "GPT-4 Turbo";
+        if (model_id == "claude-3-opus") return "Claude 3 Opus";
+        return model_id; // Fallback to returning the ID itself
+    }
+    return std::nullopt;
 }
+
+// Settings Management
+// (The following PersistenceManager::Impl methods for settings are defined earlier in the file)
+// void PersistenceManager::Impl::saveSetting(const std::string& key, const std::string& value) { ... }
+// std::optional<std::string> PersistenceManager::Impl::loadSetting(const std::string& key) { ... }
+
+// PersistenceManager public methods for settings
+// Stray code removed.
+// The functions getAllModels() and getModelNameById() are now correctly defined above.
+// The Settings Management section correctly follows.
 
 // Selected model ID management
 void PersistenceManager::saveSelectedModelId(const std::string& model_id) {

@@ -469,13 +469,25 @@ int main(int, char**) {
                text_color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
                display_text = "[STATUS] " + message.content;
                use_color = true;
-           } else { // LLM_RESPONSE or ERROR
-               if (message.type == MessageType::ERROR) {
-                   display_text = "ERROR: " + message.content;
-               } else {
-                   display_text = message.content;
-               }
-               // Use default text color (already set)
+           } else if (message.type == MessageType::ERROR) {
+                // Keep default text color for errors
+                display_text = "ERROR: " + message.content;
+           } else if (message.type == MessageType::LLM_RESPONSE) {
+                // Keep default text color for responses
+                std::string prefix = "Assistant: "; // Default prefix
+                // Check if model_id exists and fetch name/use ID
+                if (!message.model_id.empty()) { // Assuming HistoryMessage has model_id
+                    std::optional<std::string> model_name_opt = db_manager.getModelNameById(message.model_id);
+                    if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
+                        prefix = "Assistant (" + model_name_opt.value() + "): "; // Use model name
+                    } else {
+                        prefix = "Assistant (" + message.model_id + "): "; // Fallback to model ID
+                    }
+                }
+                display_text = prefix + message.content;
+           } else {
+                // Handle potential unknown message types gracefully
+                display_text = "[Unknown Type] " + message.content;
            }
 
            // Calculate selectable height based on wrapped text

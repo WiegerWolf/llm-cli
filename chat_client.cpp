@@ -551,7 +551,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
 
     // 1. Save the assistant's message requesting tool use
     // The content should be the raw JSON string of the message object itself
-    db.saveAssistantMessage(response_message.dump());
+    db.saveAssistantMessage(response_message.dump(), this->active_model_id);
 
     // 2. Execute all tools and collect results (without saving yet)
     std::vector<std::string> tool_result_messages; // Store JSON strings of tool messages
@@ -691,7 +691,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     }
 
     // Save the final assistant response
-    db.saveAssistantMessage(final_content);
+    db.saveAssistantMessage(final_content, this->active_model_id);
 
     // Display final response
     ui.displayOutput(final_content + "\n\n"); // Use UI for output
@@ -900,7 +900,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
 
             // Save the original assistant message containing the <function> tag.
             std::string function_block = content_str.substr(func_start, func_end + 11 - func_start); // Include </function>
-            db.saveAssistantMessage(function_block);
+            db.saveAssistantMessage(function_block, this->active_model_id);
             context = db.getContextHistory(); // Reload context including the saved message
 
             // Generate a synthetic tool_call_id for this fallback execution.
@@ -977,7 +977,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
 
             // If we successfully got a final text response:
             if (final_response_success) {
-                db.saveAssistantMessage(final_content); // Save the final assistant message
+                db.saveAssistantMessage(final_content, this->active_model_id); // Save the final assistant message
                 ui.displayOutput(final_content + "\n\n"); // Display it
                 any_executed = true; // Mark that this fallback path was successful for at least one tag
             } else {
@@ -1004,11 +1004,11 @@ void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_mes
     if (!response_message.is_null() && response_message.contains("content")) {
         if (response_message["content"].is_string()) {
             std::string txt = response_message["content"];
-            db.saveAssistantMessage(txt);
+            db.saveAssistantMessage(txt, this->active_model_id);
             ui.displayOutput(txt + "\n\n"); // Use UI for output
         } else if (!response_message["content"].is_null()) {
             std::string dumped = response_message["content"].dump();
-            db.saveAssistantMessage(dumped);
+            db.saveAssistantMessage(dumped, this->active_model_id);
             ui.displayOutput(dumped + "\n\n"); // Use UI for output
         }
     }
