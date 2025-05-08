@@ -22,7 +22,7 @@ int main() {
         client.run();
 
         cli_ui.shutdown(); // Shutdown the UI
-        cli_ui.displayOutput("\nExiting...\n"); // Use UI for final message
+        cli_ui.displayOutput("\nExiting...\n", ""); // Use UI for final message
     } catch (const std::exception& e) {
         // If UI is available, use it for errors, otherwise fallback to cerr
         try {
