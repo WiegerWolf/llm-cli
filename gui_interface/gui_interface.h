@@ -36,19 +36,18 @@ enum class ThemeType {
 };
 // --- End Theme Type Enum ---
 
-// --- Model Entry Structure (Part III GUI Changes) ---
-struct ModelEntry {
-    std::string id;
-    std::string name;
-    // Potentially other metadata if needed for display in the future
-};
-// --- End Model Entry Structure ---
-
 // Forward declaration for GLFW window handle
 struct GLFWwindow;
 
 class GuiInterface : public UserInterface {
 public:
+    // --- Model Entry Structure (Part III GUI Changes) ---
+    struct ModelEntry {
+        std::string id;
+        std::string name;
+        // Potentially other metadata if needed for display in the future
+    };
+    // --- End Model Entry Structure ---
     GuiInterface(PersistenceManager& db_manager); // Modified constructor
     virtual ~GuiInterface() override;
 
