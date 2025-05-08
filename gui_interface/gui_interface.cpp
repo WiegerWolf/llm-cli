@@ -39,9 +39,10 @@ static void glfw_error_callback(int error, const char* description) {
 // Flag to track if ImGui backends were successfully initialized
 static bool imgui_init_done = false;
 
-GuiInterface::GuiInterface() {
+GuiInterface::GuiInterface(PersistenceManager& db_manager) : db_manager_ref(db_manager) {
     // Initialize the input buffer
     input_buf[0] = '\0';
+    // current_selected_model_id will be initialized in initialize()
 }
 
 GuiInterface::~GuiInterface() {
@@ -52,6 +53,17 @@ GuiInterface::~GuiInterface() {
 }
 
 void GuiInterface::initialize() {
+    // Load selected model ID or set default
+    std::optional<std::string> loaded_model_id_opt = db_manager_ref.loadSetting("selected_model_id");
+    if (loaded_model_id_opt.has_value() && !loaded_model_id_opt.value().empty()) {
+        // Optional: Validate if loaded_model_id_opt.value() is a known/valid model ID.
+        // For now, assume any non-empty string from DB is potentially valid until models are loaded.
+        this->current_selected_model_id = loaded_model_id_opt.value();
+    } else {
+        this->current_selected_model_id = default_model_id; // default_model_id is "phi3:mini"
+        db_manager_ref.saveSetting("selected_model_id", this->default_model_id); // Persist default if none was set
+    }
+
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
         throw std::runtime_error("Failed to initialize GLFW");
@@ -624,3 +636,28 @@ void GuiInterface::processFontRebuildRequest() {
 }
 
 // --- End Font Size Control Implementation ---
+// --- Model Selection Method Implementations (Part III GUI Changes) ---
+std::vector<ModelEntry> GuiInterface::getAvailableModels() const {
+    std::vector<ModelEntry> entries;
+    std::vector<ModelData> raw_models = db_manager_ref.getAllModels(); // Corrected type
+
+    for (const auto& model_data : raw_models) {
+        ModelEntry entry;
+        entry.id = model_data.id;
+        entry.name = model_data.name;
+        entries.push_back(entry);
+    }
+    return entries;
+}
+
+void GuiInterface::setSelectedModel(const std::string& model_id) {
+    db_manager_ref.saveSetting("selected_model_id", model_id);
+    this->current_selected_model_id = model_id;
+    // Optionally, display a status message or log this change
+    // displayStatus("Selected model changed to: " + model_id);
+}
+
+std::string GuiInterface::getSelectedModelId() const {
+    return this->current_selected_model_id;
+}
+// --- End Model Selection Method Implementations ---

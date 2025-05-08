@@ -213,12 +213,13 @@ int main(int, char**) {
     }
  
     // --- GUI Initialization ---
-    GuiInterface gui_ui; // Instantiate the GUI interface AFTER DB manager
+    GuiInterface gui_ui(db_manager); // MODIFIED: Pass db_manager to constructor
     gui_ui.setInitialFontSize(initial_font_size); // Apply loaded/default font size BEFORE init
- 
+
     try {
         gui_ui.initialize(); // Initialize GLFW, ImGui, etc.
         // Theme is loaded above, before GUI init potentially uses it
+        // Model ID is loaded within gui_ui.initialize()
     } catch (const std::exception& e) {
         std::cerr << "GUI Initialization failed: " << e.what() << std::endl;
         return 1;
@@ -240,6 +241,36 @@ int main(int, char**) {
         }
     });
     // --- End Worker Thread Setup ---
+
+    // --- Model Selection GUI State (Part III GUI Changes) ---
+    static std::vector<GuiInterface::ModelEntry> available_models_list;
+    static std::string current_gui_selected_model_id;
+    static int current_gui_selected_model_idx = -1; // Index for ImGui::Combo
+    static bool models_list_loaded = false;
+
+    // Load initial model list and set selected model for GUI
+    available_models_list = gui_ui.getAvailableModels();
+    models_list_loaded = true;
+    current_gui_selected_model_id = gui_ui.getSelectedModelId(); // Get from GuiInterface, which loaded from DB
+
+    // Find index for current_gui_selected_model_id
+    current_gui_selected_model_idx = -1; // Reset before searching
+    for (int i = 0; i < available_models_list.size(); ++i) {
+        if (available_models_list[i].id == current_gui_selected_model_id) {
+            current_gui_selected_model_idx = i;
+            break;
+        }
+    }
+    // If loaded ID not found in current list, default to first model if available
+    if (current_gui_selected_model_idx == -1 && !available_models_list.empty()) {
+        current_gui_selected_model_idx = 0;
+        current_gui_selected_model_id = available_models_list[0].id;
+        gui_ui.setSelectedModel(current_gui_selected_model_id); // Persist this default choice
+    }
+    
+    // Set active model in ChatClient
+    client.setActiveModel(current_gui_selected_model_id);
+    // --- End Model Selection GUI State ---
 
 
     GLFWwindow* window = gui_ui.getWindow(); // Get the window handle
@@ -359,6 +390,37 @@ int main(int, char**) {
           }
           ImGui::Unindent();
           settings_height += ImGui::GetItemRectSize().y; // Add height of the radio button line
+          
+          // --- Model Selection Combo Box (Part III GUI Changes) ---
+          ImGui::Indent();
+          if (models_list_loaded && !available_models_list.empty()) {
+              const char* combo_preview_value = (current_gui_selected_model_idx >= 0 && current_gui_selected_model_idx < available_models_list.size())
+                                                ? available_models_list[current_gui_selected_model_idx].name.c_str()
+                                                : "Select a Model";
+              if (ImGui::BeginCombo("Active Model", combo_preview_value)) {
+                  for (int i = 0; i < available_models_list.size(); ++i) {
+                      const bool is_selected = (current_gui_selected_model_idx == i);
+                      if (ImGui::Selectable(available_models_list[i].name.c_str(), is_selected)) {
+                          current_gui_selected_model_idx = i;
+                          current_gui_selected_model_id = available_models_list[i].id;
+                          gui_ui.setSelectedModel(current_gui_selected_model_id);
+                          client.setActiveModel(current_gui_selected_model_id); // Notify ChatClient
+                      }
+                      if (is_selected) { ImGui::SetItemDefaultFocus(); }
+                  }
+                  ImGui::EndCombo();
+              }
+              settings_height += ImGui::GetItemRectSize().y; // Add height of combo box
+          } else if (models_list_loaded && available_models_list.empty()) {
+              ImGui::Text("No models available.");
+              settings_height += ImGui::GetTextLineHeightWithSpacing();
+          } else {
+              ImGui::Text("Loading models...");
+              settings_height += ImGui::GetTextLineHeightWithSpacing();
+          }
+          ImGui::Unindent();
+          // --- End Model Selection Combo Box ---
+
           settings_height += ImGui::GetStyle().ItemSpacing.y; // Add spacing
       } else {
           settings_height = ImGui::GetItemRectSize().y; // Height of the collapsed header
@@ -366,7 +428,10 @@ int main(int, char**) {
       // --- End Settings Area ---
 
       // Calculate height for the output area dynamically
-      const float bottom_elements_height = input_height + settings_height + ImGui::GetStyle().ItemSpacing.y; // Add spacing between settings and input
+      // Add spacing between settings and input, ensure it's positive
+      float spacing_between_settings_input = ImGui::GetStyle().ItemSpacing.y > 0 ? ImGui::GetStyle().ItemSpacing.y : 8.0f;
+      const float bottom_elements_height = input_height + settings_height + spacing_between_settings_input;
+
 
       // --- Output Area ---
       // Use negative height to automatically fill space minus the bottom elements

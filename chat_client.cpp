@@ -42,6 +42,11 @@ ChatClient::ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref) :
     }
     model_init_thread = std::thread(&ChatClient::initializeModels, this);
     model_init_thread.detach(); // Detach to run in background
+
+    // Initialize active_model_id with default_model_id.
+    // It will be updated by main_gui.cpp after gui_ui is initialized
+    // and has loaded the potentially persisted selected_model_id.
+    this->active_model_id = this->default_model_id;
 }
 
 // --- Model Initialization Methods ---
@@ -57,8 +62,9 @@ void ChatClient::initializeModels() {
         std::vector<ModelData> cached_models = db.getAllModels(); // Needs to be implemented in PersistenceManager
 
         if (cached_models.empty()) {
-            ui.displayError("Failed to load models from cache. Falling back to default model: " + std::string(DEFAULT_MODEL_ID));
-            this->model_name = DEFAULT_MODEL_ID; // Ensure model_name is a member that can be set
+            ui.displayError("Failed to load models from cache. Falling back to default model: " + this->default_model_id);
+            // this->model_name = DEFAULT_MODEL_ID; // Replaced by active_model_id
+            this->active_model_id = this->default_model_id;
             models_initialized_successfully = false;
         } else {
             ui.displayStatus("Successfully loaded " + std::to_string(cached_models.size()) + " models from cache.");
@@ -68,17 +74,20 @@ void ChatClient::initializeModels() {
             // For simplicity, if DEFAULT_MODEL_ID is in cache, use it, otherwise, maybe the first one.
             bool default_found = false;
             for(const auto& model : cached_models) {
-                if (model.id == DEFAULT_MODEL_ID) {
-                    this->model_name = DEFAULT_MODEL_ID;
+                if (model.id == this->default_model_id) {
+                    // this->model_name = DEFAULT_MODEL_ID; // Replaced
+                    this->active_model_id = this->default_model_id;
                     default_found = true;
                     break;
                 }
             }
             if (!default_found && !cached_models.empty()) {
-                 this->model_name = cached_models[0].id; // Fallback to the first cached model
-                 ui.displayStatus("Default model not in cache. Using first cached model: " + this->model_name);
+                 // this->model_name = cached_models[0].id; // Replaced
+                 this->active_model_id = cached_models[0].id;
+                 ui.displayStatus("Default model not in cache. Using first cached model: " + this->active_model_id);
             } else if (cached_models.empty()) { // Should not happen due to outer if, but defensive
-                 this->model_name = DEFAULT_MODEL_ID;
+                 // this->model_name = DEFAULT_MODEL_ID; // Replaced
+                 this->active_model_id = this->default_model_id;
             }
             models_initialized_successfully = true;
         }
@@ -90,7 +99,8 @@ void ChatClient::initializeModels() {
             ui.displayError("Fetched models from API, but failed to parse or no models found. Check API response format. Falling back to default model.");
             // Consider fallback to cache here as well, or just use default.
             // For now, using default as per plan if parse fails.
-            this->model_name = DEFAULT_MODEL_ID;
+            // this->model_name = DEFAULT_MODEL_ID; // Replaced
+            this->active_model_id = this->default_model_id;
             models_initialized_successfully = false;
         } else {
             ui.displayStatus("Successfully parsed " + std::to_string(fetched_models.size()) + " models from API. Caching to DB...");
@@ -100,25 +110,28 @@ void ChatClient::initializeModels() {
             // Set current model (e.g., to default if available, or first fetched)
             bool default_found = false;
             for(const auto& model : fetched_models) {
-                if (model.id == DEFAULT_MODEL_ID) {
-                    this->model_name = DEFAULT_MODEL_ID;
+                if (model.id == this->default_model_id) {
+                    // this->model_name = DEFAULT_MODEL_ID; // Replaced
+                    this->active_model_id = this->default_model_id;
                     default_found = true;
                     break;
                 }
             }
             if (!default_found && !fetched_models.empty()) {
-                 this->model_name = fetched_models[0].id; // Fallback to the first fetched model
-                 ui.displayStatus("Default model not among fetched. Using first fetched model: " + this->model_name);
+                 // this->model_name = fetched_models[0].id; // Replaced
+                 this->active_model_id = fetched_models[0].id;
+                 ui.displayStatus("Default model not among fetched. Using first fetched model: " + this->active_model_id);
             } else if (fetched_models.empty()) { // Should not happen
-                 this->model_name = DEFAULT_MODEL_ID;
+                 // this->model_name = DEFAULT_MODEL_ID; // Replaced
+                 this->active_model_id = this->default_model_id;
             }
             models_initialized_successfully = true;
         }
     }
     if (models_initialized_successfully) {
-        ui.displayStatus("Model initialization completed. Current model: " + this->model_name);
+        ui.displayStatus("Model initialization completed. Current model: " + this->active_model_id);
     } else {
-        ui.displayError("Model initialization failed. Current model: " + this->model_name);
+        ui.displayError("Model initialization failed. Current model: " + this->active_model_id);
     }
 }
 
@@ -269,7 +282,7 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     headers = curl_slist_append(headers, "X-Title: LLM-cli");
 
     nlohmann::json payload;
-    payload["model"] = this->model_name; // Use member variable
+    payload["model"] = this->active_model_id; // Use active_model_id
     payload["messages"] = nlohmann::json::array();
 
     // --- Secure Conversation History Construction ---
@@ -425,12 +438,20 @@ std::string ChatClient::executeAndPrepareToolResult(
 // Main application loop
 void ChatClient::run() { // Removed std::stop_token
     db.cleanupOrphanedToolMessages();
-    std::string initial_message = "Chatting with " + this->model_name + " - Type your message";
-    if (!ui.isGuiMode()) {
-        initial_message += " (Ctrl+D to exit)";
-    }
-    initial_message += "\n";
-    ui.displayOutput(initial_message); // Use UI, message adapted for CLI/GUI
+    // Initial message will be set after model ID is confirmed via setActiveModel by main_gui
+    // std::string initial_message = "Chatting with " + this->active_model_id + " - Type your message";
+    // if (!ui.isGuiMode()) {
+    //     initial_message += " (Ctrl+D to exit)";
+    // }
+    // initial_message += "\n";
+    // ui.displayOutput(initial_message); // Use UI, message adapted for CLI/GUI
+    
+    // Display initial status once active_model_id is properly set by main_gui
+    // This might be better handled after setActiveModel is called for the first time.
+    // For now, we assume active_model_id is set by constructor or soon after by main_gui.
+    ui.displayStatus("ChatClient ready. Active model: " + this->active_model_id);
+
+
     while (true) {
         // Stop request check removed
         try {
@@ -448,6 +469,15 @@ void ChatClient::run() { // Removed std::stop_token
         }
     }
 }
+// --- Model Selection Method Implementation (Part III GUI Changes) ---
+void ChatClient::setActiveModel(const std::string& model_id) {
+    this->active_model_id = model_id;
+    // Log or display status. Using ui.displayStatus for GUI feedback.
+    ui.displayStatus("ChatClient active model set to: " + model_id);
+    // Any internal ChatClient logic needed when model changes (e.g., clear context, reload model-specific settings).
+    // For now, just updating the ID is sufficient as per the plan.
+}
+// --- End Model Selection Method Implementation ---
 
 std::optional<std::string> ChatClient::promptUserInput() {
     // Delegate input prompting to the injected UI object

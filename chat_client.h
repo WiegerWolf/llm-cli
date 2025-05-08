@@ -23,7 +23,12 @@ private:
     ToolManager toolManager;
     UserInterface& ui; // Add reference to the UI
     std::string api_base = "https://openrouter.ai/api/v1/chat/completions";
-    std::string model_name = "openai/gpt-4.1-nano";
+    // std::string model_name = "openai/gpt-4.1-nano"; // Replaced by active_model_id
+    
+    // --- Model Selection State (Part III GUI Changes) ---
+    std::string active_model_id;
+    const std::string default_model_id = "phi3:mini"; // Match GuiInterface
+    // --- End Model Selection State ---
 
     // For model initialization
     std::thread model_init_thread;
@@ -74,6 +79,10 @@ public:
 
     // Public method for making API calls (used by web_research tool)
     std::string makeApiCall(const std::vector<Message>& context, bool use_tools = false);
+
+    // --- Model Selection Method (Part III GUI Changes) ---
+    void setActiveModel(const std::string& model_id);
+    // --- End Model Selection Method ---
 
     // Main application loop
     // Main application loop

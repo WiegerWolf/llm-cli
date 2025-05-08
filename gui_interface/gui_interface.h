@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui_interface.h" // Include the base class definition
+#include "database.h"     // For PersistenceManager
 #include <optional>
 #include <string>
 #include <vector>
@@ -11,6 +12,7 @@
 #include <thread>  // Added for Stage 4
 #include <atomic>  // Added for Stage 4
 #include <imgui.h> // Required for ImVec2
+#include <map>     // Required for ModelEntry if it uses map, or for getAllModels return type transformation
 
 // --- Message History Structure (Issue #8 Refactor) ---
 // Moved from main_gui.cpp
@@ -34,12 +36,20 @@ enum class ThemeType {
 };
 // --- End Theme Type Enum ---
 
+// --- Model Entry Structure (Part III GUI Changes) ---
+struct ModelEntry {
+    std::string id;
+    std::string name;
+    // Potentially other metadata if needed for display in the future
+};
+// --- End Model Entry Structure ---
+
 // Forward declaration for GLFW window handle
 struct GLFWwindow;
 
 class GuiInterface : public UserInterface {
 public:
-    GuiInterface();
+    GuiInterface(PersistenceManager& db_manager); // Modified constructor
     virtual ~GuiInterface() override;
 
 // Prevent copying/moving
@@ -83,6 +93,12 @@ void setInitialFontSize(float size); // Added for persistence
     // Method for GUI thread to get and clear accumulated scroll offsets
     ImVec2 getAndClearScrollOffsets();
 
+    // --- Model Selection Methods (Part III GUI Changes) ---
+    std::vector<ModelEntry> getAvailableModels() const;
+    void setSelectedModel(const std::string& model_id);
+    std::string getSelectedModelId() const;
+    // --- End Model Selection Methods ---
+
 public: // Changed from private to allow access from static callback
     GLFWwindow* window = nullptr;
     float accumulated_scroll_x = 0.0f;
@@ -104,6 +120,13 @@ public: // Changed from private to allow access from static callback
     std::condition_variable input_cv; // To signal when input is available
     std::atomic<bool> shutdown_requested{false}; // Updated for Stage 4
 private:
+    PersistenceManager& db_manager_ref; // Reference to PersistenceManager
+
+    // --- Model Selection State (Part III GUI Changes) ---
+    std::string current_selected_model_id;
+    const std::string default_model_id = "phi3:mini"; // Actual default ID
+    // --- End Model Selection State ---
+
     // --- Font Size State & Helpers (Issue #19) ---
     float current_font_size = 18.0f; // Default font size
     bool font_rebuild_requested = false; // Flag to defer rebuild
