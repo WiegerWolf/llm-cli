@@ -703,41 +703,52 @@ void GuiInterface::setLoadingModelsState(bool isLoading) {
 }
 
 void GuiInterface::updateModelsList(const std::vector<ModelData>& models) {
-    std::lock_guard<std::mutex> lock(models_ui_mutex);
-    available_models_for_ui.clear();
-    available_models_for_ui.reserve(models.size());
-    for (const auto& db_model : models) {
-        available_models_for_ui.push_back({db_model.id, db_model.name.empty() ? db_model.id : db_model.name});
-    }
+    std::string model_id_to_persist;
+    bool persist_needed = false;
 
-    bool current_still_valid = false;
-    if (!current_selected_model_id_in_ui.empty()) {
-        for (const auto& entry : available_models_for_ui) {
-            if (entry.id == current_selected_model_id_in_ui) {
-                current_still_valid = true;
-                break;
+    { // Mutex scope starts
+        std::lock_guard<std::mutex> lock(models_ui_mutex);
+        available_models_for_ui.clear();
+        available_models_for_ui.reserve(models.size());
+        for (const auto& db_model : models) {
+            available_models_for_ui.push_back({db_model.id, db_model.name.empty() ? db_model.id : db_model.name});
+        }
+
+        bool current_still_valid = false;
+        if (!current_selected_model_id_in_ui.empty()) {
+            for (const auto& entry : available_models_for_ui) {
+                if (entry.id == current_selected_model_id_in_ui) {
+                    current_still_valid = true;
+                    break;
+                }
             }
         }
-    }
 
-    if (!current_still_valid) {
-        bool default_found_in_new_list = false;
-        for (const auto& entry : available_models_for_ui) {
-            if (entry.id == DEFAULT_MODEL_ID) {
+        if (!current_still_valid) {
+            bool default_found_in_new_list = false;
+            for (const auto& entry : available_models_for_ui) {
+                if (entry.id == DEFAULT_MODEL_ID) {
+                    current_selected_model_id_in_ui = DEFAULT_MODEL_ID;
+                    default_found_in_new_list = true;
+                    break;
+                }
+            }
+            if (!default_found_in_new_list && !available_models_for_ui.empty()) {
+                current_selected_model_id_in_ui = available_models_for_ui[0].id;
+            } else if (!default_found_in_new_list) { // List is also empty
                 current_selected_model_id_in_ui = DEFAULT_MODEL_ID;
-                default_found_in_new_list = true;
-                break;
             }
+            
+            // Capture for persistence if it was just updated due to not being valid
+            model_id_to_persist = current_selected_model_id_in_ui; // Capture the newly set ID
+            persist_needed = true;                                 // Mark that persistence is needed
         }
-        if (!default_found_in_new_list && !available_models_for_ui.empty()) {
-            current_selected_model_id_in_ui = available_models_for_ui[0].id;
-        } else if (!default_found_in_new_list) { // List is also empty
-            current_selected_model_id_in_ui = DEFAULT_MODEL_ID;
-        }
-        
-        // Persist this newly determined selection
+    } // Mutex scope ends - models_ui_mutex is released
+
+    // Perform persistence outside the lock
+    if (persist_needed && !model_id_to_persist.empty()) {
         try {
-             db_manager_ref.saveSetting("selected_model_id", current_selected_model_id_in_ui);
+            db_manager_ref.saveSetting("selected_model_id", model_id_to_persist); // Use captured value
         } catch (const std::exception& e) {
             std::cerr << "Error saving fallback selected model ID in updateModelsList: " << e.what() << std::endl;
         }
