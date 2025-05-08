@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <iostream> // For error reporting during init/shutdown
 #include <algorithm> // For std::clamp (Issue #19)
+#include "config.h" // For DEFAULT_MODEL_ID
 
 // Include GUI library headers
 #include <GLFW/glfw3.h>
@@ -42,7 +43,9 @@ static bool imgui_init_done = false;
 GuiInterface::GuiInterface(PersistenceManager& db_manager) : db_manager_ref(db_manager) {
     // Initialize the input buffer
     input_buf[0] = '\0';
-    // current_selected_model_id will be initialized in initialize()
+    // current_selected_model_id_in_ui will be initialized in initialize()
+    // available_models_for_ui will be populated by updateModelsList
+    // models_are_loading_in_ui defaults to false (atomic)
 }
 
 GuiInterface::~GuiInterface() {
@@ -56,12 +59,10 @@ void GuiInterface::initialize() {
     // Load selected model ID or set default
     std::optional<std::string> loaded_model_id_opt = db_manager_ref.loadSetting("selected_model_id");
     if (loaded_model_id_opt.has_value() && !loaded_model_id_opt.value().empty()) {
-        // Optional: Validate if loaded_model_id_opt.value() is a known/valid model ID.
-        // For now, assume any non-empty string from DB is potentially valid until models are loaded.
-        this->current_selected_model_id = loaded_model_id_opt.value();
+        this->current_selected_model_id_in_ui = loaded_model_id_opt.value();
     } else {
-        this->current_selected_model_id = default_model_id; // default_model_id is "phi3:mini"
-        db_manager_ref.saveSetting("selected_model_id", this->default_model_id); // Persist default if none was set
+        this->current_selected_model_id_in_ui = DEFAULT_MODEL_ID;
+        db_manager_ref.saveSetting("selected_model_id", this->current_selected_model_id_in_ui);
     }
 
     glfwSetErrorCallback(glfw_error_callback);
@@ -636,28 +637,111 @@ void GuiInterface::processFontRebuildRequest() {
 }
 
 // --- End Font Size Control Implementation ---
-// --- Model Selection Method Implementations (Part III GUI Changes) ---
-std::vector<GuiInterface::ModelEntry> GuiInterface::getAvailableModels() const {
-    std::vector<ModelEntry> entries;
-    std::vector<ModelData> raw_models = db_manager_ref.getAllModels(); // Corrected type
-
-    for (const auto& model_data : raw_models) {
-        ModelEntry entry;
-        entry.id = model_data.id;
-        entry.name = model_data.name;
-        entries.push_back(entry);
+// --- Model Selection Method Implementations (Part III GUI Changes / Updated Part V) ---
+// Renamed from getAvailableModels to getAvailableModelsForUI
+std::vector<GuiInterface::ModelEntry> GuiInterface::getAvailableModelsForUI() const {
+    std::lock_guard<std::mutex> lock(models_ui_mutex);
+    if (available_models_for_ui.empty()) {
+        // Fallback if list is empty (e.g., before first updateModelsList call or if it failed)
+        // Provide at least the current selected model or the default.
+        std::vector<ModelEntry> fallback_entries;
+        std::string current_id = current_selected_model_id_in_ui;
+        if (current_id.empty()) {
+            current_id = DEFAULT_MODEL_ID;
+        }
+        std::string name = "Model (" + current_id + ")"; // Basic name
+        try {
+            // Try to get a better name from DB if possible
+            auto model_data = db_manager_ref.getModelById(current_id);
+            if (model_data && !model_data->name.empty()) {
+                name = model_data->name;
+            }
+        } catch (...) { /* ignore, use constructed name */ }
+        fallback_entries.push_back({current_id, name});
+        return fallback_entries;
     }
-    return entries;
+    return available_models_for_ui;
 }
 
-void GuiInterface::setSelectedModel(const std::string& model_id) {
-    db_manager_ref.saveSetting("selected_model_id", model_id);
-    this->current_selected_model_id = model_id;
-    // Optionally, display a status message or log this change
-    // displayStatus("Selected model changed to: " + model_id);
+// Renamed from setSelectedModel to setSelectedModelInUI
+void GuiInterface::setSelectedModelInUI(const std::string& model_id) {
+    {
+        std::lock_guard<std::mutex> lock(models_ui_mutex);
+        this->current_selected_model_id_in_ui = model_id;
+    } // Mutex released before DB operation
+    try {
+        db_manager_ref.saveSetting("selected_model_id", model_id);
+    } catch (const std::exception& e) {
+        std::cerr << "Error saving selected model ID: " << e.what() << std::endl;
+        // displayError("Failed to save model selection preference."); // Can be noisy
+    }
 }
 
-std::string GuiInterface::getSelectedModelId() const {
-    return this->current_selected_model_id;
+// Renamed from getSelectedModelId to getSelectedModelIdFromUI
+std::string GuiInterface::getSelectedModelIdFromUI() const {
+    std::lock_guard<std::mutex> lock(models_ui_mutex);
+    if (this->current_selected_model_id_in_ui.empty()) {
+        // This case should ideally be prevented by initialization logic.
+        return DEFAULT_MODEL_ID;
+    }
+    return this->current_selected_model_id_in_ui;
 }
-// --- End Model Selection Method Implementations ---
+
+// Added for Part V
+bool GuiInterface::areModelsLoadingInUI() const {
+    return models_are_loading_in_ui.load();
+}
+
+// --- Implementation for Model Loading UI Feedback (Part V) ---
+void GuiInterface::setLoadingModelsState(bool isLoading) {
+    models_are_loading_in_ui = isLoading;
+    // This state will be checked by the main_gui.cpp render loop to update UI elements.
+    if (isLoading) {
+        displayStatus("Loading models...");
+    }
+    // No "else" action here, as the completion status will be handled by ChatClient/main_gui
+}
+
+void GuiInterface::updateModelsList(const std::vector<ModelData>& models) {
+    std::lock_guard<std::mutex> lock(models_ui_mutex);
+    available_models_for_ui.clear();
+    available_models_for_ui.reserve(models.size());
+    for (const auto& db_model : models) {
+        available_models_for_ui.push_back({db_model.id, db_model.name.empty() ? db_model.id : db_model.name});
+    }
+
+    bool current_still_valid = false;
+    if (!current_selected_model_id_in_ui.empty()) {
+        for (const auto& entry : available_models_for_ui) {
+            if (entry.id == current_selected_model_id_in_ui) {
+                current_still_valid = true;
+                break;
+            }
+        }
+    }
+
+    if (!current_still_valid) {
+        bool default_found_in_new_list = false;
+        for (const auto& entry : available_models_for_ui) {
+            if (entry.id == DEFAULT_MODEL_ID) {
+                current_selected_model_id_in_ui = DEFAULT_MODEL_ID;
+                default_found_in_new_list = true;
+                break;
+            }
+        }
+        if (!default_found_in_new_list && !available_models_for_ui.empty()) {
+            current_selected_model_id_in_ui = available_models_for_ui[0].id;
+        } else if (!default_found_in_new_list) { // List is also empty
+            current_selected_model_id_in_ui = DEFAULT_MODEL_ID;
+        }
+        
+        // Persist this newly determined selection
+        try {
+             db_manager_ref.saveSetting("selected_model_id", current_selected_model_id_in_ui);
+        } catch (const std::exception& e) {
+            std::cerr << "Error saving fallback selected model ID in updateModelsList: " << e.what() << std::endl;
+        }
+    }
+    // The main_gui.cpp render loop will use getAvailableModelsForUI() to refresh the dropdown.
+}
+// --- End Model Selection Method Implementations & UI Feedback ---

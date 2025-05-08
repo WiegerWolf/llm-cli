@@ -12,6 +12,7 @@
 #include "model_types.h"  // For ModelData struct
 #include <thread>         // For std::thread
 #include <atomic>         // For std::atomic
+#include <future>         // For std::async and std::future
 
 // Forward declaration needed by ToolManager::execute_tool
 class ChatClient;
@@ -27,19 +28,21 @@ private:
     
     // --- Model Selection State (Part III GUI Changes) ---
     std::string active_model_id;
-    const std::string default_model_id = "phi3:mini"; // Match GuiInterface
+    // const std::string default_model_id = "phi3:mini"; // Replaced by DEFAULT_MODEL_ID from config.h
     // --- End Model Selection State ---
 
-    // For model initialization
-    std::thread model_init_thread;
-    std::atomic<bool> models_initialized_successfully{false};
-    std::atomic<bool> model_initialization_attempted{false};
+    // For model initialization and management
+    std::atomic<bool> models_loading{false}; // For UI feedback
+    std::future<void> model_load_future;     // For asynchronous loading
 
     // Methods for model fetching, parsing, and caching
-    std::string fetchModelsFromAPI();
+    // Made public for initialize_model_manager to call them, potentially async
+public:
+    std::string fetchModelsFromAPI(); // Returns API response or throws on error
     std::vector<ModelData> parseModelsFromAPIResponse(const std::string& api_response);
     void cacheModelsToDB(const std::vector<ModelData>& models);
-    void initializeModels(); // Orchestrates fetching, parsing, and caching
+private:
+    void loadModelsAsync(); // Internal method to perform the actual loading
 
     // Prompts the user for input via the UI interface. Returns nullopt if UI signals exit/shutdown.
     std::optional<std::string> promptUserInput();
@@ -85,6 +88,9 @@ public:
     // --- End Model Selection Method ---
 
     // Main application loop
-    // Main application loop
     void run(); // Removed std::stop_token for now
+
+public:
+    void initialize_model_manager(); // Called at startup
+    bool are_models_loading() const { return models_loading.load(); } // For UI to check status
 };

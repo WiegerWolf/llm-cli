@@ -18,6 +18,7 @@ int main() {
         cli_ui.initialize(); // Initialize the UI
 
         ChatClient client(cli_ui, db_manager); // Inject the UI and DB manager into the client
+        client.initialize_model_manager(); // Attempt to initialize models, fetch from API, or use default
         // Pass a default (non-stoppable) stop_token as the CLI uses Ctrl+D for exit
         client.run();
 

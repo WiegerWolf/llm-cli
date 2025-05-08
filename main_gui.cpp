@@ -227,11 +227,15 @@ int main(int, char**) {
 
     // --- Worker Thread Setup (Stage 4 / Issue #18 DB Persistence) ---
     ChatClient client(gui_ui, db_manager); // Pass DB manager reference
+    // Initialize model manager. This is blocking for the initial load.
+    // GuiInterface will be updated with loading states and final model list.
+    client.initialize_model_manager();
+
     // Use jthread with RAII: construct in-place with lambda, joins automatically on destruction
-    // Pass the stop_token provided by jthread to the lambda and client.run()
+    // The stop_token is implicitly available to the lambda in C++20.
     std::jthread worker_thread([&client](std::stop_token st){
         try {
-            client.run(); // Pass the stop token to the client's run loop
+            client.run(); // The client's run loop should handle the stop_token internally if needed
         } catch (const std::exception& e) {
             // Log exceptions from the worker thread if needed
             std::cerr << "Exception in worker thread: " << e.what() << std::endl;
@@ -242,18 +246,16 @@ int main(int, char**) {
     });
     // --- End Worker Thread Setup ---
 
-    // --- Model Selection GUI State (Part III GUI Changes) ---
+    // --- Model Selection GUI State (Part III GUI Changes / Part V Update) ---
     static std::vector<GuiInterface::ModelEntry> available_models_list;
     static std::string current_gui_selected_model_id;
-    static int current_gui_selected_model_idx = -1; // Index for ImGui::Combo
-    static bool models_list_loaded = false;
+    static int current_gui_selected_model_idx = -1;
 
-    // Load initial model list and set selected model for GUI
-    available_models_list = gui_ui.getAvailableModels();
-    models_list_loaded = true;
-    current_gui_selected_model_id = gui_ui.getSelectedModelId(); // Get from GuiInterface, which loaded from DB
+    // Initial population of model list for the GUI, after ChatClient has initialized them
+    // Use the new GuiInterface methods that are mutex-protected
+    available_models_list = gui_ui.getAvailableModelsForUI();
+    current_gui_selected_model_id = gui_ui.getSelectedModelIdFromUI();
 
-    // Find index for current_gui_selected_model_id
     current_gui_selected_model_idx = -1; // Reset before searching
     for (int i = 0; i < available_models_list.size(); ++i) {
         if (available_models_list[i].id == current_gui_selected_model_id) {
@@ -261,14 +263,24 @@ int main(int, char**) {
             break;
         }
     }
-    // If loaded ID not found in current list, default to first model if available
+    // If current_gui_selected_model_id (possibly from DB or default) wasn't in the list,
+    // or if the list was empty, GuiInterface::updateModelsList and getSelectedModelIdFromUI
+    // should have handled fallback to a valid model (e.g., DEFAULT_MODEL_ID or first available).
+    // This logic ensures the GUI's current_gui_selected_model_idx matches.
     if (current_gui_selected_model_idx == -1 && !available_models_list.empty()) {
-        current_gui_selected_model_idx = 0;
+        current_gui_selected_model_idx = 0; // Default to first in the list
         current_gui_selected_model_id = available_models_list[0].id;
-        gui_ui.setSelectedModel(current_gui_selected_model_id); // Persist this default choice
+        // GuiInterface should already have this as its current_selected_model_id_in_ui
+        // and persisted it. We are just aligning the local GUI index.
+    } else if (current_gui_selected_model_idx == -1 && available_models_list.empty()) {
+        // This case means no models are available at all, not even a default.
+        // GuiInterface should provide a fallback (e.g. DEFAULT_MODEL_ID entry).
+        // If available_models_list is truly empty, combo box won't show.
+        // current_gui_selected_model_id would be DEFAULT_MODEL_ID from GuiInterface.
     }
     
-    // Set active model in ChatClient
+    // Ensure ChatClient's active model is synchronized with GUI's initial state
+    // (which should be the one loaded/selected by GuiInterface and ChatClient::initialize_model_manager)
     client.setActiveModel(current_gui_selected_model_id);
     // --- End Model Selection GUI State ---
 
@@ -344,26 +356,22 @@ int main(int, char**) {
       // --- Retrieve and Apply Scroll Offsets (Comment 1) ---
       ImVec2 scroll_offsets = gui_ui.getAndClearScrollOffsets();
       // --- End Retrieve and Apply Scroll Offsets ---
-
-      // --- Main UI Layout (Stage 3 / Updated for Stage 4 & 18) ---
+  
+      // Get model loading state for disabling UI elements
+      bool is_loading_models = gui_ui.areModelsLoadingInUI();
+  
+      // --- Main UI Layout (Stage 3 / Updated for Stage 4 & 18 / Part V Update) ---
       const ImVec2 display_size = ImGui::GetIO().DisplaySize;
       const float input_height = 35.0f; // Height for the input text box + button
-      // Calculate height needed for elements below the output area
-      // Add space for the settings header if it's open
       float settings_height = 0.0f;
-      // We need to estimate the settings height. This is tricky without rendering it first.
-      // Let's approximate based on typical ImGui item heights.
-      // A CollapsingHeader + Text + 2 RadioButtons + SameLine spacing.
-      // This is just an estimate for layout calculation.
-      const float estimated_settings_section_height = ImGui::GetTextLineHeightWithSpacing() * 3 + ImGui::GetStyle().FramePadding.y * 4;
-
-
+  
+  
       // Create a full-window container
       ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
       ImGui::SetNextWindowSize(display_size);
       ImGui::Begin("Main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
-
-      // --- Settings Area (Issue #18) ---
+  
+      // --- Settings Area (Issue #18 / Part V Update) ---
       if (ImGui::CollapsingHeader("Settings")) {
           settings_height = ImGui::GetItemRectSize().y; // Get actual height after rendering header
           ImGui::Indent();
@@ -391,48 +399,74 @@ int main(int, char**) {
           ImGui::Unindent();
           settings_height += ImGui::GetItemRectSize().y; // Add height of the radio button line
           
-          // --- Model Selection Combo Box (Part III GUI Changes) ---
+          // --- Model Selection Combo Box (Part III GUI Changes / Part V Update) ---
           ImGui::Indent();
-          if (models_list_loaded && !available_models_list.empty()) {
-              const char* combo_preview_value = (current_gui_selected_model_idx >= 0 && current_gui_selected_model_idx < available_models_list.size())
-                                                ? available_models_list[current_gui_selected_model_idx].name.c_str()
-                                                : "Select a Model";
-              if (ImGui::BeginCombo("Active Model", combo_preview_value)) {
-                  for (int i = 0; i < available_models_list.size(); ++i) {
-                      const bool is_selected = (current_gui_selected_model_idx == i);
-                      if (ImGui::Selectable(available_models_list[i].name.c_str(), is_selected)) {
-                          current_gui_selected_model_idx = i;
-                          current_gui_selected_model_id = available_models_list[i].id;
-                          gui_ui.setSelectedModel(current_gui_selected_model_id);
-                          client.setActiveModel(current_gui_selected_model_id); // Notify ChatClient
-                      }
-                      if (is_selected) { ImGui::SetItemDefaultFocus(); }
-                  }
-                  ImGui::EndCombo();
-              }
-              settings_height += ImGui::GetItemRectSize().y; // Add height of combo box
-          } else if (models_list_loaded && available_models_list.empty()) {
-              ImGui::Text("No models available.");
+          if (is_loading_models) {
+              ImGui::Text("Loading models..."); // Display loading message
               settings_height += ImGui::GetTextLineHeightWithSpacing();
           } else {
-              ImGui::Text("Loading models...");
-              settings_height += ImGui::GetTextLineHeightWithSpacing();
+              // Refresh local model list and selection state from GuiInterface
+              // This ensures the dropdown reflects the latest state after loading or if changed by ChatClient
+              available_models_list = gui_ui.getAvailableModelsForUI();
+              current_gui_selected_model_id = gui_ui.getSelectedModelIdFromUI();
+              current_gui_selected_model_idx = -1; // Reset index before searching
+              for (int i = 0; i < available_models_list.size(); ++i) {
+                  if (available_models_list[i].id == current_gui_selected_model_id) {
+                      current_gui_selected_model_idx = i;
+                      break;
+                  }
+              }
+              // If the selected ID from gui_ui is somehow not in its list (should not happen if logic is correct)
+              // or if the list is empty, handle gracefully.
+              if (current_gui_selected_model_idx == -1 && !available_models_list.empty()) {
+                  current_gui_selected_model_idx = 0; // Default to first if current selection not found
+                  current_gui_selected_model_id = available_models_list[0].id;
+                  // It's important that GuiInterface is the source of truth.
+                  // If a mismatch occurs, it implies GuiInterface's state is what we should reflect.
+                  // No need to call setSelectedModelInUI here unless we are forcing a change *from* main_gui.
+              }
+  
+  
+              if (available_models_list.empty()) {
+                  ImGui::Text("No models available."); // Or "Using default model: [ID]"
+                  settings_height += ImGui::GetTextLineHeightWithSpacing();
+              } else {
+                  ImGui::BeginDisabled(is_loading_models); // This will be false here, but good for future async reloads
+                  const char* combo_preview_value = (current_gui_selected_model_idx >= 0 && current_gui_selected_model_idx < available_models_list.size())
+                                                      ? available_models_list[current_gui_selected_model_idx].name.c_str()
+                                                      : "Select a Model";
+                  if (ImGui::BeginCombo("Active Model", combo_preview_value)) {
+                      for (int i = 0; i < available_models_list.size(); ++i) {
+                          const bool is_selected = (current_gui_selected_model_idx == i);
+                          if (ImGui::Selectable(available_models_list[i].name.c_str(), is_selected)) {
+                              current_gui_selected_model_idx = i;
+                              current_gui_selected_model_id = available_models_list[i].id;
+                              gui_ui.setSelectedModelInUI(current_gui_selected_model_id); // Update GuiInterface state
+                              client.setActiveModel(current_gui_selected_model_id);      // Notify ChatClient
+                          }
+                          if (is_selected) { ImGui::SetItemDefaultFocus(); }
+                      }
+                      ImGui::EndCombo();
+                  }
+                  ImGui::EndDisabled();
+                  settings_height += ImGui::GetItemRectSize().y; // Add height of combo box
+              }
           }
           ImGui::Unindent();
           // --- End Model Selection Combo Box ---
-
+  
           settings_height += ImGui::GetStyle().ItemSpacing.y; // Add spacing
       } else {
           settings_height = ImGui::GetItemRectSize().y; // Height of the collapsed header
       }
       // --- End Settings Area ---
-
+  
       // Calculate height for the output area dynamically
       // Add spacing between settings and input, ensure it's positive
       float spacing_between_settings_input = ImGui::GetStyle().ItemSpacing.y > 0 ? ImGui::GetStyle().ItemSpacing.y : 8.0f;
       const float bottom_elements_height = input_height + settings_height + spacing_between_settings_input;
-
-
+  
+  
       // --- Output Area ---
       // Use negative height to automatically fill space minus the bottom elements
       ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
@@ -660,11 +694,13 @@ int main(int, char**) {
             initial_focus_set = true;
         }
 
+        ImGui::BeginDisabled(is_loading_models); // Disable input area if models are loading
         ImGui::PushItemWidth(input_width);
         enter_pressed = ImGui::InputText("##Input", gui_ui.getInputBuffer(), gui_ui.getInputBufferSize(), ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemWidth();
         ImGui::SameLine();
         send_pressed = ImGui::Button("Send", ImVec2(button_width, 0));
+        ImGui::EndDisabled(); // End disabling input area
 
         // --- Status Bar Removed ---
 

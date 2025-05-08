@@ -66,6 +66,11 @@ public:
     virtual void shutdown() override;
     virtual bool isGuiMode() const override;
 
+    // --- Implementation for Model Loading UI Feedback (Part V) ---
+    virtual void setLoadingModelsState(bool isLoading) override;
+    virtual void updateModelsList(const std::vector<ModelData>& models) override;
+    // --- End Implementation for Model Loading UI Feedback ---
+
     // Public method to get the window handle (needed by main_gui.cpp)
     GLFWwindow* getWindow() const;
 
@@ -93,10 +98,11 @@ void setInitialFontSize(float size); // Added for persistence
     // Method for GUI thread to get and clear accumulated scroll offsets
     ImVec2 getAndClearScrollOffsets();
 
-    // --- Model Selection Methods (Part III GUI Changes) ---
-    std::vector<ModelEntry> getAvailableModels() const;
-    void setSelectedModel(const std::string& model_id);
-    std::string getSelectedModelId() const;
+    // --- Model Selection Methods (Part III GUI Changes / Updated Part V) ---
+    std::vector<ModelEntry> getAvailableModelsForUI() const; // Renamed for clarity
+    void setSelectedModelInUI(const std::string& model_id); // Renamed for clarity
+    std::string getSelectedModelIdFromUI() const; // Renamed for clarity
+    bool areModelsLoadingInUI() const; // Added for Part V
     // --- End Model Selection Methods ---
 
 public: // Changed from private to allow access from static callback
@@ -122,9 +128,12 @@ public: // Changed from private to allow access from static callback
 private:
     PersistenceManager& db_manager_ref; // Reference to PersistenceManager
 
-    // --- Model Selection State (Part III GUI Changes) ---
-    std::string current_selected_model_id;
-    const std::string default_model_id = "phi3:mini"; // Actual default ID
+    // --- Model Selection State (Part III GUI Changes / Updated Part V) ---
+    std::string current_selected_model_id_in_ui; // Renamed for clarity
+    // const std::string default_model_id = "phi3:mini"; // This is now DEFAULT_MODEL_ID from config.h
+    std::vector<ModelEntry> available_models_for_ui; // Cache for UI display
+    std::atomic<bool> models_are_loading_in_ui{false}; // For UI feedback
+    mutable std::mutex models_ui_mutex; // To protect available_models_for_ui and current_selected_model_id_in_ui
     // --- End Model Selection State ---
 
     // --- Font Size State & Helpers (Issue #19) ---

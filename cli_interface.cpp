@@ -77,3 +77,27 @@ void CliInterface::displayStatus(const std::string& status) {
 bool CliInterface::isGuiMode() const {
     return false;
 }
+
+// --- Implementation for Model Loading UI Feedback (Part V) ---
+void CliInterface::setLoadingModelsState(bool isLoading) {
+    if (isLoading) {
+        displayStatus("Loading models...");
+    } else {
+        // Optionally, display a "Models loaded." message,
+        // but ChatClient usually provides more specific status.
+    }
+    // For CLI, this might just be a log or no-op if status is handled elsewhere.
+}
+
+void CliInterface::updateModelsList(const std::vector<ModelData>& models) {
+    // For CLI, this could print a summary or be a no-op.
+    // The main interaction for model selection in CLI might be through commands
+    // or a simpler mechanism than a dynamic list update during runtime.
+    // For now, we can log the number of models received.
+    if (!models.empty()) {
+        displayStatus("Received " + std::to_string(models.size()) + " models.");
+    }
+    // Actual model selection in CLI is not dynamically updated via this method.
+    // It's assumed to be handled by ChatClient's active_model_id or future commands.
+}
+// --- End Implementation for Model Loading UI Feedback ---

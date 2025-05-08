@@ -591,14 +591,14 @@ std::optional<std::string> PersistenceManager::getModelNameById(const std::strin
 // The functions getAllModels() and getModelNameById() are now correctly defined above.
 // The Settings Management section correctly follows.
 
-// Selected model ID management
-void PersistenceManager::saveSelectedModelId(const std::string& model_id) {
-    impl->saveSetting("selected_model_id", model_id);
-}
-
-std::optional<std::string> PersistenceManager::loadSelectedModelId() {
-    return impl->loadSetting("selected_model_id");
-}
+// Selected model ID management - REMOVED, use save/loadSetting directly
+// void PersistenceManager::saveSelectedModelId(const std::string& model_id) {
+//     impl->saveSetting("selected_model_id", model_id);
+// }
+//
+// std::optional<std::string> PersistenceManager::loadSelectedModelId() {
+//     return impl->loadSetting("selected_model_id");
+// }
 
 // Settings Management Implementation (delegating to Impl)
 void PersistenceManager::saveSetting(const std::string& key, const std::string& value) {

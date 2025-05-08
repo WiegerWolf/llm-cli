@@ -38,19 +38,24 @@ public:
     void clearModelsTable();
     void insertOrUpdateModel(const ModelData& model);
     std::vector<ModelData> getAllModels(); // New signature
+    std::optional<ModelData> getModelById(const std::string& model_id); // Added for Part V
     std::optional<std::string> getModelNameById(const std::string& model_id); // For GUI display
 
     // Transaction management
     void beginTransaction();
     void commitTransaction();
     void rollbackTransaction();
+
+    // Atomic replacement of models
+    void replaceModelsInDB(const std::vector<ModelData>& models); // Added for Part V
+
 // Settings management
     void saveSetting(const std::string& key, const std::string& value);
     std::optional<std::string> loadSetting(const std::string& key);
 
-    // Selected model ID management
-    void saveSelectedModelId(const std::string& model_id);
-    std::optional<std::string> loadSelectedModelId();
+    // Selected model ID management - REMOVED, use save/loadSetting("selected_model_id")
+    // void saveSelectedModelId(const std::string& model_id);
+    // std::optional<std::string> loadSelectedModelId();
 
 private:
     // Forward declaration for the Pimpl (Pointer to Implementation) idiom
