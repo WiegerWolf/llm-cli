@@ -12,7 +12,7 @@ public:
                                                                                                                                                                          
     // Implementation of the UserInterface contract                                                                                                                      
     virtual std::optional<std::string> promptUserInput() override;                                                                                                       
-    virtual void displayOutput(const std::string& output) override;                                                                                                      
+    virtual void displayOutput(const std::string& output, const std::string& model_id) override;
     virtual void displayError(const std::string& error) override;                                                                                                        
     virtual void displayStatus(const std::string& status) override;                                                                                                      
     virtual void initialize() override;                                                                                                                                  

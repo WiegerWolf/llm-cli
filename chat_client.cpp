@@ -694,7 +694,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     db.saveAssistantMessage(final_content, this->active_model_id);
 
     // Display final response
-    ui.displayOutput(final_content + "\n\n"); // Use UI for output
+    ui.displayOutput(final_content + "\n\n", this->active_model_id); // Use UI for output
     return true; // Indicate success for the standard tool call path
 }
 
@@ -978,7 +978,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             // If we successfully got a final text response:
             if (final_response_success) {
                 db.saveAssistantMessage(final_content, this->active_model_id); // Save the final assistant message
-                ui.displayOutput(final_content + "\n\n"); // Display it
+                ui.displayOutput(final_content + "\n\n", this->active_model_id); // Display it
                 any_executed = true; // Mark that this fallback path was successful for at least one tag
             } else {
                  ui.displayError("Failed to get final response after fallback tool execution for: " + function_name);
@@ -1005,11 +1005,11 @@ void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_mes
         if (response_message["content"].is_string()) {
             std::string txt = response_message["content"];
             db.saveAssistantMessage(txt, this->active_model_id);
-            ui.displayOutput(txt + "\n\n"); // Use UI for output
+            ui.displayOutput(txt + "\n\n", this->active_model_id); // Use UI for output
         } else if (!response_message["content"].is_null()) {
             std::string dumped = response_message["content"].dump();
             db.saveAssistantMessage(dumped, this->active_model_id);
-            ui.displayOutput(dumped + "\n\n"); // Use UI for output
+            ui.displayOutput(dumped + "\n\n", this->active_model_id); // Use UI for output
         }
     }
 }

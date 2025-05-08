@@ -12,7 +12,7 @@ public:
     virtual std::optional<std::string> promptUserInput() = 0;                                                                                                            
                                                                                                                                                                          
     // Displays standard output to the user.                                                                                                                             
-    virtual void displayOutput(const std::string& output) = 0;                                                                                                           
+    virtual void displayOutput(const std::string& output, const std::string& model_id) = 0;
                                                                                                                                                                          
     // Displays error messages to the user.                                                                                                                              
     virtual void displayError(const std::string& error) = 0;                                                                                                             

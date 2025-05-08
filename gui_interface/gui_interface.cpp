@@ -230,11 +230,11 @@ std::optional<std::string> GuiInterface::promptUserInput() {
 }
 
 // Called by the *worker thread* to add regular output to the display queue.
-void GuiInterface::displayOutput(const std::string& output) {
+void GuiInterface::displayOutput(const std::string& output, const std::string& model_id) {
     // Lock the display mutex to ensure exclusive access to the display queue.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the message and its type onto the queue for the GUI thread to process.
-    display_queue.push({MessageType::LLM_RESPONSE, output}); // Updated for Issue #8
+    display_queue.push({MessageType::LLM_RESPONSE, output, model_id}); // Updated for Issue #8 and Part IV
     // The GUI thread periodically calls processDisplayQueue to check this queue.
 }
 

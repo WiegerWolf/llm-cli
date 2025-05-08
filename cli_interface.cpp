@@ -41,14 +41,16 @@ std::optional<std::string> CliInterface::promptUserInput() {
                                                                                                                                                                          
 // Displays standard output to the console (stdout).                                                                                                                     
 // Ensures output ends with a newline for proper formatting.                                                                                                             
-void CliInterface::displayOutput(const std::string& output) {                                                                                                            
-    std::cout << output;                                                                                                                                                 
-    // Add newline if output doesn't already end with one                                                                                                                
-    if (output.empty() || output.back() != '\n') {                                                                                                                       
-        std::cout << '\n';                                                                                                                                               
-    }                                                                                                                                                                    
-    std::cout.flush(); // Ensure output is displayed immediately                                                                                                         
-}                                                                                                                                                                        
+void CliInterface::displayOutput(const std::string& output, const std::string& model_id) {
+    // model_id is not currently used in CLI display but is part of the interface
+    (void)model_id; // Mark as unused to prevent compiler warnings
+    std::cout << output;
+    // Add newline if output doesn't already end with one
+    if (output.empty() || output.back() != '\n') {
+        std::cout << '\n';
+    }
+    std::cout.flush(); // Ensure output is displayed immediately
+}
                                                                                                                                                                          
 // Displays error messages to the console (stderr).                                                                                                                      
 // Prefixes with "Error: " and ensures output ends with a newline.                                                                                                       
