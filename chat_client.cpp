@@ -211,8 +211,10 @@ std::vector<ModelData> ChatClient::parseModelsFromAPIResponse(const std::string&
         }
     } catch (const nlohmann::json::parse_error& e) {
 // Handle the JSON parsing error
-        ui.displayError("JSON parsing error in parseModelsFromAPIResponse: " + std::string(e.what()));
-        // parseModelsFromAPIResponse should return std::vector<ModelData>
+        ui.displayError("Failed to parse models API response JSON: " + std::string(e.what()) + ". Response snippet: " + api_response.substr(0, 500));
+        return {}; // Return an empty vector in case of error
+    } catch (const std::exception& e) { // Catch other standard exceptions
+        ui.displayError("An unexpected error occurred during model parsing: " + std::string(e.what()));
         return {}; // Return an empty vector in case of error
     } // Closing brace for the catch block
 
@@ -242,12 +244,6 @@ void ChatClient::cacheModelsToDB(const std::vector<ModelData>& models) {
         ui.displayError("Error during model caching: " + std::string(e.what()));
         // Depending on the error, we might want to indicate that the cache could be incomplete.
     }
-}
-        ui.displayError("Failed to parse models API response JSON: " + std::string(e.what()) + ". Response snippet: " + api_response.substr(0, 500));
-    } catch (const std::exception& e) {
-        ui.displayError("An unexpected error occurred during model parsing: " + std::string(e.what()));
-    }
-    return parsed_models;
 }
 // --- ChatClient Method Implementations ---
 
