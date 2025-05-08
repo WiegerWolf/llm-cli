@@ -19,7 +19,7 @@ int main() {
 
         ChatClient client(cli_ui, db_manager); // Inject the UI and DB manager into the client
         // Pass a default (non-stoppable) stop_token as the CLI uses Ctrl+D for exit
-        client.run(std::stop_token{});
+        client.run();
 
         cli_ui.shutdown(); // Shutdown the UI
         cli_ui.displayOutput("\nExiting...\n"); // Use UI for final message

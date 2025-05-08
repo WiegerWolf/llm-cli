@@ -230,7 +230,7 @@ int main(int, char**) {
     // Pass the stop_token provided by jthread to the lambda and client.run()
     std::jthread worker_thread([&client](std::stop_token st){
         try {
-            client.run(st); // Pass the stop token to the client's run loop
+            client.run(); // Pass the stop token to the client's run loop
         } catch (const std::exception& e) {
             // Log exceptions from the worker thread if needed
             std::cerr << "Exception in worker thread: " << e.what() << std::endl;
