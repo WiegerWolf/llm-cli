@@ -550,6 +550,21 @@ std::vector<ModelData> PersistenceManager::getAllModels() {
     return models;
 } // <<< --- ADDED CLOSING BRACE FOR getAllModels()
 
+void PersistenceManager::replaceModelsInDB(const std::vector<ModelData>& models) {
+    beginTransaction();
+    try {
+        clearModelsTable();
+        for (const auto& model : models) {
+            insertOrUpdateModel(model);
+        }
+        commitTransaction();
+    } catch (const std::exception& e) {
+        rollbackTransaction();
+        // Re-throw the exception to be handled by the caller
+        throw std::runtime_error("Failed to replace models in DB: " + std::string(e.what()));
+    }
+}
+
 // Method to get model name by ID (for GUI display, placeholder)
 std::optional<std::string> PersistenceManager::getModelNameById(const std::string& model_id) {
     // Placeholder implementation:
