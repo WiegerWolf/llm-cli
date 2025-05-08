@@ -1,4 +1,5 @@
 #include "chat_client.h"
+#include <iostream> // For std::cerr in destructor
 // #include <stop_token> // Removed for now
 #include "ui_interface.h" // Include UI interface
 #include "config.h"       // For API URLs, DEFAULT_MODEL_ID
@@ -1093,5 +1094,29 @@ void ChatClient::processTurn(const std::string& input) {
         // Catch any non-standard exceptions.
         ui.displayError("An unknown, non-standard error occurred.");
         ui.displayStatus("Error."); // Set error status
+    }
+}
+
+// --- ChatClient Destructor ---
+ChatClient::~ChatClient() {
+    if (model_load_future.valid()) {
+        // If the future is valid, it means the asynchronous task
+        // might still be running or hasn't had its result retrieved.
+        // We must wait for it to complete to prevent it from accessing
+        // members of this ChatClient instance after it's destroyed.
+        try {
+            model_load_future.wait(); // Safely wait for completion.
+        } catch (const std::exception& e) {
+            // Optionally log this, but avoid throwing from a destructor.
+            // The primary .get() in initialize_model_manager should handle operational errors.
+            // For example: std::cerr << "Error during model_load_future cleanup in destructor: " << e.what() << std::endl;
+            // Or if ui object is guaranteed to be valid:
+            // ui.displayError("Error during model_load_future cleanup in destructor: " + std::string(e.what()));
+        } catch (...) {
+            // Optionally log generic error.
+            // For example: std::cerr << "Unknown error during model_load_future cleanup in destructor." << std::endl;
+            // Or if ui object is guaranteed to be valid:
+            // ui.displayError("Unknown error during model_load_future cleanup in destructor.");
+        }
     }
 }

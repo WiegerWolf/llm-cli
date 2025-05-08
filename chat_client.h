@@ -79,6 +79,7 @@ private:
 public:
     // Constructor now requires a UserInterface reference
     explicit ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref); // Added db_ref
+~ChatClient(); // Destructor
 
     // Public method for making API calls (used by web_research tool)
     std::string makeApiCall(const std::vector<Message>& context, bool use_tools = false);
