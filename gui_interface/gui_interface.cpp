@@ -637,7 +637,7 @@ void GuiInterface::processFontRebuildRequest() {
 
 // --- End Font Size Control Implementation ---
 // --- Model Selection Method Implementations (Part III GUI Changes) ---
-std::vector<ModelEntry> GuiInterface::getAvailableModels() const {
+std::vector<GuiInterface::ModelEntry> GuiInterface::getAvailableModels() const {
     std::vector<ModelEntry> entries;
     std::vector<ModelData> raw_models = db_manager_ref.getAllModels(); // Corrected type
 
