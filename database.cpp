@@ -550,6 +550,78 @@ std::vector<ModelData> PersistenceManager::getAllModels() {
     return models;
 } // <<< --- ADDED CLOSING BRACE FOR getAllModels()
 
+std::optional<ModelData> PersistenceManager::getModelById(const std::string& model_id) {
+    const char* sql = "SELECT id, name, description, context_length, pricing_prompt, pricing_completion, architecture_input_modalities, architecture_output_modalities, architecture_tokenizer, top_provider_is_moderated, per_request_limits, supported_parameters, created_at_api, DATETIME(last_updated_db, 'localtime') as last_updated_db FROM models WHERE id = ?;";
+    sqlite3_stmt* stmt = nullptr;
+    std::optional<ModelData> result = std::nullopt;
+
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::string errMsg = "Failed to prepare getModelById statement: ";
+        if (impl && impl->db) errMsg += sqlite3_errmsg(impl->db);
+        if (stmt) sqlite3_finalize(stmt); // Finalize if prepared partially
+        throw std::runtime_error(errMsg);
+    }
+    auto stmt_guard = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>{stmt, sqlite3_finalize};
+
+    if (sqlite3_bind_text(stmt, 1, model_id.c_str(), -1, SQLITE_STATIC) != SQLITE_OK) {
+        std::string errMsg = "Failed to bind model_id in getModelById: ";
+        if (impl && impl->db) errMsg += sqlite3_errmsg(impl->db);
+        throw std::runtime_error(errMsg);
+    }
+
+    int step_result = sqlite3_step(stmt);
+    if (step_result == SQLITE_ROW) {
+        ModelData model;
+        model.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        
+        const unsigned char* name_text = sqlite3_column_text(stmt, 1);
+        model.name = name_text ? reinterpret_cast<const char*>(name_text) : "";
+
+        const unsigned char* desc_text = sqlite3_column_text(stmt, 2);
+        model.description = desc_text ? reinterpret_cast<const char*>(desc_text) : "";
+        
+        model.context_length = sqlite3_column_int(stmt, 3);
+        
+        const unsigned char* pp_text = sqlite3_column_text(stmt, 4);
+        model.pricing_prompt = pp_text ? reinterpret_cast<const char*>(pp_text) : "";
+
+        const unsigned char* pc_text = sqlite3_column_text(stmt, 5);
+        model.pricing_completion = pc_text ? reinterpret_cast<const char*>(pc_text) : "";
+
+        const unsigned char* aim_text = sqlite3_column_text(stmt, 6);
+        model.architecture_input_modalities = aim_text ? reinterpret_cast<const char*>(aim_text) : "";
+
+        const unsigned char* aom_text = sqlite3_column_text(stmt, 7);
+        model.architecture_output_modalities = aom_text ? reinterpret_cast<const char*>(aom_text) : "";
+
+        const unsigned char* at_text = sqlite3_column_text(stmt, 8);
+        model.architecture_tokenizer = at_text ? reinterpret_cast<const char*>(at_text) : "";
+        
+        model.top_provider_is_moderated = sqlite3_column_int(stmt, 9) != 0;
+        
+        const unsigned char* prl_text = sqlite3_column_text(stmt, 10);
+        model.per_request_limits = prl_text ? reinterpret_cast<const char*>(prl_text) : "";
+
+        const unsigned char* sp_text = sqlite3_column_text(stmt, 11);
+        model.supported_parameters = sp_text ? reinterpret_cast<const char*>(sp_text) : "";
+        
+        model.created_at_api = sqlite3_column_int64(stmt, 12);
+        
+        const unsigned char* ludb_text = sqlite3_column_text(stmt, 13);
+        model.last_updated_db = ludb_text ? reinterpret_cast<const char*>(ludb_text) : "";
+        
+        result = model;
+    } else if (step_result != SQLITE_DONE) {
+        // An error occurred during sqlite3_step
+        std::string errMsg = "Failed to execute getModelById statement: ";
+         if (impl && impl->db) errMsg += sqlite3_errmsg(impl->db);
+        throw std::runtime_error(errMsg);
+    }
+    // If SQLITE_DONE, it means no row was found, and result remains std::nullopt, which is correct.
+
+    return result;
+}
+
 void PersistenceManager::replaceModelsInDB(const std::vector<ModelData>& models) {
     beginTransaction();
     try {
