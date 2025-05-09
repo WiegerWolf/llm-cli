@@ -243,6 +243,7 @@ std::vector<ModelData> ChatClient::parseModelsFromAPIResponse(const std::string&
         if (j.contains("data") && j["data"].is_array()) {
             for (const auto& model_obj : j["data"]) {
                 ModelData model_item;
+                bool supports_tool_calling = false; // Initialize flag
                 model_item.id = model_obj.value("id", "");
                 model_item.name = model_obj.value("name", "");
                 if (model_item.name.empty()) {
@@ -309,12 +310,19 @@ std::vector<ModelData> ChatClient::parseModelsFromAPIResponse(const std::string&
 
                 // Parse 'supported_parameters' (store as JSON array string)
                 if (model_obj.contains("supported_parameters") && model_obj["supported_parameters"].is_array()) {
-                    model_item.supported_parameters = model_obj["supported_parameters"].dump();
+                    const auto& sup_params = model_obj["supported_parameters"];
+                    model_item.supported_parameters = sup_params.dump();
+                    for (const auto& param : sup_params) {
+                        if (param.is_string() && param.get<std::string>() == "tools") {
+                            supports_tool_calling = true;
+                            break;
+                        }
+                    }
                 } else {
                     model_item.supported_parameters = "[]"; // Default to empty JSON array string
                 }
 
-                if (!model_item.id.empty()) {
+                if (!model_item.id.empty() && supports_tool_calling) {
                     parsed_models.push_back(model_item);
                 }
             }
