@@ -136,8 +136,8 @@ void PersistenceManager::Impl::insertMessage(const Message& msg) {
     sqlite3_bind_text(stmt, 1, msg.role.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, msg.content.c_str(), -1, SQLITE_STATIC);
     // Bind model_id
-    if (!msg.model_id.empty()) {
-        sqlite3_bind_text(stmt, 3, msg.model_id.c_str(), -1, SQLITE_STATIC);
+    if (msg.model_id.has_value()) {
+        sqlite3_bind_text(stmt, 3, msg.model_id.value().c_str(), -1, SQLITE_STATIC);
     } else {
         sqlite3_bind_null(stmt, 3);
     }
@@ -218,7 +218,7 @@ void PersistenceManager::saveUserMessage(const std::string& content) {
     Message msg;
     msg.role = "user";
     msg.content = content;
-    msg.model_id = ""; // Empty model_id for user messages
+    msg.model_id = std::nullopt; // Empty model_id for user messages
     impl->insertMessage(msg);
 }
 
@@ -226,7 +226,7 @@ void PersistenceManager::saveAssistantMessage(const std::string& content, const 
     Message msg;
     msg.role = "assistant";
     msg.content = content;
-    msg.model_id = model_id;
+    msg.model_id = model_id.empty() ? std::nullopt : std::make_optional(model_id);
     impl->insertMessage(msg);
 }
 
@@ -246,7 +246,7 @@ void PersistenceManager::saveToolMessage(const std::string& content) {
     Message msg;
     msg.role = "tool";
     msg.content = content;
-    msg.model_id = ""; // Empty model_id for tool messages
+    msg.model_id = std::nullopt; // Empty model_id for tool messages
     impl->insertMessage(msg);
 }
 
@@ -291,11 +291,12 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
         system_msg.content = reinterpret_cast<const char*>(sqlite3_column_text(system_stmt, 2));
         const unsigned char* ts = sqlite3_column_text(system_stmt, 3);
         system_msg.timestamp = ts ? reinterpret_cast<const char*>(ts) : "";
-        const unsigned char* model_id_text = sqlite3_column_text(system_stmt, 4);
-        if (model_id_text) {
-            system_msg.model_id = reinterpret_cast<const char*>(model_id_text);
+        // system_msg.model_id = model_id_str; // Old line
+        // model_id is at column index 4
+        if (sqlite3_column_type(system_stmt, 4) != SQLITE_NULL) {
+            system_msg.model_id = reinterpret_cast<const char*>(sqlite3_column_text(system_stmt, 4));
         } else {
-            system_msg.model_id = ""; // Assign empty string if null
+            system_msg.model_id = std::nullopt;
         }
         history.push_back(system_msg);
     }
@@ -325,11 +326,16 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
         msg.content = reinterpret_cast<const char*>(sqlite3_column_text(msgs_stmt, 2));
         const unsigned char* ts = sqlite3_column_text(msgs_stmt, 3);
         msg.timestamp = ts ? reinterpret_cast<const char*>(ts) : "";
-        const unsigned char* model_id_text = sqlite3_column_text(msgs_stmt, 4);
-        if (model_id_text) {
-            msg.model_id = reinterpret_cast<const char*>(model_id_text);
+        // msg.model_id = model_id_str; // Old line
+        // model_id is at column index 4
+        if (sqlite3_column_type(msgs_stmt, 4) != SQLITE_NULL) {
+            msg.model_id = reinterpret_cast<const char*>(sqlite3_column_text(msgs_stmt, 4));
         } else {
-            msg.model_id = ""; // Assign empty string if null
+            if (msg.role == "assistant") {
+                msg.model_id = "UNKNOWN_LEGACY_MODEL_ID";
+            } else {
+                msg.model_id = std::nullopt;
+            }
         }
         recent_messages.push_back(msg);
     }
@@ -342,7 +348,7 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
         default_system_msg.content = "You are a helpful assistant.";
         default_system_msg.id = 0; // Or some other appropriate default or leave to DB
         default_system_msg.timestamp = ""; // Or a current timestamp
-        default_system_msg.model_id = ""; // Assign empty string
+        default_system_msg.model_id = std::nullopt; // Assign empty string
         history.push_back(default_system_msg);
     }
     
@@ -375,11 +381,16 @@ std::vector<Message> PersistenceManager::getHistoryRange(const std::string& star
         msg.content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         const unsigned char* ts = sqlite3_column_text(stmt, 3);
         msg.timestamp = ts ? reinterpret_cast<const char*>(ts) : "";
-        const unsigned char* model_id_text = sqlite3_column_text(stmt, 4);
-        if (model_id_text) {
-            msg.model_id = reinterpret_cast<const char*>(model_id_text);
+        // msg.model_id = model_id_str; // Old line
+        // model_id is at column index 4
+        if (sqlite3_column_type(stmt, 4) != SQLITE_NULL) {
+            msg.model_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
         } else {
-            msg.model_id = ""; // Assign empty string if null
+            if (msg.role == "assistant") {
+                msg.model_id = "UNKNOWN_LEGACY_MODEL_ID";
+            } else {
+                msg.model_id = std::nullopt;
+            }
         }
         history_range.push_back(msg);
     }

@@ -510,12 +510,17 @@ int main(int, char**) {
                 // Keep default text color for responses
                 std::string prefix = "Assistant: "; // Default prefix
                 // Check if model_id exists and fetch name/use ID
-                if (!message.model_id.empty()) { // Assuming HistoryMessage has model_id
-                    std::optional<std::string> model_name_opt = db_manager.getModelNameById(message.model_id);
-                    if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
-                        prefix = "Assistant (" + model_name_opt.value() + "): "; // Use model name
+                if (message.model_id.has_value()) {
+                    const std::string& actual_model_id = message.model_id.value();
+                    if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
+                        prefix = "Assistant (Legacy Model): ";
                     } else {
-                        prefix = "Assistant (" + message.model_id + "): "; // Fallback to model ID
+                        std::optional<std::string> model_name_opt = db_manager.getModelNameById(actual_model_id);
+                        if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
+                            prefix = "Assistant (" + model_name_opt.value() + "): "; // Use model name
+                        } else {
+                            prefix = "Assistant (" + actual_model_id + "): "; // Fallback to model ID
+                        }
                     }
                 }
                 display_text = prefix + message.content;

@@ -6,12 +6,19 @@
 #include "model_types.h" // For ModelData struct
 struct sqlite3; // Forward declaration for SQLite database handle
 
+// Message struct represents a single message in the chat history.
+// model_id:
+// - Is an std::optional<std::string>.
+// - For assistant messages loaded from an older database schema (before model_id column existed),
+//   this will be populated with the string "UNKNOWN_LEGACY_MODEL_ID".
+// - For user, tool, or system messages, or new assistant messages where model_id is not
+//   applicable/set, it will be std::nullopt.
 struct Message {
     std::string role;
     std::string content;
     int id = 0;
     std::string timestamp; // Added timestamp field
-    std::string model_id; // <-- New field (changed from optional)
+    std::optional<std::string> model_id; // Stores the ID of the model that generated an assistant message.
 };
 
 // Model struct is now ModelData, defined in model_types.h

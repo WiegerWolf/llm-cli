@@ -26,7 +26,7 @@ enum class MessageType {
 struct HistoryMessage {
     MessageType type;
     std::string content;
-    std::string model_id; // Added for Part IV: Message Metadata
+    std::optional<std::string> model_id; // Changed for backward compatibility
 };
 // --- End Message History Structure ---
 

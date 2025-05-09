@@ -235,7 +235,7 @@ void GuiInterface::displayOutput(const std::string& output, const std::string& m
     // Lock the display mutex to ensure exclusive access to the display queue.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the message and its type onto the queue for the GUI thread to process.
-    display_queue.push({MessageType::LLM_RESPONSE, output, model_id}); // Updated for Issue #8 and Part IV
+    display_queue.push({MessageType::LLM_RESPONSE, output, std::make_optional(model_id)}); // Updated for Issue #8 and Part IV
     // The GUI thread periodically calls processDisplayQueue to check this queue.
 }
 
