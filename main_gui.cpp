@@ -437,12 +437,38 @@ int main(int, char**) {
                                                       : "Select a Model";
                   if (ImGui::BeginCombo("Active Model", combo_preview_value)) {
                       for (int i = 0; i < available_models_list.size(); ++i) {
+                          const GuiInterface::ModelEntry& current_entry = available_models_list[i];
                           const bool is_selected = (current_gui_selected_model_idx == i);
-                          if (ImGui::Selectable(available_models_list[i].name.c_str(), is_selected)) {
+
+                          std::string item_display_text;
+                          // Attempt to fetch full model data for detailed display
+                          std::optional<ModelData> model_data_opt = db_manager.getModelById(current_entry.id);
+
+                          if (model_data_opt) {
+                              const ModelData& model = *model_data_opt;
+                              // Line 1: Name
+                              item_display_text = model.name;
+                              
+                              // Line 2: Description
+                              item_display_text += "\n" + model.description; // Display fully, even if empty (creates an empty line)
+                              
+                              // Line 3: Context Length | Pricing
+                              // For context_length, displaying raw int as per "display it fully" for description, formatting like "128k" is for a later step.
+                              std::string context_str = "Context: " + std::to_string(model.context_length);
+                              std::string pricing_str = "Price: P:" + model.pricing_prompt + "/C:" + model.pricing_completion;
+                              item_display_text += "\n" + context_str + " | " + pricing_str;
+                          } else {
+                              // Fallback if full model data isn't available, maintaining a similar structure
+                              item_display_text = current_entry.name;       // Line 1
+                              item_display_text += "\n(Description N/A)";    // Line 2
+                              item_display_text += "\n(Details N/A)";        // Line 3
+                          }
+
+                          if (ImGui::Selectable(item_display_text.c_str(), is_selected)) {
                               current_gui_selected_model_idx = i;
-                              current_gui_selected_model_id = available_models_list[i].id;
-                              gui_ui.setSelectedModelInUI(current_gui_selected_model_id); // Update GuiInterface state
-                              client.setActiveModel(current_gui_selected_model_id);      // Notify ChatClient
+                              current_gui_selected_model_id = current_entry.id;
+                              gui_ui.setSelectedModelInUI(current_gui_selected_model_id);
+                              client.setActiveModel(current_gui_selected_model_id);
                           }
                           if (is_selected) { ImGui::SetItemDefaultFocus(); }
                       }
