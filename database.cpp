@@ -167,24 +167,35 @@ PersistenceManager::Impl::~Impl() {
 
 // Executes a simple SQL statement without expecting results. (const char* version)
 void PersistenceManager::Impl::exec(const char* sql) {
-    char* err = nullptr;
-    if(sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
-        std::string msg = "SQL error executing '";
-        msg += sql;
-        msg += "': ";
-        msg += err;
-        sqlite3_free(err); // Free the error message allocated by SQLite
-        throw std::runtime_error(msg);
+    char* err_msg_ptr = nullptr; // Ensure initialized to nullptr
+    if (sqlite3_exec(db, sql, nullptr, nullptr, &err_msg_ptr) != SQLITE_OK) {
+        std::string error_message_str = "SQL error executing '";
+        error_message_str += sql;
+        error_message_str += "': ";
+        if (err_msg_ptr) { // Add this NULL check
+            error_message_str += err_msg_ptr;
+            sqlite3_free(err_msg_ptr); // Only free if not NULL
+        } else {
+            error_message_str += "Unknown SQLite error (no specific message provided by sqlite3_exec)";
+        }
+        throw std::runtime_error(error_message_str);
     }
 }
 
 // Executes a simple SQL statement without expecting results. (const std::string& version)
 void PersistenceManager::Impl::exec(const std::string& sql) {
-    char* errMsg = nullptr;
-    if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg) != SQLITE_OK) {
-        std::string error = "SQL error in exec (std::string): " + std::string(errMsg);
-        sqlite3_free(errMsg);
-        throw std::runtime_error(error);
+    char* err_msg_ptr = nullptr; // Ensure initialized to nullptr
+    if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &err_msg_ptr) != SQLITE_OK) {
+        std::string error_message_str = "SQL error executing '";
+        error_message_str += sql; // Include failing SQL for context
+        error_message_str += "': ";
+        if (err_msg_ptr) { // Add this NULL check
+            error_message_str += err_msg_ptr;
+            sqlite3_free(err_msg_ptr); // Only free if not NULL
+        } else {
+            error_message_str += "Unknown SQLite error (no specific message provided by sqlite3_exec)";
+        }
+        throw std::runtime_error(error_message_str);
     }
 }
 
