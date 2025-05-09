@@ -607,33 +607,37 @@ void PersistenceManager::replaceModelsInDB(const std::vector<ModelData>& models)
 
 // Method to get model name by ID (for GUI display, placeholder)
 std::optional<std::string> PersistenceManager::getModelNameById(const std::string& model_id) {
-    // Placeholder implementation:
-    // In a real scenario, this would query the 'models' table:
-    // const char* sql = "SELECT name FROM models WHERE id = ?";
-    // sqlite3_stmt* stmt;
-    // if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-    //     sqlite3_bind_text(stmt, 1, model_id.c_str(), -1, SQLITE_STATIC);
-    //     if (sqlite3_step(stmt) == SQLITE_ROW) {
-    //         const unsigned char* name = sqlite3_column_text(stmt, 0);
-    //         if (name) {
-    //             sqlite3_finalize(stmt);
-    //             return reinterpret_cast<const char*>(name);
-    //         }
-    //     }
-    //     sqlite3_finalize(stmt);
-    // }
-    // For now, as the 'models' table might not be fully populated or its exact schema for 'name'
-    // might vary, we'll return the model_id itself if it's not empty, or nullopt.
-    // This allows the GUI to at least display the ID if the name isn't found.
-    if (!model_id.empty()) {
-        // Simulate a DB lookup for a "friendly name" if available, otherwise return ID
-        // This part would be replaced by actual DB query to 'models' table
-        if (model_id == "phi3:mini") return "Phi-3 Mini";
-        if (model_id == "gpt-4-turbo") return "GPT-4 Turbo";
-        if (model_id == "claude-3-opus") return "Claude 3 Opus";
-        return model_id; // Fallback to returning the ID itself
+    const char* sql = "SELECT name FROM models WHERE id = ?";
+    sqlite3_stmt* stmt = nullptr;
+    std::optional<std::string> model_name = std::nullopt;
+
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        // Bind the model_id to the prepared statement
+        if (sqlite3_bind_text(stmt, 1, model_id.c_str(), -1, SQLITE_STATIC) == SQLITE_OK) {
+            // Execute the statement
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                // Retrieve the model name
+                const unsigned char* name_text = sqlite3_column_text(stmt, 0);
+                if (name_text) {
+                    model_name = reinterpret_cast<const char*>(name_text);
+                }
+            }
+            // else: sqlite3_step did not return SQLITE_ROW (e.g., no match or error)
+            // model_name remains std::nullopt. Error details could be logged via sqlite3_errmsg(impl->db).
+        }
+        // else: sqlite3_bind_text failed
+        // model_name remains std::nullopt. Error details could be logged via sqlite3_errmsg(impl->db).
+
+        // Finalize the statement
+        sqlite3_finalize(stmt);
     }
-    return std::nullopt;
+    // else: sqlite3_prepare_v2 failed
+    // model_name remains std::nullopt. Error details could be logged via sqlite3_errmsg(impl->db).
+    // Note: If sqlite3_prepare_v2 allocated stmt before failing (e.g. SQLITE_TOOBIG),
+    // it should be finalized. sqlite3_prepare_v2 documentation states it handles this for most errors.
+    // For added robustness, one might check `else if (stmt) { sqlite3_finalize(stmt); }`
+
+    return model_name;
 }
 
 // Settings Management
