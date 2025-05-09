@@ -409,11 +409,7 @@ std::vector<Message> PersistenceManager::getContextHistory(size_t max_pairs) {
         if (sqlite3_column_type(msgs_stmt, 4) != SQLITE_NULL) {
             msg.model_id = reinterpret_cast<const char*>(sqlite3_column_text(msgs_stmt, 4));
         } else {
-            if (msg.role == "assistant") {
-                msg.model_id = "UNKNOWN_LEGACY_MODEL_ID";
-            } else {
-                msg.model_id = std::nullopt;
-            }
+            msg.model_id = std::nullopt;
         }
         recent_messages.push_back(msg);
     }
@@ -464,11 +460,7 @@ std::vector<Message> PersistenceManager::getHistoryRange(const std::string& star
         if (sqlite3_column_type(stmt, 4) != SQLITE_NULL) {
             msg.model_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
         } else {
-            if (msg.role == "assistant") {
-                msg.model_id = "UNKNOWN_LEGACY_MODEL_ID";
-            } else {
-                msg.model_id = std::nullopt;
-            }
+            msg.model_id = std::nullopt;
         }
         history_range.push_back(msg);
     }
