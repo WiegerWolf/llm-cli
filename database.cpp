@@ -31,6 +31,17 @@ std::filesystem::path get_home_directory_path() {
 }
 } // end anonymous namespace
 
+namespace { // Or make these part of a utility struct/namespace if preferred
+struct SQLiteStmtDeleter {
+    void operator()(sqlite3_stmt* stmt) const {
+        if (stmt) {
+            sqlite3_finalize(stmt);
+        }
+    }
+};
+using unique_sqlite_stmt_ptr = std::unique_ptr<sqlite3_stmt, SQLiteStmtDeleter>;
+} // end anonymous namespace
+
 // Constructor for the implementation class
 PersistenceManager::Impl::Impl() : db(nullptr) { // Initialize db pointer
     // Construct the database path using the cross-platform helper
@@ -109,23 +120,35 @@ PersistenceManager::Impl::Impl() : db(nullptr) { // Initialize db pointer
 
     // Migration: Add model_id to messages table if it doesn't exist
     bool model_id_column_exists = false;
-    sqlite3_stmt* stmt_check_column = nullptr;
+    sqlite3_stmt* raw_stmt_check_column = nullptr;
     std::string pragma_sql = "PRAGMA table_info('messages');";
-    if (sqlite3_prepare_v2(db, pragma_sql.c_str(), -1, &stmt_check_column, nullptr) == SQLITE_OK) {
-        while (sqlite3_step(stmt_check_column) == SQLITE_ROW) {
-            const unsigned char* col_name = sqlite3_column_text(stmt_check_column, 1);
-            if (col_name && strcmp(reinterpret_cast<const char*>(col_name), "model_id") == 0) {
-                model_id_column_exists = true;
-                break;
+
+    if (sqlite3_prepare_v2(db, pragma_sql.c_str(), -1, &raw_stmt_check_column, nullptr) == SQLITE_OK) {
+        unique_sqlite_stmt_ptr stmt_check_column_guard(raw_stmt_check_column); // RAII takes ownership
+
+        while (sqlite3_step(stmt_check_column_guard.get()) == SQLITE_ROW) {
+            const unsigned char* col_name_text = sqlite3_column_text(stmt_check_column_guard.get(), 1); // Index 1 is 'name'
+            if (col_name_text) {
+                std::string col_name(reinterpret_cast<const char*>(col_name_text));
+                if (col_name == "model_id") {
+                    model_id_column_exists = true;
+                    break;
+                }
             }
         }
+        // No manual sqlite3_finalize needed here; stmt_check_column_guard handles it.
     } else {
         std::string err_msg = "Failed to prepare PRAGMA table_info('messages'): ";
         err_msg += sqlite3_errmsg(db);
-        if (stmt_check_column) sqlite3_finalize(stmt_check_column);
+        // If raw_stmt_check_column was set by a failed prepare that still allocated,
+        // it should be finalized. sqlite3_prepare_v2 docs say it finalizes on failure
+        // unless SQLITE_TOOBIG is returned. For robustness, explicitly finalize if non-null.
+        if (raw_stmt_check_column) {
+             sqlite3_finalize(raw_stmt_check_column);
+        }
         throw std::runtime_error(err_msg);
     }
-    sqlite3_finalize(stmt_check_column);
+    // The manual sqlite3_finalize(stmt_check_column) is removed as RAII handles it.
 
     if (!model_id_column_exists) {
         this->exec("ALTER TABLE messages ADD COLUMN model_id TEXT;");
