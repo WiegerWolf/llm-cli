@@ -493,7 +493,7 @@ ON CONFLICT(id) DO UPDATE SET
     supported_parameters=excluded.supported_parameters,
     created_at_api=excluded.created_at_api,
     last_updated_db=CURRENT_TIMESTAMP
-);)";
+)";
     sqlite3_stmt* stmt = nullptr;
 
     if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
