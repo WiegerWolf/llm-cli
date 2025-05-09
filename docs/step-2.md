@@ -113,17 +113,13 @@ Integrate dynamic fetching of AI models from an API, parse the response, cache t
 
 #### 4.5. `ChatClient` Constructor Modification
 *   [ ] In `ChatClient::ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref)`:
-    *   After initializing members, launch `initializeModels` in a detached thread:
-        ```cpp
-        // Ensure model_init_thread is joinable before starting a new one if constructor can be called multiple times
-        // (though typically it's once per ChatClient instance)
-        if (model_init_thread.joinable()) {
-            model_init_thread.join(); 
-        }
-        model_init_thread = std::thread(&ChatClient::initializeModels, this);
-        model_init_thread.detach(); // Detach to run in background
-        ```
-    *   *Correction*: Detaching might not be ideal if the main application relies on models being loaded soon. Consider if a join with timeout or a more robust signaling mechanism is needed for the UI to know when it's safe to operate. For now, per requirements, "run in a separate thread" implies background. Detach is simplest for plan.
+    *   The constructor itself no longer directly launches model initialization. Instead, a separate public method `ChatClient::initialize_model_manager()` is called by the application's main function (e.g., in `main_gui.cpp` or `main_cli.cpp`) after the `ChatClient` object is created.
+    *   Inside `ChatClient::initialize_model_manager()`:
+        *   The actual asynchronous part of model initialization, `ChatClient::loadModelsAsync()`, is launched using `std::async(std::launch::async, &ChatClient::loadModelsAsync, this)`.
+        *   The `std::future<void>` returned by `std::async` is stored in a member variable `model_load_future`.
+        *   `initialize_model_manager()` then calls `model_load_future.get()` to wait for the `loadModelsAsync` task to complete. This makes the model initialization process effectively synchronous from the perspective of the caller of `initialize_model_manager`, ensuring models are loaded (or attempted to be loaded) before proceeding, while still allowing the underlying fetch/parse operations to be performed asynchronously.
+    *   As a safeguard, the `ChatClient::~ChatClient()` destructor checks if `model_load_future.valid()` is true. If so, it calls `model_load_future.wait()` to ensure that the asynchronous task completes before the `ChatClient` object is destroyed. This prevents the `loadModelsAsync` task from potentially accessing a destructed `ChatClient` instance.
+    *   The previous approach using `std::thread(&ChatClient::initializeModels, this).detach();` has been replaced by this more robust `std::async` and `std::future` mechanism.
 
 ### 5. `Database` / `PersistenceManager` Modifications (`database.h`, `database.cpp`)
 *   (These are dependencies for `ChatClient`'s caching logic. Actual implementation is part of the Database Schema task, but methods need to be available).
