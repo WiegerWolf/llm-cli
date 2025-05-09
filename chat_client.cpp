@@ -248,9 +248,71 @@ std::vector<ModelData> ChatClient::parseModelsFromAPIResponse(const std::string&
                 if (model_item.name.empty()) {
                     model_item.name = model_item.id; // Fallback name to id
                 }
-                // Add other fields as necessary from model_types.h
-                // model_item.context_length = model_obj.value("context_length", 0);
-                // ...
+                // Parse 'description'
+                model_item.description = model_obj.value("description", "");
+
+                // Parse 'context_length'
+                model_item.context_length = model_obj.value("context_length", 0);
+
+                // Parse 'created' (assuming it's a Unix timestamp)
+                model_item.created_at_api = model_obj.value("created", 0LL);
+
+                // Parse 'pricing' (assuming it's a nested object)
+                if (model_obj.contains("pricing") && model_obj["pricing"].is_object()) {
+                    const auto& pricing_obj = model_obj["pricing"];
+                    if (pricing_obj.contains("prompt")) {
+                        if (pricing_obj["prompt"].is_string()) {
+                            model_item.pricing_prompt = pricing_obj.value("prompt", "");
+                        } else if (pricing_obj["prompt"].is_number()) {
+                            model_item.pricing_prompt = std::to_string(pricing_obj["prompt"].get<double>());
+                        }
+                    }
+                    if (pricing_obj.contains("completion")) {
+                        if (pricing_obj["completion"].is_string()) {
+                            model_item.pricing_completion = pricing_obj.value("completion", "");
+                        } else if (pricing_obj["completion"].is_number()) {
+                            model_item.pricing_completion = std::to_string(pricing_obj["completion"].get<double>());
+                        }
+                    }
+                }
+
+                // Parse 'architecture' (assuming it's a nested object)
+                if (model_obj.contains("architecture") && model_obj["architecture"].is_object()) {
+                    const auto& arch_obj = model_obj["architecture"];
+                    model_item.architecture_tokenizer = arch_obj.value("tokenizer", "");
+
+                    if (arch_obj.contains("input_modalities") && arch_obj["input_modalities"].is_array()) {
+                        model_item.architecture_input_modalities = arch_obj["input_modalities"].dump();
+                    } else {
+                        model_item.architecture_input_modalities = "[]"; // Default to empty JSON array string
+                    }
+
+                    if (arch_obj.contains("output_modalities") && arch_obj["output_modalities"].is_array()) {
+                        model_item.architecture_output_modalities = arch_obj["output_modalities"].dump();
+                    } else {
+                        model_item.architecture_output_modalities = "[]"; // Default to empty JSON array string
+                    }
+                }
+
+                // Parse 'top_provider' (assuming it's a nested object)
+                if (model_obj.contains("top_provider") && model_obj["top_provider"].is_object()) {
+                    const auto& provider_obj = model_obj["top_provider"];
+                    model_item.top_provider_is_moderated = provider_obj.value("is_moderated", false);
+                }
+
+                // Parse 'per_request_limits' (store as JSON string)
+                if (model_obj.contains("per_request_limits") && model_obj["per_request_limits"].is_object()) {
+                    model_item.per_request_limits = model_obj["per_request_limits"].dump();
+                } else {
+                    model_item.per_request_limits = "{}"; // Default to empty JSON object string
+                }
+
+                // Parse 'supported_parameters' (store as JSON array string)
+                if (model_obj.contains("supported_parameters") && model_obj["supported_parameters"].is_array()) {
+                    model_item.supported_parameters = model_obj["supported_parameters"].dump();
+                } else {
+                    model_item.supported_parameters = "[]"; // Default to empty JSON array string
+                }
 
                 if (!model_item.id.empty()) {
                     parsed_models.push_back(model_item);
