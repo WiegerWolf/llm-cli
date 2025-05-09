@@ -608,35 +608,39 @@ void PersistenceManager::replaceModelsInDB(const std::vector<ModelData>& models)
 // Method to get model name by ID (for GUI display, placeholder)
 std::optional<std::string> PersistenceManager::getModelNameById(const std::string& model_id) {
     const char* sql = "SELECT name FROM models WHERE id = ?";
-    sqlite3_stmt* stmt = nullptr;
+    sqlite3_stmt* raw_stmt = nullptr;
     std::optional<std::string> model_name = std::nullopt;
 
-    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        // Bind the model_id to the prepared statement
-        if (sqlite3_bind_text(stmt, 1, model_id.c_str(), -1, SQLITE_STATIC) == SQLITE_OK) {
-            // Execute the statement
-            if (sqlite3_step(stmt) == SQLITE_ROW) {
-                // Retrieve the model name
-                const unsigned char* name_text = sqlite3_column_text(stmt, 0);
-                if (name_text) {
-                    model_name = reinterpret_cast<const char*>(name_text);
-                }
-            }
-            // else: sqlite3_step did not return SQLITE_ROW (e.g., no match or error)
-            // model_name remains std::nullopt. Error details could be logged via sqlite3_errmsg(impl->db).
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &raw_stmt, nullptr) != SQLITE_OK) {
+        std::string errMsg = "Failed to prepare getModelNameById statement: " + std::string(sqlite3_errmsg(impl->db));
+        if (raw_stmt) {
+            sqlite3_finalize(raw_stmt); // Clean up if allocated despite error
         }
-        // else: sqlite3_bind_text failed
-        // model_name remains std::nullopt. Error details could be logged via sqlite3_errmsg(impl->db).
-
-        // Finalize the statement
-        sqlite3_finalize(stmt);
+        throw std::runtime_error(errMsg);
     }
-    // else: sqlite3_prepare_v2 failed
-    // model_name remains std::nullopt. Error details could be logged via sqlite3_errmsg(impl->db).
-    // Note: If sqlite3_prepare_v2 allocated stmt before failing (e.g. SQLITE_TOOBIG),
-    // it should be finalized. sqlite3_prepare_v2 documentation states it handles this for most errors.
-    // For added robustness, one might check `else if (stmt) { sqlite3_finalize(stmt); }`
 
+    unique_sqlite_stmt_ptr stmt_ptr{raw_stmt}; // RAII wrapper
+
+    // Bind the model_id to the prepared statement
+    if (sqlite3_bind_text(stmt_ptr.get(), 1, model_id.c_str(), -1, SQLITE_STATIC) != SQLITE_OK) {
+        throw std::runtime_error("Failed to bind model_id in getModelNameById: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+
+    // Execute the statement
+    int step_result = sqlite3_step(stmt_ptr.get());
+    if (step_result == SQLITE_ROW) {
+        // Retrieve the model name
+        const unsigned char* name_text = sqlite3_column_text(stmt_ptr.get(), 0);
+        if (name_text) {
+            model_name = reinterpret_cast<const char*>(name_text);
+        }
+    } else if (step_result != SQLITE_DONE) { // SQLITE_DONE means no row found (not an error here)
+        // An error occurred during step
+        throw std::runtime_error("Error during sqlite3_step in getModelNameById: " + std::string(sqlite3_errmsg(impl->db)));
+    }
+    // If step_result is SQLITE_DONE, model_name remains std::nullopt, which is the correct behavior.
+
+    // No need for manual sqlite3_finalize(stmt_ptr.get()); unique_sqlite_stmt_ptr handles it.
     return model_name;
 }
 
