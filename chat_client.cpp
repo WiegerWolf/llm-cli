@@ -288,10 +288,14 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     CURLcode res;
     long http_code = 0;
     std::string response_buffer;
-    bool retried_with_default = false;
+    bool retried_with_default_once = false;
 
-try_api_call:
-    curl = curl_easy_init();
+    while (true) {
+        // The declarations of curl, res, http_code, response_buffer, and retried_with_default_once
+        // remain outside this loop. res and http_code are used across loop iterations before being reset
+        // or re-evaluated. response_buffer is cleared inside. curl is re-initialized.
+
+        curl = curl_easy_init();
     if (!curl) {
         throw std::runtime_error("Failed to initialize CURL");
     }
@@ -402,14 +406,15 @@ try_api_call:
     }
 
 
-    if (model_potentially_unavailable && !retried_with_default && this->active_model_id != DEFAULT_MODEL_ID) {
+    if (model_potentially_unavailable && !retried_with_default_once && this->active_model_id != DEFAULT_MODEL_ID) {
         std::string failed_model_id = this->active_model_id;
         ui.displayError("API call with model '" + failed_model_id + "' failed (Error: " + (res != CURLE_OK ? curl_easy_strerror(res) : "HTTP " + std::to_string(http_code)) + "). Attempting to switch to default model: " + std::string(DEFAULT_MODEL_ID));
         
         this->setActiveModel(DEFAULT_MODEL_ID); // This updates active_model_id and notifies UI
-        retried_with_default = true;
-        // curl_guard and headers_guard will clean up, then we jump to retry
-        goto try_api_call;
+        retried_with_default_once = true;
+        // curl_guard and headers_guard will go out of scope at the end of this loop iteration,
+        // cleaning up resources before the 'continue'.
+        continue; // Retry the API call with the default model
     }
 
     if (res != CURLE_OK) {
@@ -420,6 +425,7 @@ try_api_call:
     }
 
     return response_buffer;
+    } // End of while(true) loop
 }
 
 // Executes a single tool and prepares the JSON string for the tool result message.
