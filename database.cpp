@@ -521,8 +521,14 @@ ON CONFLICT(id) DO UPDATE SET
 }
 
 std::vector<ModelData> PersistenceManager::getAllModels() {
-    // Using only id and name as per current ModelData definition
-    const char* sql = "SELECT id, name FROM models ORDER BY name ASC;"; // Added ORDER BY name ASC
+    const char* sql = R"(
+SELECT
+    id, name, description, context_length, pricing_prompt, pricing_completion,
+    architecture_input_modalities, architecture_output_modalities, architecture_tokenizer,
+    top_provider_is_moderated, per_request_limits, supported_parameters, created_at_api,
+    last_updated_db
+FROM models ORDER BY name ASC;
+)";
     sqlite3_stmt* stmt = nullptr;
     std::vector<ModelData> models;
 
@@ -531,12 +537,30 @@ std::vector<ModelData> PersistenceManager::getAllModels() {
     }
     auto stmt_guard = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>{stmt, sqlite3_finalize};
 
+    // Helper lambda to safely get text, handling NULLs by returning empty string
+    auto get_text_or_empty = [&](int col_idx) {
+        const unsigned char* text = sqlite3_column_text(stmt, col_idx);
+        return text ? reinterpret_cast<const char*>(text) : "";
+    };
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         ModelData model;
-        model.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        const unsigned char* name_text = sqlite3_column_text(stmt, 1);
-        model.name = name_text ? reinterpret_cast<const char*>(name_text) : model.id; // Fallback to ID if name is NULL
-        // If ModelData is expanded, retrieve other parameters here.
+        model.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)); // Column index 0
+        model.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)); // Column index 1
+        
+        model.description = get_text_or_empty(2);
+        model.context_length = sqlite3_column_int(stmt, 3);
+        model.pricing_prompt = get_text_or_empty(4);
+        model.pricing_completion = get_text_or_empty(5);
+        model.architecture_input_modalities = get_text_or_empty(6);
+        model.architecture_output_modalities = get_text_or_empty(7);
+        model.architecture_tokenizer = get_text_or_empty(8);
+        model.top_provider_is_moderated = (sqlite3_column_int(stmt, 9) == 1); // Convert int back to bool
+        model.per_request_limits = get_text_or_empty(10);
+        model.supported_parameters = get_text_or_empty(11);
+        model.created_at_api = sqlite3_column_int64(stmt, 12);
+        model.last_updated_db = get_text_or_empty(13);
+
         models.push_back(model);
     }
 
@@ -544,7 +568,7 @@ std::vector<ModelData> PersistenceManager::getAllModels() {
          throw std::runtime_error("getAllModels (ModelData) failed during step: " + std::string(sqlite3_errmsg(impl->db)));
     }
     return models;
-} // <<< --- ADDED CLOSING BRACE FOR getAllModels()
+}
 
 std::optional<ModelData> PersistenceManager::getModelById(const std::string& model_id) {
     const char* sql = "SELECT id, name, description, context_length, pricing_prompt, pricing_completion, architecture_input_modalities, architecture_output_modalities, architecture_tokenizer, top_provider_is_moderated, per_request_limits, supported_parameters, created_at_api, DATETIME(last_updated_db, 'localtime') as last_updated_db FROM models WHERE id = ?;";
