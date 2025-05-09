@@ -1,19 +1,63 @@
 #include "database.h"
 #include <sqlite3.h>
-#include <memory>
-#include <stdexcept>
-#include <iostream>
-#include <cstdlib>
-#include <nlohmann/json.hpp>
+#include <memory>             // For std::unique_ptr
+#include <stdexcept>          // For std::runtime_error
+#include <string>             // For std::string
+#include <filesystem>       // For std::filesystem::path
+#include <cstdlib>            // For std::getenv
+#include <iostream>           // For std::cerr, std::endl (consolidated)
+#include <nlohmann/json.hpp>  // For nlohmann::json
+#include <cstring>            // For strcmp, std::strlen
+
+namespace { // Anonymous namespace for helper
+std::filesystem::path get_home_directory_path() {
+    #ifdef _WIN32
+        const char* userprofile = std::getenv("USERPROFILE");
+        if (userprofile) {
+            return std::filesystem::path(userprofile);
+        }
+        const char* homedrive = std::getenv("HOMEDRIVE");
+        const char* homepath = std::getenv("HOMEPATH");
+        if (homedrive && homepath) {
+            return std::filesystem::path(homedrive) / homepath;
+        }
+    #else // POSIX-like systems
+        const char* home_env = std::getenv("HOME");
+        if (home_env) {
+            return std::filesystem::path(home_env);
+        }
+    #endif
+    return ""; // Return empty path if home directory cannot be determined
+}
+} // end anonymous namespace
 
 // Constructor for the implementation class
 PersistenceManager::Impl::Impl() : db(nullptr) { // Initialize db pointer
-    // Construct the database path in the user's home directory
-    const char* home_dir = std::getenv("HOME");
-    if (!home_dir) {
-        throw std::runtime_error("Failed to get HOME directory environment variable.");
+    // Construct the database path using the cross-platform helper
+    std::filesystem::path db_dir_path = get_home_directory_path();
+    std::string final_db_path_str;
+
+    if (!db_dir_path.empty()) {
+        try {
+            // Ensure the .llm-cli directory exists in the home directory
+            std::filesystem::path app_config_dir = db_dir_path / ".llm-cli";
+            if (!std::filesystem::exists(app_config_dir)) {
+                std::filesystem::create_directories(app_config_dir);
+            }
+            // Define the database file path within this directory
+            std::filesystem::path db_file_path = app_config_dir / "llm_chat_history.db";
+            final_db_path_str = db_file_path.string();
+        } catch (const std::filesystem::filesystem_error& e) {
+            std::cerr << "Filesystem error constructing database path in home directory: " << e.what()
+                      << ". Using current directory as fallback." << std::endl;
+            final_db_path_str = "llm_chat_history.db"; // Fallback to current directory
+        }
+    } else {
+        std::cerr << "Warning: Could not determine home directory. Using current directory for database." << std::endl;
+        final_db_path_str = "llm_chat_history.db"; // Fallback to current directory
     }
-    std::string path = std::string(home_dir) + "/.llm-cli-chat.db";
+    
+    std::string path = final_db_path_str; // Use this for sqlite3_open
 
     // Open the SQLite database connection
     if(sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
