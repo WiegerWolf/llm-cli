@@ -37,11 +37,6 @@ public:
     std::vector<Message> getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit = 50);
 
     // Model specific operations
-    // void saveOrUpdateModel(const Model& model); // Replaced by insertOrUpdateModel
-    // std::optional<Model> getModelById(const std::string& id); // To be updated or removed if not used by new logic
-    // std::vector<Model> getAllModels(bool orderByName = true); // Replaced by getAllModels()
-    // void clearAllModels(); // Replaced by clearModelsTable()
-
     void clearModelsTable();
     void insertOrUpdateModel(const ModelData& model);
     std::vector<ModelData> getAllModels(); // New signature
