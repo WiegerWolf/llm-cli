@@ -492,26 +492,29 @@ void GuiInterface::loadFonts(float size) {
     if (!resources_NotoSans_Regular_ttf || resources_NotoSans_Regular_ttf_len == 0) {
          fprintf(stderr, "Error: Font resource data is missing or empty.\n");
          io.Fonts->AddFontDefault(); // Fallback
+         main_font = io.Fonts->Fonts.back(); // Store the fallback font
+         small_font = main_font; // Use the same fallback for small font
          fprintf(stderr, "Falling back to ImGui default font.\n");
          return;
     }
-
+ 
     ImFontConfig font_cfg;
     font_cfg.OversampleH = 2; // Improve rendering quality
     font_cfg.OversampleV = 1;
     font_cfg.PixelSnapH = true;
     font_cfg.FontDataOwnedByAtlas = false; // Font data is managed externally (in the header)
-
-    // Load default ranges first (ASCII, basic Latin) from memory
-    ImFont* font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
-    if (font == NULL) {
-        fprintf(stderr, "Error: Failed to load default font segment from memory (size %.1f).\n", size);
-        // Fall back to ImGui's default font if primary fails
-        io.Fonts->AddFontDefault();
-        fprintf(stderr, "Falling back to ImGui default font.\n");
-        return; // Don't attempt merges if default load failed
+ 
+    // --- Load Main Font ---
+    main_font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+    if (main_font == NULL) {
+        fprintf(stderr, "Error: Failed to load main font (size %.1f).\n", size);
+        io.Fonts->AddFontDefault(); // Fallback for main_font
+        main_font = io.Fonts->Fonts.back();
+        small_font = main_font; // Also use this fallback for small_font
+        fprintf(stderr, "Falling back to ImGui default font for main and small.\n");
+        return;
     }
-
+ 
     // Define additional ranges (static to avoid redefinition)
     static const ImWchar extended_ranges[] =
     {
@@ -531,30 +534,43 @@ void GuiInterface::loadFonts(float size) {
         0,
     };
 
-    // Merge additional ranges into the default font
+    // Merge additional ranges into the main font
     font_cfg.MergeMode = true; // Set MergeMode before the first merge
-
-    // Merge Latin Extended A+B
-    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, extended_ranges);
-    if (font == NULL) {
-        fprintf(stderr, "Error: Failed to merge Latin Extended font segment (size %.1f).\n", size);
+ 
+    // Merge Latin Extended A+B into main_font
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, extended_ranges);
+    // Merge Cyrillic into main_font
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, cyrillic_ranges);
+    // Merge Symbols into main_font
+    io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, emoji_ranges);
+ 
+    font_cfg.MergeMode = false; // Reset MergeMode
+ 
+    // --- Load Small Font ---
+    // Calculate a smaller size, e.g., 80% of the main font size
+    // Ensure it's not too small, e.g., minimum 8.0f
+    float small_font_size = std::max(8.0f, size * 0.8f);
+ 
+    // Reset font_cfg for a new, non-merged font
+    font_cfg = ImFontConfig(); // Reset to default
+    font_cfg.OversampleH = 2;
+    font_cfg.OversampleV = 1;
+    font_cfg.PixelSnapH = true;
+    font_cfg.FontDataOwnedByAtlas = false;
+ 
+    small_font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, small_font_size, &font_cfg, io.Fonts->GetGlyphRangesDefault());
+    if (small_font == NULL) {
+        fprintf(stderr, "Error: Failed to load small font (size %.1f). Using main font as fallback.\n", small_font_size);
+        small_font = main_font; // Fallback to main_font if small_font loading fails
+    } else {
+        // Merge additional ranges into the small_font
+        font_cfg.MergeMode = true;
+        io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, small_font_size, &font_cfg, extended_ranges);
+        io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, small_font_size, &font_cfg, cyrillic_ranges);
+        io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, small_font_size, &font_cfg, emoji_ranges);
+        font_cfg.MergeMode = false;
     }
-
-    // Merge Cyrillic
-    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, cyrillic_ranges);
-    if (font == NULL) {
-        fprintf(stderr, "Error: Failed to merge Cyrillic font segment (size %.1f).\n", size);
-    }
-
-    // Merge Symbols
-    font = io.Fonts->AddFontFromMemoryTTF(resources_NotoSans_Regular_ttf, (int)resources_NotoSans_Regular_ttf_len, size, &font_cfg, emoji_ranges);
-    if (font == NULL) {
-        fprintf(stderr, "Error: Failed to merge Symbols font segment (size %.1f).\n", size);
-    }
-
-    // IMPORTANT: Reset MergeMode only after the *last* merge operation
-    font_cfg.MergeMode = false;
-
+ 
     // Note: io.Fonts->Build() is called in rebuildFontAtlas or initialize
 }
 

@@ -11,9 +11,12 @@
 #include <condition_variable>
 #include <thread>  // Added for Stage 4
 #include <atomic>  // Added for Stage 4
-#include <imgui.h> // Required for ImVec2
+#include <imgui.h> // Required for ImVec2, ImFont
 #include <map>     // Required for ModelEntry if it uses map, or for getAllModels return type transformation
-
+ 
+// Forward declaration for ImFont
+struct ImFont;
+ 
 // --- Message History Structure (Issue #8 Refactor) ---
 // Moved from main_gui.cpp
 enum class MessageType {
@@ -105,7 +108,7 @@ void setInitialFontSize(float size); // Added for persistence
     bool areModelsLoadingInUI() const; // Added for Part V
     // --- End Model Selection Methods ---
 
-public: // Changed from private to allow access from static callback
+public: // Changed from private to allow access from static callback // This public was for window, scroll_x/y. Font pointers should be private.
     GLFWwindow* window = nullptr;
     float accumulated_scroll_x = 0.0f;
     float accumulated_scroll_y = 0.0f;
@@ -140,11 +143,9 @@ private:
     float current_font_size = 18.0f; // Default font size
     bool font_rebuild_requested = false; // Flag to defer rebuild
     float requested_font_size = 18.0f;   // Target size for deferred rebuild
-
-    void loadFonts(float size);
+ 
+    void loadFonts(float size); // Loads both main and small fonts
     void rebuildFontAtlas(float new_size); // Keep private
-
-public: // Add public method to process the request
-    void processFontRebuildRequest(); // Called by main loop before NewFrame
+ 
     // --- End Font Size State & Helpers ---
-};
+// The closing brace for the class is now part of the previous diff section.
