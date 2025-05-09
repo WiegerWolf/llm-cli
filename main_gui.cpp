@@ -9,6 +9,10 @@
 #include "database.h"    // Added for Issue #18 (DB Persistence)
 #include <optional>     // Added for Issue #18 (DB Persistence)
 #include <cstring>      // Added for Phase 3 (strlen)
+#include <chrono>       // For timestamp operations (Model Dropdown Icons)
+#include <sstream>      // For parsing timestamps (Model Dropdown Icons)
+#include <iomanip>      // For std::get_time (Model Dropdown Icons)
+#include <algorithm>    // For std::any_of or string searching (Model Dropdown Icons)
  
  // Include GUI library headers needed for the main loop
  #include <GLFW/glfw3.h>
@@ -17,21 +21,120 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
-
+ 
 // --- Theme State (Issue #18) ---
 static ThemeType currentTheme = ThemeType::DARK; // Default theme
-
+ 
 // --- Theme-Dependent Message Colors (Issue #18 Fix) ---
 const ImVec4 darkUserColor = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green
 const ImVec4 darkStatusColor = ImVec4(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
 // Response/Error will use default theme text color via TextWrapped
-
+ 
 const ImVec4 lightUserColor = ImVec4(0.0f, 0.5f, 0.0f, 1.0f); // Dark Green
 const ImVec4 lightStatusColor = ImVec4(0.8f, 0.4f, 0.0f, 1.0f); // Orange/Brown
 // Response/Error will use default theme text color via TextWrapped
 // --- End Theme-Dependent Colors ---
 
+// --- Helper Functions for Model Dropdown Icons ---
 
+// Parses timestamp strings like "YYYY-MM-DDTHH:MM:SSZ" or "YYYY-MM-DD HH:MM:SS"
+static std::optional<std::chrono::system_clock::time_point> parse_timestamp(const std::string& ts_str) {
+    std::tm t{};
+    std::istringstream ss(ts_str);
+
+    // Try ISO8601 format with 'T' and potentially 'Z'
+    if (ts_str.find('T') != std::string::npos) {
+        ss >> std::get_time(&t, "%Y-%m-%dT%H:%M:%S");
+        // Note: The 'Z' (UTC) is not directly handled by get_time here.
+        // For robust UTC handling, a more advanced parser or C++20 chrono features would be needed.
+        // We proceed assuming mktime will give a comparable time_point for "recent" checks.
+    } else {
+        // Try "YYYY-MM-DD HH:MM:SS" format
+        ss >> std::get_time(&t, "%Y-%m-%d %H:%M:%S");
+    }
+
+    if (ss.fail()) {
+        // Attempt to parse if there was a trailing 'Z' after seconds for the first format
+        if (ts_str.find('T') != std::string::npos && !ts_str.empty() && ts_str.back() == 'Z') {
+            std::string SuffixlessStr = ts_str.substr(0, ts_str.length() -1);
+            std::istringstream ss_retry(SuffixlessStr);
+            ss_retry >> std::get_time(&t, "%Y-%m-%dT%H:%M:%S");
+            if(ss_retry.fail()){
+                 // std::cerr << "Failed to parse timestamp (after Z removal attempt): " << ts_str << std::endl; // Optional: reduce noise
+                 return std::nullopt;
+            }
+        } else {
+            // std::cerr << "Failed to parse timestamp: " << ts_str << std::endl; // Optional: reduce noise
+            return std::nullopt;
+        }
+    }
+
+    // std::mktime converts local time. This is a simplification.
+    // If timestamps are strictly UTC, timegm (POSIX) or _mkgmtime (Windows) would be better,
+    // or full C++20 timezone support.
+    t.tm_isdst = -1; // Let mktime determine DST
+    std::time_t time_c = std::mktime(&t);
+    if (time_c == -1) {
+        // This can happen if std::get_time partially succeeded but resulted in an invalid date/time for mktime
+        // std::cerr << "Failed to convert std::tm to time_t for timestamp: " << ts_str << std::endl; // Optional: reduce noise
+        return std::nullopt;
+    }
+    return std::chrono::system_clock::from_time_t(time_c);
+}
+
+static bool is_model_new_or_updated(const ModelData& model_data) {
+    auto now = std::chrono::system_clock::now();
+    auto seven_days_ago_tp = now - std::chrono::hours(24 * 7);
+    bool is_recent = false;
+
+    // Handle created_at_api (long long Unix timestamp)
+    if (model_data.created_at_api != 0) { // Check if it's a valid timestamp (not default 0)
+        auto created_at_tp = std::chrono::system_clock::from_time_t(static_cast<time_t>(model_data.created_at_api));
+        if (created_at_tp > seven_days_ago_tp) {
+            is_recent = true;
+        }
+    }
+
+    if (is_recent) return true; // Early exit if already found to be recent
+
+    // Handle last_updated_db (string timestamp)
+    if (!model_data.last_updated_db.empty()) {
+        auto updated_at_db_tp_opt = parse_timestamp(model_data.last_updated_db);
+        if (updated_at_db_tp_opt && *updated_at_db_tp_opt > seven_days_ago_tp) {
+            is_recent = true;
+        }
+    }
+    return is_recent;
+}
+
+static std::string get_modality_icon_str(const ModelData& model_data) {
+    bool input_text = model_data.architecture_input_modalities.find("\"text\"") != std::string::npos;
+    bool input_image = model_data.architecture_input_modalities.find("\"image\"") != std::string::npos;
+    // Add other input modalities here if needed, e.g., "audio", "video"
+
+    bool output_text = model_data.architecture_output_modalities.find("\"text\"") != std::string::npos;
+    bool output_image = model_data.architecture_output_modalities.find("\"image\"") != std::string::npos;
+    // Add other output modalities here
+
+    int input_modal_count = (input_text ? 1 : 0) + (input_image ? 1 : 0); // Simple count for now
+    int output_modal_count = (output_text ? 1 : 0) + (output_image ? 1 : 0); // Simple count for now
+
+    if (input_text && output_text && input_modal_count == 1 && output_modal_count == 1) return "\U0001F4DD\u27A1\U0001F4DD"; // 📝➡️📝
+    if (input_image && output_text && input_modal_count == 1 && output_modal_count == 1) return "\U0001F5BC\uFE0F\u27A1\U0001F4DD"; // 🖼️➡️📝
+    if (input_text && output_image && input_modal_count == 1 && output_modal_count == 1) return "\U0001F4DD\u27A1\U0001F5BC\uFE0F"; // 📝➡️🖼️
+    
+    // If multiple input or output modalities are present (based on simple count)
+    if (input_modal_count > 1 || output_modal_count > 1) return "\U0001F504"; // 🔄 (Generic multi-modal)
+
+    // Fallback for single but not combined (e.g. text only, image only) or unhandled
+    // Could add more specific icons like just "📝" or "🖼️" if desired
+    return ""; // No icon if no specific match or complex multi-modal not covered above
+}
+
+// --- End Helper Functions for Model Dropdown Icons ---
+ 
+// --- Helper Function for Coordinate Mapping (Phase 3 - Placeholder) ---
+// Helper function to map screen coordinates to text indices within wrapped text
 // --- Helper Function for Coordinate Mapping (Phase 3 - Placeholder) ---
 // Helper function to map screen coordinates to text indices within wrapped text
 // Returns true if valid indices were found, false otherwise.
@@ -446,8 +549,21 @@ int main(int, char**) {
 
                           if (model_data_opt) {
                               const ModelData& model = *model_data_opt;
-                              // Line 1: Name
-                              item_display_text = model.name;
+                              
+                              std::string icons_string;
+                              if (is_model_new_or_updated(model)) {
+                                  icons_string += " \u2728"; // ✨
+                              }
+                              if (model.top_provider_is_moderated) {
+                                  icons_string += " \U0001F512"; // 🔒
+                              }
+                              std::string modality_icon = get_modality_icon_str(model);
+                              if (!modality_icon.empty()) {
+                                  icons_string += " " + modality_icon;
+                              }
+
+                              // Line 1: Name + Icons
+                              item_display_text = model.name + icons_string;
                               
                               // Line 2: Description
                               item_display_text += "\n" + model.description; // Display fully, even if empty (creates an empty line)
