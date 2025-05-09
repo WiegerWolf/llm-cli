@@ -539,54 +539,114 @@ int main(int, char**) {
                                                       ? available_models_list[current_gui_selected_model_idx].name.c_str()
                                                       : "Select a Model";
                   if (ImGui::BeginCombo("Active Model", combo_preview_value)) {
+                      // Get fonts from GuiInterface instance (gui_ui)
+                      ImFont* main_font = gui_ui.GetMainFont(); // Assuming gui_ui is accessible
+                      ImFont* small_font = gui_ui.GetSmallFont();
+                      float available_width_for_text = ImGui::GetContentRegionAvail().x - ImGui::GetStyle().FramePadding.x * 2.0f;
+
+
                       for (int i = 0; i < available_models_list.size(); ++i) {
                           const GuiInterface::ModelEntry& current_entry = available_models_list[i];
                           const bool is_selected = (current_gui_selected_model_idx == i);
 
-                          std::string item_display_text;
                           // Attempt to fetch full model data for detailed display
                           std::optional<ModelData> model_data_opt = db_manager.getModelById(current_entry.id);
 
-                          if (model_data_opt) {
-                              const ModelData& model = *model_data_opt;
-                              
-                              std::string icons_string;
-                              if (is_model_new_or_updated(model)) {
-                                  icons_string += " \u2728"; // ✨
-                              }
-                              if (model.top_provider_is_moderated) {
-                                  icons_string += " \U0001F512"; // 🔒
-                              }
-                              std::string modality_icon = get_modality_icon_str(model);
-                              if (!modality_icon.empty()) {
-                                  icons_string += " " + modality_icon;
-                              }
+                          // Use a temporary string for the selectable label to handle multi-line structure
+                          // The actual rendering will be done manually to control fonts.
+                          std::string selectable_label = "##model_selectable_" + current_entry.id;
+                          
+                          // Calculate the height of the three lines of text.
+                          // Line 1 (main_font), Line 2 (small_font), Line 3 (small_font)
+                          float line1_height = main_font ? main_font->FontSize : ImGui::GetTextLineHeight();
+                          float line2_height = small_font ? small_font->FontSize : ImGui::GetTextLineHeightWithSpacing() * 0.8f;
+                          float line3_height = small_font ? small_font->FontSize : ImGui::GetTextLineHeightWithSpacing() * 0.8f;
+                          float total_text_height = line1_height + line2_height + line3_height + ImGui::GetStyle().ItemSpacing.y * 2;
 
-                              // Line 1: Name + Icons
-                              item_display_text = model.name + icons_string;
-                              
-                              // Line 2: Description
-                              item_display_text += "\n" + model.description; // Display fully, even if empty (creates an empty line)
-                              
-                              // Line 3: Context Length | Pricing
-                              // For context_length, displaying raw int as per "display it fully" for description, formatting like "128k" is for a later step.
-                              std::string context_str = "Context: " + std::to_string(model.context_length);
-                              std::string pricing_str = "Price: P:" + model.pricing_prompt + "/C:" + model.pricing_completion;
-                              item_display_text += "\n" + context_str + " | " + pricing_str;
-                          } else {
-                              // Fallback if full model data isn't available, maintaining a similar structure
-                              item_display_text = current_entry.name;       // Line 1
-                              item_display_text += "\n(Description N/A)";    // Line 2
-                              item_display_text += "\n(Details N/A)";        // Line 3
-                          }
 
-                          if (ImGui::Selectable(item_display_text.c_str(), is_selected)) {
+                          if (ImGui::Selectable(selectable_label.c_str(), is_selected, 0, ImVec2(0, total_text_height))) {
                               current_gui_selected_model_idx = i;
                               current_gui_selected_model_id = current_entry.id;
                               gui_ui.setSelectedModelInUI(current_gui_selected_model_id);
                               client.setActiveModel(current_gui_selected_model_id);
                           }
                           if (is_selected) { ImGui::SetItemDefaultFocus(); }
+
+                          // Custom rendering within the selectable area
+                          ImVec2 item_start_pos = ImGui::GetItemRectMin();
+                          ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+                          if (model_data_opt) {
+                              const ModelData& model = *model_data_opt;
+                              std::string line1_text, line2_text, line3_text;
+
+                              std::string icons_string;
+                              if (is_model_new_or_updated(model)) icons_string += " \u2728";
+                              if (model.top_provider_is_moderated) icons_string += " \U0001F512";
+                              std::string modality_icon = get_modality_icon_str(model);
+                              if (!modality_icon.empty()) icons_string += " " + modality_icon;
+
+                              line1_text = model.name + icons_string;
+                              
+                              // Truncate description (Line 2)
+                              line2_text = model.description;
+                              if (small_font) { // Ensure small_font is available
+                                  ImGui::PushFont(small_font);
+                                  float desc_width = ImGui::CalcTextSize(line2_text.c_str()).x;
+                                  if (desc_width > available_width_for_text) {
+                                      // Simple character-based truncation for now, can be improved with CalcTextSize
+                                      // Iterate backwards to find a good truncation point
+                                      int max_len = 0;
+                                      for (int k = 0; k < line2_text.length(); ++k) {
+                                          if (ImGui::CalcTextSize(line2_text.c_str(), line2_text.c_str() + k).x > available_width_for_text - ImGui::CalcTextSize("...").x) {
+                                              break;
+                                          }
+                                          max_len = k;
+                                      }
+                                      if (max_len > 0 && max_len < line2_text.length()) {
+                                         line2_text = line2_text.substr(0, max_len) + "...";
+                                      } else if (max_len == 0 && line2_text.length() > 0) { // if even "..." is too long or first char too long
+                                          line2_text = "..."; // or some other indicator
+                                      }
+                                  }
+                                  ImGui::PopFont();
+                              }
+
+
+                              std::string context_str = "Context: " + std::to_string(model.context_length);
+                              std::string pricing_str = "Price: P:" + model.pricing_prompt + "/C:" + model.pricing_completion;
+                              line3_text = context_str + " | " + pricing_str;
+
+                              // Render Line 1
+                              if (main_font) ImGui::PushFont(main_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), line1_text.c_str());
+                              if (main_font) ImGui::PopFont();
+                              item_start_pos.y += line1_height + ImGui::GetStyle().ItemSpacing.y;
+
+                              // Render Line 2
+                              if (small_font) ImGui::PushFont(small_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), line2_text.c_str());
+                              if (small_font) ImGui::PopFont();
+                              item_start_pos.y += line2_height + ImGui::GetStyle().ItemSpacing.y;
+                              
+                              // Render Line 3
+                              if (small_font) ImGui::PushFont(small_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), line3_text.c_str());
+                              if (small_font) ImGui::PopFont();
+
+                          } else {
+                              // Fallback rendering
+                              if (main_font) ImGui::PushFont(main_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), current_entry.name.c_str());
+                              if (main_font) ImGui::PopFont();
+                              item_start_pos.y += line1_height + ImGui::GetStyle().ItemSpacing.y;
+
+                              if (small_font) ImGui::PushFont(small_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), "(Description N/A)");
+                              item_start_pos.y += line2_height + ImGui::GetStyle().ItemSpacing.y;
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), "(Details N/A)");
+                              if (small_font) ImGui::PopFont();
+                          }
                       }
                       ImGui::EndCombo();
                   }
