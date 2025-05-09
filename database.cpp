@@ -491,7 +491,7 @@ ON CONFLICT(id) DO UPDATE SET
     top_provider_is_moderated=excluded.top_provider_is_moderated,
     per_request_limits=excluded.per_request_limits,
     supported_parameters=excluded.supported_parameters,
-    created_at_api=excluded.created_at_api,
+    created_at_api=excluded.created_at_api
     last_updated_db=CURRENT_TIMESTAMP
 );)";
     sqlite3_stmt* stmt = nullptr;
