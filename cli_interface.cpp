@@ -41,14 +41,16 @@ std::optional<std::string> CliInterface::promptUserInput() {
                                                                                                                                                                          
 // Displays standard output to the console (stdout).                                                                                                                     
 // Ensures output ends with a newline for proper formatting.                                                                                                             
-void CliInterface::displayOutput(const std::string& output) {                                                                                                            
-    std::cout << output;                                                                                                                                                 
-    // Add newline if output doesn't already end with one                                                                                                                
-    if (output.empty() || output.back() != '\n') {                                                                                                                       
-        std::cout << '\n';                                                                                                                                               
-    }                                                                                                                                                                    
-    std::cout.flush(); // Ensure output is displayed immediately                                                                                                         
-}                                                                                                                                                                        
+void CliInterface::displayOutput(const std::string& output, const std::string& model_id) {
+    // model_id is not currently used in CLI display but is part of the interface
+    (void)model_id; // Mark as unused to prevent compiler warnings
+    std::cout << output;
+    // Add newline if output doesn't already end with one
+    if (output.empty() || output.back() != '\n') {
+        std::cout << '\n';
+    }
+    std::cout.flush(); // Ensure output is displayed immediately
+}
                                                                                                                                                                          
 // Displays error messages to the console (stderr).                                                                                                                      
 // Prefixes with "Error: " and ensures output ends with a newline.                                                                                                       
@@ -75,3 +77,27 @@ void CliInterface::displayStatus(const std::string& status) {
 bool CliInterface::isGuiMode() const {
     return false;
 }
+
+// --- Implementation for Model Loading UI Feedback (Part V) ---
+void CliInterface::setLoadingModelsState(bool isLoading) {
+    if (isLoading) {
+        displayStatus("Loading models...");
+    } else {
+        // Optionally, display a "Models loaded." message,
+        // but ChatClient usually provides more specific status.
+    }
+    // For CLI, this might just be a log or no-op if status is handled elsewhere.
+}
+
+void CliInterface::updateModelsList(const std::vector<ModelData>& models) {
+    // For CLI, this could print a summary or be a no-op.
+    // The main interaction for model selection in CLI might be through commands
+    // or a simpler mechanism than a dynamic list update during runtime.
+    // For now, we can log the number of models received.
+    if (!models.empty()) {
+        displayStatus("Received " + std::to_string(models.size()) + " models.");
+    }
+    // Actual model selection in CLI is not dynamically updated via this method.
+    // It's assumed to be handled by ChatClient's active_model_id or future commands.
+}
+// --- End Implementation for Model Loading UI Feedback ---

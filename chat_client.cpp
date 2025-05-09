@@ -1,6 +1,8 @@
 #include "chat_client.h"
-#include <stop_token> // Added for cooperative cancellation
+#include <iostream> // For std::cerr in destructor
+// #include <stop_token> // Removed for now
 #include "ui_interface.h" // Include UI interface
+#include "config.h"       // For API URLs, DEFAULT_MODEL_ID
 #include <string>
 #include <vector>
 #include <curl/curl.h>
@@ -10,7 +12,6 @@
 #include <unordered_set>   // To track valid tool_call IDs during context reconstruction
 #include "database.h" // For PersistenceManager and Message
 #include "tools.h"    // For ToolManager
-#include "config.h"   // For OPENROUTER_API_KEY
 #include "curl_utils.h" // Include the shared callback
 
 static int synthetic_tool_call_counter = 0;
@@ -35,129 +36,349 @@ ChatClient::ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref) :
     toolManager(),     // Initialize ToolManager
     ui(ui_ref)         // Initialize the UI reference
 {
-    // Constructor body (if any) - currently empty
+    // Initialize active_model_id with compile-time DEFAULT_MODEL_ID.
+    // This will be the fallback if everything else fails during initialization.
+    this->active_model_id = DEFAULT_MODEL_ID;
+    // Model initialization is now handled by initialize_model_manager() called from main.
 }
 
-// --- ChatClient Method Implementations ---
+// --- Model Initialization and Management Methods ---
 
-std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool use_tools) {
+void ChatClient::initialize_model_manager() {
+    ui.setLoadingModelsState(true); // Inform UI that loading has started
+    // Use std::async to run loadModelsAsync and wait for its completion.
+    // This makes initialize_model_manager synchronous from the caller's perspective (main_cli/main_gui)
+    // but the actual fetching/parsing happens off the main thread if the system supports it.
+    model_load_future = std::async(std::launch::async, &ChatClient::loadModelsAsync, this);
+    try {
+        model_load_future.get(); // Wait for loadModelsAsync to complete
+    } catch (const std::exception& e) {
+        ui.displayError("Critical error during model initialization: " + std::string(e.what()));
+        // active_model_id should already be DEFAULT_MODEL_ID from constructor,
+        // or set to it within loadModelsAsync if specific fallbacks failed.
+        ui.displayStatus("Fell back to default model: " + this->active_model_id);
+    }
+    ui.setLoadingModelsState(false); // Inform UI that loading has finished
+    ui.displayStatus("Model manager initialized. Active model: " + this->active_model_id);
+    // Ensure the UI (especially GUI) gets the final list of models
+    try {
+        ui.updateModelsList(db.getAllModels());
+    } catch (const std::exception& e) {
+        ui.displayError("Failed to update UI with model list after initialization: " + std::string(e.what()));
+    }
+}
+
+void ChatClient::loadModelsAsync() {
+    models_loading = true; // Set atomic flag
+
+    std::string previously_selected_model_id;
+    bool is_first_launch = false;
+    bool cache_checked_for_first_launch = false;
+
+    try {
+        previously_selected_model_id = db.loadSetting("selected_model_id").value_or("");
+        if (previously_selected_model_id.empty()) {
+            // Potential first launch, verify by checking cache
+            try {
+                if (db.getAllModels().empty()) {
+                    is_first_launch = true;
+                }
+                cache_checked_for_first_launch = true;
+            } catch (const std::exception& db_e) {
+                ui.displayError("Minor: Could not check cache for first launch determination: " + std::string(db_e.what()));
+                // Proceed, assuming not first launch for safety if cache check fails
+            }
+        }
+    } catch (const std::exception& e) {
+        ui.displayError("Minor: Could not load previously selected model ID: " + std::string(e.what()));
+    }
+
+    auto select_active_model = [&](const std::vector<ModelData>& available_models, const std::string& context_msg) {
+        bool model_set = false;
+        if (!previously_selected_model_id.empty()) {
+            for (const auto& model : available_models) {
+                if (model.id == previously_selected_model_id) {
+                    this->active_model_id = previously_selected_model_id;
+                    model_set = true;
+                    ui.displayStatus("Using previously selected model (" + context_msg + "): " + this->active_model_id);
+                    break;
+                }
+            }
+        }
+        if (!model_set) {
+            for (const auto& model : available_models) {
+                if (model.id == DEFAULT_MODEL_ID) {
+                    this->active_model_id = DEFAULT_MODEL_ID;
+                    model_set = true;
+                    ui.displayStatus("Using default model ID (" + context_msg + "): " + this->active_model_id);
+                    break;
+                }
+            }
+        }
+        if (!model_set && !available_models.empty()) {
+            this->active_model_id = available_models[0].id;
+            ui.displayStatus("Using first available model (" + context_msg + "): " + this->active_model_id);
+        } else if (!model_set) { // available_models is empty or DEFAULT_MODEL_ID not found
+            this->active_model_id = DEFAULT_MODEL_ID; // Fallback to compile-time default
+            ui.displayError("No suitable model found in available list (" + context_msg + "). Using compile-time default: " + this->active_model_id);
+        }
+        try {
+            db.saveSetting("selected_model_id", this->active_model_id);
+        } catch (const std::exception& e) {
+            ui.displayError("Warning: Could not persist selected model ID: " + std::string(e.what()));
+        }
+    };
+    
+    // If it's determined to be a first launch (no prior selection and empty cache),
+    // and API fails, we must use DEFAULT_MODEL_ID.
+    // We need to re-check is_first_launch if previously_selected_model_id was empty but cache wasn't.
+    if (previously_selected_model_id.empty() && !cache_checked_for_first_launch) {
+        try {
+            if (db.getAllModels().empty()) {
+                is_first_launch = true;
+            }
+        } catch (...) { /* ignore */ }
+    }
+
+
+    try {
+        ui.displayStatus("Attempting to fetch models from API...");
+        std::string api_response_str = fetchModelsFromAPI(); // Throws on error
+        std::vector<ModelData> fetched_models = parseModelsFromAPIResponse(api_response_str); // Throws on error
+        
+        if (fetched_models.empty()) {
+             ui.displayError("API returned no models. Will attempt to load from cache.");
+             throw std::runtime_error("No models returned from API"); // Trigger cache fallback
+        }
+        
+        cacheModelsToDB(fetched_models); // Throws on error
+        ui.displayStatus("Successfully fetched and cached " + std::to_string(fetched_models.size()) + " models from API.");
+        select_active_model(fetched_models, "from API");
+
+    } catch (const std::exception& api_or_parse_error) {
+        std::string api_error_msg = "API Error: " + std::string(api_or_parse_error.what());
+        ui.displayError(api_error_msg + ". Attempting to load from cache...");
+        
+        try {
+            std::vector<ModelData> cached_models = db.getAllModels();
+            if (cached_models.empty()) {
+                this->active_model_id = DEFAULT_MODEL_ID;
+                if (is_first_launch) {
+                    ui.displayError("API unavailable and cache empty on first launch. Using default model: " + std::string(DEFAULT_MODEL_ID));
+                } else {
+                    ui.displayError("API unavailable and cache is empty. Using default model: " + std::string(DEFAULT_MODEL_ID));
+                }
+                // Persist default as selected if everything failed this far
+                try { db.saveSetting("selected_model_id", this->active_model_id); } catch (...) {}
+
+            } else {
+                ui.displayStatus("Successfully loaded " + std::to_string(cached_models.size()) + " models from cache (API was unavailable).");
+                select_active_model(cached_models, "from cache");
+            }
+        } catch (const std::exception& db_error) {
+            this->active_model_id = DEFAULT_MODEL_ID;
+            ui.displayError("Failed to load models from cache: " + std::string(db_error.what()));
+            if (is_first_launch) {
+                 ui.displayError("API and cache also failed on first launch. Using default model: " + std::string(DEFAULT_MODEL_ID));
+            } else {
+                 ui.displayError("API and cache also failed. Using default model: " + std::string(DEFAULT_MODEL_ID));
+            }
+            // Persist default as selected if everything failed
+            try { db.saveSetting("selected_model_id", this->active_model_id); } catch (...) {}
+        }
+    }
+    models_loading = false;
+}
+
+
+std::string ChatClient::fetchModelsFromAPI() {
     CURL* curl = curl_easy_init();
     if (!curl) {
-        throw std::runtime_error("Failed to initialize CURL");
+        throw std::runtime_error("Failed to initialize CURL for fetching models.");
     }
-    // RAII wrapper for CURL handle
     auto curl_guard = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>{curl, curl_easy_cleanup};
 
-
-    std::string api_key = get_openrouter_api_key(); // Now safe - no leaks on throw
+    std::string api_key = get_openrouter_api_key(); // Throws if not found
 
     struct curl_slist* headers = nullptr;
-    // Use RAII for headers too
     auto headers_guard = std::unique_ptr<struct curl_slist, decltype(&curl_slist_free_all)>{nullptr, curl_slist_free_all};
 
     headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
-    headers_guard.reset(headers); // Transfer ownership to guard
-    headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "HTTP-Referer: https://llm-cli.tsatsin.com");
     headers = curl_slist_append(headers, "X-Title: LLM-cli");
+    headers_guard.reset(headers);
+
+    std::string response_buffer;
+    const char* api_url = OPENROUTER_API_URL_MODELS;
+
+    curl_easy_setopt(curl, CURLOPT_URL, api_url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L); // 15 seconds timeout
+
+    CURLcode res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+        throw std::runtime_error("API request to fetch models failed: " + std::string(curl_easy_strerror(res)));
+    }
+
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    if (http_code != 200) {
+        throw std::runtime_error("API request to fetch models returned HTTP status " + std::to_string(http_code) + ". Response: " + response_buffer);
+    }
+    return response_buffer;
+}
+
+std::vector<ModelData> ChatClient::parseModelsFromAPIResponse(const std::string& api_response) {
+    std::vector<ModelData> parsed_models;
+    if (api_response.empty()) {
+        throw std::runtime_error("API response string is empty, cannot parse models.");
+    }
+
+    try {
+        nlohmann::json j = nlohmann::json::parse(api_response);
+
+        if (j.contains("data") && j["data"].is_array()) {
+            for (const auto& model_obj : j["data"]) {
+                ModelData model_item;
+                model_item.id = model_obj.value("id", "");
+                model_item.name = model_obj.value("name", "");
+                if (model_item.name.empty()) {
+                    model_item.name = model_item.id; // Fallback name to id
+                }
+                // Add other fields as necessary from model_types.h
+                // model_item.context_length = model_obj.value("context_length", 0);
+                // ...
+
+                if (!model_item.id.empty()) {
+                    parsed_models.push_back(model_item);
+                }
+            }
+        } else {
+            throw std::runtime_error("Failed to parse models: 'data' field not found or not an array. Response: " + api_response.substr(0, 500));
+        }
+    } catch (const nlohmann::json::parse_error& e) {
+        throw std::runtime_error("Failed to parse models API response JSON: " + std::string(e.what()) + ". Response snippet: " + api_response.substr(0, 500));
+    } catch (const std::exception& e) { // Catch other standard exceptions during parsing (e.g. std::stod)
+        throw std::runtime_error("An unexpected error occurred during model parsing: " + std::string(e.what()));
+    }
+    return parsed_models;
+}
+
+void ChatClient::cacheModelsToDB(const std::vector<ModelData>& models) {
+    if (models.empty()) {
+        // ui.displayStatus("No models to cache."); // Not an error, just informative
+        return;
+    }
+    try {
+        // ui.displayStatus("Clearing existing models table..."); // Done by DB transaction
+        db.replaceModelsInDB(models); // This method needs to be implemented in PersistenceManager to do this atomically
+        // ui.displayStatus("Finished caching models to DB.");
+    } catch (const std::exception& e) {
+        // ui.displayError("Error during model caching: " + std::string(e.what()));
+        throw; // Re-throw to be caught by loadModelsAsync
+    }
+}
+// --- ChatClient Method Implementations ---
+
+std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool use_tools) {
+    CURL* curl = nullptr;
+    CURLcode res;
+    long http_code = 0;
+    std::string response_buffer;
+    bool retried_with_default_once = false;
+
+    while (true) {
+        // The declarations of curl, res, http_code, response_buffer, and retried_with_default_once
+        // remain outside this loop. res and http_code are used across loop iterations before being reset
+        // or re-evaluated. response_buffer is cleared inside. curl is re-initialized.
+
+        curl = curl_easy_init();
+    if (!curl) {
+        throw std::runtime_error("Failed to initialize CURL");
+    }
+    auto curl_guard = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>{curl, curl_easy_cleanup};
+
+    std::string api_key = get_openrouter_api_key();
+
+    struct curl_slist* headers = nullptr;
+    auto headers_guard = std::unique_ptr<struct curl_slist, decltype(&curl_slist_free_all)>{nullptr, curl_slist_free_all};
+
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "HTTP-Referer: https://llm-cli.tsatsin.com"); // Replace with your actual site
+    headers = curl_slist_append(headers, "X-Title: LLM-cli"); // Replace with your actual app name
+    headers_guard.reset(headers);
 
     nlohmann::json payload;
-    payload["model"] = this->model_name; // Use member variable
+    payload["model"] = this->active_model_id;
     payload["messages"] = nlohmann::json::array();
 
-    // --- Secure Conversation History Construction ---
-    // This logic ensures that only valid sequences of assistant tool_calls and their
-    // corresponding tool result messages are included in the payload sent to the API.
-    // An assistant message requesting tool calls is only included if ALL required
-    // tool result messages appear later in the history. Otherwise, the incomplete
-    // assistant message and its subsequent (now orphaned) tool results are discarded.
-    std::unordered_set<std::string> valid_tool_ids; // Stores IDs of tool calls whose results should be included.
-    nlohmann::json msg_array = nlohmann::json::array(); // The reconstructed message array for the payload.
-
+    // --- Secure Conversation History Construction (existing logic) ---
+    std::unordered_set<std::string> valid_tool_ids;
+    nlohmann::json msg_array = nlohmann::json::array();
     for (size_t i = 0; i < context.size(); ++i) {
         const Message& msg = context[i];
-
-        /* ---- 1. Process Assistant Messages Potentially Containing Tool Calls ---- */
-        // Check if the message is from the assistant and its content might be a JSON object (starts with '{').
         if (msg.role == "assistant" && !msg.content.empty() && msg.content.front() == '{') {
             try {
                 auto asst_json = nlohmann::json::parse(msg.content);
-                // Check if the parsed JSON contains the "tool_calls" key.
                 if (asst_json.contains("tool_calls")) {
-                    // Collect all tool_call IDs requested by this assistant message.
                     std::vector<std::string> ids;
                     for (const auto& tc : asst_json["tool_calls"]) {
                         if (tc.contains("id")) ids.push_back(tc["id"].get<std::string>());
                     }
-
-                    // Verify that *every* requested tool_call ID has a corresponding 'tool' message later in the history.
                     bool all_results_present = true;
                     for (const auto& id : ids) {
                         bool found_result = false;
-                        // Search forward from the current assistant message.
                         for (size_t j = i + 1; j < context.size() && !found_result; ++j) {
-                            if (context[j].role != "tool") continue; // Skip non-tool messages.
+                            if (context[j].role != "tool") continue;
                             try {
-                                // Parse the 'tool' message content to find its tool_call_id.
                                 auto tool_json = nlohmann::json::parse(context[j].content);
                                 found_result = tool_json.contains("tool_call_id") &&
                                                tool_json["tool_call_id"] == id;
-                            } catch (...) { /* Ignore malformed tool messages */ }
+                            } catch (...) { /* Ignore */ }
                         }
                         if (!found_result) {
-                            all_results_present = false; // If any result is missing, mark this assistant message as invalid.
+                            all_results_present = false;
                             break;
                         }
                     }
-
-                    // If not all results were found, discard this assistant message and its potential tool calls.
-                    if (!all_results_present) continue; // Skip to the next message in history.
-
-                    // If all results are present, include this assistant message (tool_calls only, content is null)
-                    // and mark its tool_call IDs as valid for inclusion later.
+                    if (!all_results_present) continue;
                     msg_array.push_back({{"role", "assistant"},
-                                         {"content", nullptr}, // Content is null when tool_calls are present
+                                         {"content", nullptr},
                                          {"tool_calls", asst_json["tool_calls"]}});
-                    valid_tool_ids.insert(ids.begin(), ids.end()); // Add these IDs to the set of valid ones.
-                    continue; // Skip the generic message handling below.
+                    valid_tool_ids.insert(ids.begin(), ids.end());
+                    continue;
                 }
-            } catch (...) { /* If content is not valid JSON, treat as a normal message below. */ }
+            } catch (...) { /* Ignore */ }
         }
-
-        /* ---- 2. Process Tool Messages ---- */
         if (msg.role == "tool") {
             try {
                 auto tool_json = nlohmann::json::parse(msg.content);
-                // Include this tool message *only if* its tool_call_id corresponds to a previously validated assistant message.
                 if (tool_json.contains("tool_call_id") &&
                     valid_tool_ids.count(tool_json["tool_call_id"].get<std::string>())) {
-                    // Reconstruct the tool message in the required API format.
                     msg_array.push_back({{"role", "tool"},
                                          {"tool_call_id", tool_json["tool_call_id"]},
-                                         {"name", tool_json["name"]}, // Assuming 'name' is present in stored JSON
-                                         {"content", tool_json["content"]}}); // Assuming 'content' is present
+                                         {"name", tool_json["name"]},
+                                         {"content", tool_json["content"]}});
                 }
-            } catch (...) { /* Ignore malformed or invalid tool messages. */ }
-            continue; // Always skip generic handling for 'tool' role messages.
+            } catch (...) { /* Ignore */ }
+            continue;
         }
-
-        /* ---- 3. Process Normal User/Assistant Messages ---- */
-        // Include standard user messages and assistant messages that didn't contain valid tool_calls.
         msg_array.push_back({{"role", msg.role}, {"content", msg.content}});
     }
+    payload["messages"] = std::move(msg_array);
     // --- End Secure Conversation History Construction ---
 
-    payload["messages"] = std::move(msg_array); // Use the securely constructed message array.
-
-    // Add tools if requested
     if (use_tools) {
-        // Get tool definitions from the ToolManager
-        payload["tools"] = toolManager.get_tool_definitions(); 
+        payload["tools"] = toolManager.get_tool_definitions();
         payload["tool_choice"] = "auto";
     }
 
     std::string json_payload = payload.dump();
-    std::string response;
+    response_buffer.clear(); // Clear buffer for current attempt or retry
 
     curl_easy_setopt(curl, CURLOPT_URL, api_base.c_str());
     curl_easy_setopt(curl, CURLOPT_POST, 1L);
@@ -165,21 +386,47 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_payload.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, json_payload.size());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L); // Increased timeout slightly
 
-    CURLcode res = curl_easy_perform(curl);
-    // curl_slist_free_all(headers); // No longer needed, handled by headers_guard (RAII)
-    // curl_easy_cleanup(curl); // No longer needed, handled by curl_guard (RAII)
-
-    if (res != CURLE_OK) {
-        // The unique_ptrs (curl_guard, headers_guard) automatically clean up CURL handle and headers list on error/exit.
-        throw std::runtime_error("API request failed: " + std::string(curl_easy_strerror(res)));
+    res = curl_easy_perform(curl);
+    
+    if (res == CURLE_OK) {
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     }
 
-    // Return the full response string, not just the content, 
-    // as we need to check for tool_calls later.
-    return response; 
-} // <-- ADDED MISSING CLOSING BRACE FOR makeApiCall
+    // Check for model-specific errors or general API failure
+    bool model_potentially_unavailable = false;
+    if (res != CURLE_OK) {
+        model_potentially_unavailable = true; // Network error could mask model issue
+    } else if (http_code == 404 || http_code == 429 || http_code == 500) { // Common error codes for model issues or server errors
+        // Further inspect response_buffer for specific error messages if OpenRouter provides them
+        // For example: if (response_buffer.find("model_not_found") != std::string::npos)
+        model_potentially_unavailable = true;
+    }
+
+
+    if (model_potentially_unavailable && !retried_with_default_once && this->active_model_id != DEFAULT_MODEL_ID) {
+        std::string failed_model_id = this->active_model_id;
+        ui.displayError("API call with model '" + failed_model_id + "' failed (Error: " + (res != CURLE_OK ? curl_easy_strerror(res) : "HTTP " + std::to_string(http_code)) + "). Attempting to switch to default model: " + std::string(DEFAULT_MODEL_ID));
+        
+        this->setActiveModel(DEFAULT_MODEL_ID); // This updates active_model_id and notifies UI
+        retried_with_default_once = true;
+        // curl_guard and headers_guard will go out of scope at the end of this loop iteration,
+        // cleaning up resources before the 'continue'.
+        continue; // Retry the API call with the default model
+    }
+
+    if (res != CURLE_OK) {
+        throw std::runtime_error("API request failed: " + std::string(curl_easy_strerror(res)));
+    }
+    if (http_code != 200) {
+        throw std::runtime_error("API request returned HTTP status " + std::to_string(http_code) + ". Response: " + response_buffer);
+    }
+
+    return response_buffer;
+    } // End of while(true) loop
+}
 
 // Executes a single tool and prepares the JSON string for the tool result message.
 // Does NOT save to DB or make further API calls.
@@ -215,25 +462,27 @@ std::string ChatClient::executeAndPrepareToolResult(
 }
 
 
-// Accept the stop_token for cooperative cancellation
-void ChatClient::run(std::stop_token st) {
+// Main application loop
+void ChatClient::run() { // Removed std::stop_token
     db.cleanupOrphanedToolMessages();
-    std::string initial_message = "Chatting with " + this->model_name + " - Type your message";
-    if (!ui.isGuiMode()) {
-        initial_message += " (Ctrl+D to exit)";
-    }
-    initial_message += "\n";
-    ui.displayOutput(initial_message); // Use UI, message adapted for CLI/GUI
+    // Initial message will be set after model ID is confirmed via setActiveModel by main_gui
+    // std::string initial_message = "Chatting with " + this->active_model_id + " - Type your message";
+    // if (!ui.isGuiMode()) {
+    //     initial_message += " (Ctrl+D to exit)";
+    // }
+    // initial_message += "\n";
+    // ui.displayOutput(initial_message); // Use UI, message adapted for CLI/GUI
+    
+    // Display initial status once active_model_id is properly set by main_gui
+    // This might be better handled after setActiveModel is called for the first time.
+    // For now, we assume active_model_id is set by constructor or soon after by main_gui.
+    ui.displayStatus("ChatClient ready. Active model: " + this->active_model_id);
+
+
     while (true) {
-        // Check for stop request at the beginning of each loop iteration
-        if (st.stop_requested()) {
-            ui.displayStatus("Shutdown requested, exiting run loop..."); // Inform UI
-            break; // Exit the loop cleanly
-        }
+        // Stop request check removed
         try {
-            // Pass the stop token to promptUserInput as well, in case it needs to check
-            // (Assuming promptUserInput might be modified later to accept it)
-            auto input_opt = promptUserInput(); // TODO: Consider passing 'st' here if promptUserInput becomes blocking
+            auto input_opt = promptUserInput();
             if (!input_opt) break;          // Exit loop if UI signals shutdown (e.g., Ctrl+D or window close)
             if (input_opt->empty()) continue; // Ignore empty input lines
             processTurn(*input_opt);        // Process the user's input for this turn
@@ -247,6 +496,15 @@ void ChatClient::run(std::stop_token st) {
         }
     }
 }
+// --- Model Selection Method Implementation (Part III GUI Changes) ---
+void ChatClient::setActiveModel(const std::string& model_id) {
+    this->active_model_id = model_id;
+    // Log or display status. Using ui.displayStatus for GUI feedback.
+    ui.displayStatus("ChatClient active model set to: " + model_id);
+    // Any internal ChatClient logic needed when model changes (e.g., clear context, reload model-specific settings).
+    // For now, just updating the ID is sufficient as per the plan.
+}
+// --- End Model Selection Method Implementation ---
 
 std::optional<std::string> ChatClient::promptUserInput() {
     // Delegate input prompting to the injected UI object
@@ -320,7 +578,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
 
     // 1. Save the assistant's message requesting tool use
     // The content should be the raw JSON string of the message object itself
-    db.saveAssistantMessage(response_message.dump());
+    db.saveAssistantMessage(response_message.dump(), this->active_model_id);
 
     // 2. Execute all tools and collect results (without saving yet)
     std::vector<std::string> tool_result_messages; // Store JSON strings of tool messages
@@ -460,10 +718,10 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     }
 
     // Save the final assistant response
-    db.saveAssistantMessage(final_content);
+    db.saveAssistantMessage(final_content, this->active_model_id);
 
     // Display final response
-    ui.displayOutput(final_content + "\n\n"); // Use UI for output
+    ui.displayOutput(final_content + "\n\n", this->active_model_id); // Use UI for output
     return true; // Indicate success for the standard tool call path
 }
 
@@ -669,7 +927,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
 
             // Save the original assistant message containing the <function> tag.
             std::string function_block = content_str.substr(func_start, func_end + 11 - func_start); // Include </function>
-            db.saveAssistantMessage(function_block);
+            db.saveAssistantMessage(function_block, this->active_model_id);
             context = db.getContextHistory(); // Reload context including the saved message
 
             // Generate a synthetic tool_call_id for this fallback execution.
@@ -746,8 +1004,8 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
 
             // If we successfully got a final text response:
             if (final_response_success) {
-                db.saveAssistantMessage(final_content); // Save the final assistant message
-                ui.displayOutput(final_content + "\n\n"); // Display it
+                db.saveAssistantMessage(final_content, this->active_model_id); // Save the final assistant message
+                ui.displayOutput(final_content + "\n\n", this->active_model_id); // Display it
                 any_executed = true; // Mark that this fallback path was successful for at least one tag
             } else {
                  ui.displayError("Failed to get final response after fallback tool execution for: " + function_name);
@@ -773,12 +1031,12 @@ void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_mes
     if (!response_message.is_null() && response_message.contains("content")) {
         if (response_message["content"].is_string()) {
             std::string txt = response_message["content"];
-            db.saveAssistantMessage(txt);
-            ui.displayOutput(txt + "\n\n"); // Use UI for output
+            db.saveAssistantMessage(txt, this->active_model_id);
+            ui.displayOutput(txt + "\n\n", this->active_model_id); // Use UI for output
         } else if (!response_message["content"].is_null()) {
             std::string dumped = response_message["content"].dump();
-            db.saveAssistantMessage(dumped);
-            ui.displayOutput(dumped + "\n\n"); // Use UI for output
+            db.saveAssistantMessage(dumped, this->active_model_id);
+            ui.displayOutput(dumped + "\n\n", this->active_model_id); // Use UI for output
         }
     }
 }
@@ -842,5 +1100,29 @@ void ChatClient::processTurn(const std::string& input) {
         // Catch any non-standard exceptions.
         ui.displayError("An unknown, non-standard error occurred.");
         ui.displayStatus("Error."); // Set error status
+    }
+}
+
+// --- ChatClient Destructor ---
+ChatClient::~ChatClient() {
+    if (model_load_future.valid()) {
+        // If the future is valid, it means the asynchronous task
+        // might still be running or hasn't had its result retrieved.
+        // We must wait for it to complete to prevent it from accessing
+        // members of this ChatClient instance after it's destroyed.
+        try {
+            model_load_future.wait(); // Safely wait for completion.
+        } catch (const std::exception& e) {
+            // Optionally log this, but avoid throwing from a destructor.
+            // The primary .get() in initialize_model_manager should handle operational errors.
+            // For example: std::cerr << "Error during model_load_future cleanup in destructor: " << e.what() << std::endl;
+            // Or if ui object is guaranteed to be valid:
+            // ui.displayError("Error during model_load_future cleanup in destructor: " + std::string(e.what()));
+        } catch (...) {
+            // Optionally log generic error.
+            // For example: std::cerr << "Unknown error during model_load_future cleanup in destructor." << std::endl;
+            // Or if ui object is guaranteed to be valid:
+            // ui.displayError("Unknown error during model_load_future cleanup in destructor.");
+        }
     }
 }

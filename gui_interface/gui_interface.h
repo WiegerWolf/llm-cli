@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui_interface.h" // Include the base class definition
+#include "database.h"     // For PersistenceManager
 #include <optional>
 #include <string>
 #include <vector>
@@ -11,6 +12,7 @@
 #include <thread>  // Added for Stage 4
 #include <atomic>  // Added for Stage 4
 #include <imgui.h> // Required for ImVec2
+#include <map>     // Required for ModelEntry if it uses map, or for getAllModels return type transformation
 
 // --- Message History Structure (Issue #8 Refactor) ---
 // Moved from main_gui.cpp
@@ -24,6 +26,7 @@ enum class MessageType {
 struct HistoryMessage {
     MessageType type;
     std::string content;
+    std::optional<std::string> model_id; // Changed for backward compatibility
 };
 // --- End Message History Structure ---
 
@@ -39,7 +42,14 @@ struct GLFWwindow;
 
 class GuiInterface : public UserInterface {
 public:
-    GuiInterface();
+    // --- Model Entry Structure (Part III GUI Changes) ---
+    struct ModelEntry {
+        std::string id;
+        std::string name;
+        // Potentially other metadata if needed for display in the future
+    };
+    // --- End Model Entry Structure ---
+    GuiInterface(PersistenceManager& db_manager); // Modified constructor
     virtual ~GuiInterface() override;
 
 // Prevent copying/moving
@@ -49,12 +59,17 @@ public:
     GuiInterface& operator=(GuiInterface&&)      = delete;
     // Implementation of the UserInterface contract
     virtual std::optional<std::string> promptUserInput() override;
-    virtual void displayOutput(const std::string& output) override;
+    virtual void displayOutput(const std::string& output, const std::string& model_id) override;
     virtual void displayError(const std::string& error) override;
     virtual void displayStatus(const std::string& status) override;
     virtual void initialize() override;
     virtual void shutdown() override;
     virtual bool isGuiMode() const override;
+
+    // --- Implementation for Model Loading UI Feedback (Part V) ---
+    virtual void setLoadingModelsState(bool isLoading) override;
+    virtual void updateModelsList(const std::vector<ModelData>& models) override;
+    // --- End Implementation for Model Loading UI Feedback ---
 
     // Public method to get the window handle (needed by main_gui.cpp)
     GLFWwindow* getWindow() const;
@@ -83,6 +98,13 @@ void setInitialFontSize(float size); // Added for persistence
     // Method for GUI thread to get and clear accumulated scroll offsets
     ImVec2 getAndClearScrollOffsets();
 
+    // --- Model Selection Methods (Part III GUI Changes / Updated Part V) ---
+    std::vector<ModelEntry> getAvailableModelsForUI() const; // Renamed for clarity
+    void setSelectedModelInUI(const std::string& model_id); // Renamed for clarity
+    std::string getSelectedModelIdFromUI() const; // Renamed for clarity
+    bool areModelsLoadingInUI() const; // Added for Part V
+    // --- End Model Selection Methods ---
+
 public: // Changed from private to allow access from static callback
     GLFWwindow* window = nullptr;
     float accumulated_scroll_x = 0.0f;
@@ -104,6 +126,16 @@ public: // Changed from private to allow access from static callback
     std::condition_variable input_cv; // To signal when input is available
     std::atomic<bool> shutdown_requested{false}; // Updated for Stage 4
 private:
+    PersistenceManager& db_manager_ref; // Reference to PersistenceManager
+
+    // --- Model Selection State (Part III GUI Changes / Updated Part V) ---
+    std::string current_selected_model_id_in_ui; // Renamed for clarity
+    // const std::string default_model_id = "phi3:mini"; // This is now DEFAULT_MODEL_ID from config.h
+    std::vector<ModelEntry> available_models_for_ui; // Cache for UI display
+    std::atomic<bool> models_are_loading_in_ui{false}; // For UI feedback
+    mutable std::mutex models_ui_mutex; // To protect available_models_for_ui and current_selected_model_id_in_ui
+    // --- End Model Selection State ---
+
     // --- Font Size State & Helpers (Issue #19) ---
     float current_font_size = 18.0f; // Default font size
     bool font_rebuild_requested = false; // Flag to defer rebuild

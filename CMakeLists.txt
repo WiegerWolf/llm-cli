@@ -112,6 +112,7 @@ add_library(llm_core STATIC
     tools_impl/deep_research_tool.cpp
     curl_utils.h        # Header-only utility
     ui_interface.h      # Interface header
+    model_types.h       # For ModelData struct
 )
 
 target_link_libraries(llm_core PUBLIC
