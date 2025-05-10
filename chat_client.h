@@ -1,6 +1,6 @@
 #pragma once
-// #include <stop_token> // Removed for now due to potential C++20 incompatibility
-
+#include <stop_token> // Re-enabled for C++20 features like jthread
+ 
 #include <optional>
 #include <string>
 #include <vector>

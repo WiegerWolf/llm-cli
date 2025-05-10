@@ -107,7 +107,12 @@ void setInitialFontSize(float size); // Added for persistence
     std::string getSelectedModelIdFromUI() const; // Renamed for clarity
     bool areModelsLoadingInUI() const; // Added for Part V
     // --- End Model Selection Methods ---
-
+ 
+    // --- Font Accessors (Added for Model Dropdown Icons) ---
+    ImFont* GetMainFont() const { return main_font; }
+    ImFont* GetSmallFont() const { return small_font; }
+    // --- End Font Accessors ---
+ 
 public: // Changed from private to allow access from static callback // This public was for window, scroll_x/y. Font pointers should be private.
     GLFWwindow* window = nullptr;
     float accumulated_scroll_x = 0.0f;
@@ -143,9 +148,11 @@ private:
     float current_font_size = 18.0f; // Default font size
     bool font_rebuild_requested = false; // Flag to defer rebuild
     float requested_font_size = 18.0f;   // Target size for deferred rebuild
+    ImFont* main_font = nullptr;         // Added: Pointer to the main font
+    ImFont* small_font = nullptr;        // Added: Pointer to the small font
  
     void loadFonts(float size); // Loads both main and small fonts
     void rebuildFontAtlas(float new_size); // Keep private
  
     // --- End Font Size State & Helpers ---
-// The closing brace for the class is now part of the previous diff section.
+};

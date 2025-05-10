@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <thread> // Added for Stage 4
+#include <stop_token>   // For std::jthread and std::stop_token (C++20)
 #include "chat_client.h" // Added for Stage 4
 #include "database.h"    // Added for Issue #18 (DB Persistence)
 #include <optional>     // Added for Issue #18 (DB Persistence)
@@ -409,11 +410,10 @@ int main(int, char**) {
         glfwPollEvents();
 
         // --- Process Deferred Font Rebuild (Issue #19 Fix) ---
-        // Check if a font rebuild was requested in the previous frame and execute it
-        // *before* starting the new ImGui frame.
-        gui_ui.processFontRebuildRequest();
+        // Font rebuilding is now handled internally by GuiInterface when font size changes.
+        // The explicit call to processFontRebuildRequest() is no longer needed here.
         // --- End Process Deferred Font Rebuild ---
-
+ 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
