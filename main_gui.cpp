@@ -133,6 +133,52 @@ static std::string get_modality_icon_str(const ModelData& model_data) {
 }
 
 // --- End Helper Functions for Model Dropdown Icons ---
+
+// Helper function to format price per million tokens
+static std::string format_price_per_million(const std::string& price_str) {
+    if (price_str.empty() || price_str == "N/A") return "N/A";
+    try {
+        // Remove any potential currency symbols or non-numeric characters before conversion
+        std::string numeric_price_str;
+        for (char ch : price_str) {
+            if (std::isdigit(ch) || ch == '.' || ch == '-') {
+                numeric_price_str += ch;
+            }
+        }
+        if (numeric_price_str.empty()) return "N/A";
+
+        double price = std::stod(numeric_price_str);
+        double price_per_million = price * 1000000.0;
+        std::ostringstream oss;
+        oss << "$" << std::fixed << std::setprecision(2) << price_per_million;
+        return oss.str();
+    } catch (const std::invalid_argument& ia) {
+        // std::cerr << "Invalid argument for stod: " << price_str << std::endl; // Optional: for debugging
+        return "N/A";
+    } catch (const std::out_of_range& oor) {
+        // std::cerr << "Out of range for stod: " << price_str << std::endl; // Optional: for debugging
+        return "N/A";
+    }
+}
+
+// Helper function to format context size
+static std::string format_context_size(int context_length) {
+    if (context_length <= 0) return "N/A";
+    std::ostringstream oss;
+    if (context_length < 1000) {
+        oss << context_length;
+    } else if (context_length < 1000000) {
+        oss << static_cast<int>(std::round(static_cast<double>(context_length) / 1000.0)) << "k";
+    } else {
+        double millions = static_cast<double>(context_length) / 1000000.0;
+        if (std::fabs(millions - std::round(millions)) < 0.05) {
+            oss << static_cast<int>(std::round(millions)) << "M";
+        } else {
+            oss << std::fixed << std::setprecision(1) << millions << "M";
+        }
+    }
+    return oss.str();
+}
  
 // --- Helper Function for Coordinate Mapping (Phase 3 - Placeholder) ---
 // Helper function to map screen coordinates to text indices within wrapped text
@@ -561,7 +607,8 @@ int main(int, char**) {
                           float line1_height = main_font ? main_font->FontSize : ImGui::GetTextLineHeight();
                           float line2_height = small_font ? small_font->FontSize : ImGui::GetTextLineHeightWithSpacing() * 0.8f;
                           float line3_height = small_font ? small_font->FontSize : ImGui::GetTextLineHeightWithSpacing() * 0.8f;
-                          float total_text_height = line1_height + line2_height + line3_height + ImGui::GetStyle().ItemSpacing.y * 2;
+                          // Adjusted for 2 lines of text: Name (line1) and Details (line3)
+                          float total_text_height = line1_height + line3_height + ImGui::GetStyle().ItemSpacing.y * 1;
 
 
                           if (ImGui::Selectable(selectable_label.c_str(), is_selected, 0, ImVec2(0, total_text_height))) {
@@ -588,33 +635,20 @@ int main(int, char**) {
 
                               line1_text = model.name + icons_string;
                               
-                              // Truncate description (Line 2)
-                              line2_text = model.description;
-                              if (small_font) { // Ensure small_font is available
-                                  ImGui::PushFont(small_font);
-                                  float desc_width = ImGui::CalcTextSize(line2_text.c_str()).x;
-                                  if (desc_width > available_width_for_text) {
-                                      // Simple character-based truncation for now, can be improved with CalcTextSize
-                                      // Iterate backwards to find a good truncation point
-                                      int max_len = 0;
-                                      for (int k = 0; k < line2_text.length(); ++k) {
-                                          if (ImGui::CalcTextSize(line2_text.c_str(), line2_text.c_str() + k).x > available_width_for_text - ImGui::CalcTextSize("...").x) {
-                                              break;
-                                          }
-                                          max_len = k;
-                                      }
-                                      if (max_len > 0 && max_len < line2_text.length()) {
-                                         line2_text = line2_text.substr(0, max_len) + "...";
-                                      } else if (max_len == 0 && line2_text.length() > 0) { // if even "..." is too long or first char too long
-                                          line2_text = "..."; // or some other indicator
-                                      }
-                                  }
-                                  ImGui::PopFont();
+                              // Model description (line2_text) is removed.
+
+                              // Format context string using helper
+                              std::string context_str = "Context: " + format_context_size(model.context_length);
+                              
+                              // Format pricing string using helper
+                              std::string prompt_price_formatted = format_price_per_million(model.pricing_prompt);
+                              std::string completion_price_formatted = format_price_per_million(model.pricing_completion);
+                              std::string pricing_str;
+                              if (prompt_price_formatted == "N/A" && completion_price_formatted == "N/A") {
+                                  pricing_str = "Price: N/A";
+                              } else {
+                                  pricing_str = "P: " + prompt_price_formatted + "/1M | C: " + completion_price_formatted + "/1M tokens";
                               }
-
-
-                              std::string context_str = "Context: " + std::to_string(model.context_length);
-                              std::string pricing_str = "Price: P:" + model.pricing_prompt + "/C:" + model.pricing_completion;
                               line3_text = context_str + " | " + pricing_str;
 
                               // Render Line 1
@@ -623,13 +657,9 @@ int main(int, char**) {
                               if (main_font) ImGui::PopFont();
                               item_start_pos.y += line1_height + ImGui::GetStyle().ItemSpacing.y;
 
-                              // Render Line 2
-                              if (small_font) ImGui::PushFont(small_font);
-                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), line2_text.c_str());
-                              if (small_font) ImGui::PopFont();
-                              item_start_pos.y += line2_height + ImGui::GetStyle().ItemSpacing.y;
+                              // Line 2 (Description) is removed.
                               
-                              // Render Line 3
+                              // Render Line 3 (Details: Context & Price)
                               if (small_font) ImGui::PushFont(small_font);
                               draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), line3_text.c_str());
                               if (small_font) ImGui::PopFont();
@@ -641,9 +671,8 @@ int main(int, char**) {
                               if (main_font) ImGui::PopFont();
                               item_start_pos.y += line1_height + ImGui::GetStyle().ItemSpacing.y;
 
+                              // Fallback Line 2 (Details N/A)
                               if (small_font) ImGui::PushFont(small_font);
-                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), "(Description N/A)");
-                              item_start_pos.y += line2_height + ImGui::GetStyle().ItemSpacing.y;
                               draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), "(Details N/A)");
                               if (small_font) ImGui::PopFont();
                           }
