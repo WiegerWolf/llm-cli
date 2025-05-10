@@ -644,14 +644,6 @@ void GuiInterface::changeFontSize(float delta) {
     }
 }
 
-// Method called by main loop to perform the actual rebuild if requested
-void GuiInterface::processFontRebuildRequest() {
-    if (font_rebuild_requested) {
-        rebuildFontAtlas(requested_font_size);
-        font_rebuild_requested = false; // Reset the flag
-    }
-}
-
 // --- End Font Size Control Implementation ---
 // --- Model Selection Method Implementations (Part III GUI Changes / Updated Part V) ---
 // Renamed from getAvailableModels to getAvailableModelsForUI
