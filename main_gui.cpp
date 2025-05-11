@@ -5,10 +5,15 @@
 #include <vector>
 #include <string>
 #include <thread> // Added for Stage 4
+#include <stop_token>   // For std::jthread and std::stop_token (C++20)
 #include "chat_client.h" // Added for Stage 4
 #include "database.h"    // Added for Issue #18 (DB Persistence)
 #include <optional>     // Added for Issue #18 (DB Persistence)
 #include <cstring>      // Added for Phase 3 (strlen)
+#include <chrono>       // For timestamp operations (Model Dropdown Icons)
+#include <sstream>      // For parsing timestamps (Model Dropdown Icons)
+#include <iomanip>      // For std::get_time (Model Dropdown Icons)
+#include <algorithm>    // For std::any_of or string searching (Model Dropdown Icons)
  
  // Include GUI library headers needed for the main loop
  #include <GLFW/glfw3.h>
@@ -17,21 +22,166 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
-
+ 
 // --- Theme State (Issue #18) ---
 static ThemeType currentTheme = ThemeType::DARK; // Default theme
-
+ 
 // --- Theme-Dependent Message Colors (Issue #18 Fix) ---
 const ImVec4 darkUserColor = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green
 const ImVec4 darkStatusColor = ImVec4(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
 // Response/Error will use default theme text color via TextWrapped
-
+ 
 const ImVec4 lightUserColor = ImVec4(0.0f, 0.5f, 0.0f, 1.0f); // Dark Green
 const ImVec4 lightStatusColor = ImVec4(0.8f, 0.4f, 0.0f, 1.0f); // Orange/Brown
 // Response/Error will use default theme text color via TextWrapped
 // --- End Theme-Dependent Colors ---
 
+// --- Helper Functions for Model Dropdown Icons ---
 
+// Parses timestamp strings like "YYYY-MM-DDTHH:MM:SSZ" or "YYYY-MM-DD HH:MM:SS"
+static std::optional<std::chrono::system_clock::time_point> parse_timestamp(const std::string& ts_str) {
+    std::tm t{};
+    std::istringstream ss(ts_str);
+
+    // Try ISO8601 format with 'T' and potentially 'Z'
+    if (ts_str.find('T') != std::string::npos) {
+        ss >> std::get_time(&t, "%Y-%m-%dT%H:%M:%S");
+        // Note: The 'Z' (UTC) is not directly handled by get_time here.
+        // For robust UTC handling, a more advanced parser or C++20 chrono features would be needed.
+        // We proceed assuming mktime will give a comparable time_point for "recent" checks.
+    } else {
+        // Try "YYYY-MM-DD HH:MM:SS" format
+        ss >> std::get_time(&t, "%Y-%m-%d %H:%M:%S");
+    }
+
+    if (ss.fail()) {
+        // Attempt to parse if there was a trailing 'Z' after seconds for the first format
+        if (ts_str.find('T') != std::string::npos && !ts_str.empty() && ts_str.back() == 'Z') {
+            std::string SuffixlessStr = ts_str.substr(0, ts_str.length() -1);
+            std::istringstream ss_retry(SuffixlessStr);
+            ss_retry >> std::get_time(&t, "%Y-%m-%dT%H:%M:%S");
+            if(ss_retry.fail()){
+                 // std::cerr << "Failed to parse timestamp (after Z removal attempt): " << ts_str << std::endl; // Optional: reduce noise
+                 return std::nullopt;
+            }
+        } else {
+            // std::cerr << "Failed to parse timestamp: " << ts_str << std::endl; // Optional: reduce noise
+            return std::nullopt;
+        }
+    }
+
+    // std::mktime converts local time. This is a simplification.
+    // If timestamps are strictly UTC, timegm (POSIX) or _mkgmtime (Windows) would be better,
+    // or full C++20 timezone support.
+    t.tm_isdst = -1; // Let mktime determine DST
+    std::time_t time_c = std::mktime(&t);
+    if (time_c == -1) {
+        // This can happen if std::get_time partially succeeded but resulted in an invalid date/time for mktime
+        // std::cerr << "Failed to convert std::tm to time_t for timestamp: " << ts_str << std::endl; // Optional: reduce noise
+        return std::nullopt;
+    }
+    return std::chrono::system_clock::from_time_t(time_c);
+}
+
+static bool is_model_new_or_updated(const ModelData& model_data) {
+    auto now = std::chrono::system_clock::now();
+    auto seven_days_ago_tp = now - std::chrono::hours(24 * 7);
+    bool is_recent = false;
+
+    // Handle created_at_api (long long Unix timestamp)
+    if (model_data.created_at_api != 0) { // Check if it's a valid timestamp (not default 0)
+        auto created_at_tp = std::chrono::system_clock::from_time_t(static_cast<time_t>(model_data.created_at_api));
+        if (created_at_tp > seven_days_ago_tp) {
+            is_recent = true;
+        }
+    }
+
+    if (is_recent) return true; // Early exit if already found to be recent
+
+    // Handle last_updated_db (string timestamp)
+    if (!model_data.last_updated_db.empty()) {
+        auto updated_at_db_tp_opt = parse_timestamp(model_data.last_updated_db);
+        if (updated_at_db_tp_opt && *updated_at_db_tp_opt > seven_days_ago_tp) {
+            is_recent = true;
+        }
+    }
+    return is_recent;
+}
+
+static std::string get_modality_icon_str(const ModelData& model_data) {
+    bool input_text = model_data.architecture_input_modalities.find("\"text\"") != std::string::npos;
+    bool input_image = model_data.architecture_input_modalities.find("\"image\"") != std::string::npos;
+    // Add other input modalities here if needed, e.g., "audio", "video"
+
+    bool output_text = model_data.architecture_output_modalities.find("\"text\"") != std::string::npos;
+    bool output_image = model_data.architecture_output_modalities.find("\"image\"") != std::string::npos;
+    // Add other output modalities here
+
+    int input_modal_count = (input_text ? 1 : 0) + (input_image ? 1 : 0); // Simple count for now
+    int output_modal_count = (output_text ? 1 : 0) + (output_image ? 1 : 0); // Simple count for now
+
+    if (input_text && output_text && input_modal_count == 1 && output_modal_count == 1) return "\U0001F4DD\u27A1\U0001F4DD"; // 📝➡️📝
+    if (input_image && output_text && input_modal_count == 1 && output_modal_count == 1) return "\U0001F5BC\uFE0F\u27A1\U0001F4DD"; // 🖼️➡️📝
+    if (input_text && output_image && input_modal_count == 1 && output_modal_count == 1) return "\U0001F4DD\u27A1\U0001F5BC\uFE0F"; // 📝➡️🖼️
+    
+    // If multiple input or output modalities are present (based on simple count)
+    if (input_modal_count > 1 || output_modal_count > 1) return "\U0001F504"; // 🔄 (Generic multi-modal)
+
+    // Fallback for single but not combined (e.g. text only, image only) or unhandled
+    // Could add more specific icons like just "📝" or "🖼️" if desired
+    return ""; // No icon if no specific match or complex multi-modal not covered above
+}
+
+// --- End Helper Functions for Model Dropdown Icons ---
+
+// Helper function to format price per million tokens
+static std::string format_price_per_million(const std::string& price_str) {
+    if (price_str.empty() || price_str == "N/A") return "N/A";
+    try {
+        // Remove any potential currency symbols or non-numeric characters before conversion
+        std::string numeric_price_str;
+        for (char ch : price_str) {
+            if (std::isdigit(ch) || ch == '.' || ch == '-') {
+                numeric_price_str += ch;
+            }
+        }
+        if (numeric_price_str.empty()) return "N/A";
+
+        double price = std::stod(numeric_price_str);
+        double price_per_million = price * 1000000.0;
+        std::ostringstream oss;
+        oss << "$" << std::fixed << std::setprecision(2) << price_per_million;
+        return oss.str();
+    } catch (const std::invalid_argument& ia) {
+        // std::cerr << "Invalid argument for stod: " << price_str << std::endl; // Optional: for debugging
+        return "N/A";
+    } catch (const std::out_of_range& oor) {
+        // std::cerr << "Out of range for stod: " << price_str << std::endl; // Optional: for debugging
+        return "N/A";
+    }
+}
+
+// Helper function to format context size
+static std::string format_context_size(int context_length) {
+    if (context_length <= 0) return "N/A";
+    std::ostringstream oss;
+    if (context_length < 1000) {
+        oss << context_length;
+    } else if (context_length < 1000000) {
+        oss << static_cast<int>(std::round(static_cast<double>(context_length) / 1000.0)) << "k";
+    } else {
+        double millions = static_cast<double>(context_length) / 1000000.0;
+        if (std::fabs(millions - std::round(millions)) < 0.05) {
+            oss << static_cast<int>(std::round(millions)) << "M";
+        } else {
+            oss << std::fixed << std::setprecision(1) << millions << "M";
+        }
+    }
+    return oss.str();
+}
+ 
+// --- Helper Function for Coordinate Mapping (Phase 3 - Placeholder) ---
+// Helper function to map screen coordinates to text indices within wrapped text
 // --- Helper Function for Coordinate Mapping (Phase 3 - Placeholder) ---
 // Helper function to map screen coordinates to text indices within wrapped text
 // Returns true if valid indices were found, false otherwise.
@@ -306,11 +456,10 @@ int main(int, char**) {
         glfwPollEvents();
 
         // --- Process Deferred Font Rebuild (Issue #19 Fix) ---
-        // Check if a font rebuild was requested in the previous frame and execute it
-        // *before* starting the new ImGui frame.
-        gui_ui.processFontRebuildRequest();
+        // Font rebuilding is now handled internally by GuiInterface when font size changes.
+        // The explicit call to processFontRebuildRequest() is no longer needed here.
         // --- End Process Deferred Font Rebuild ---
-
+ 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -436,15 +585,97 @@ int main(int, char**) {
                                                       ? available_models_list[current_gui_selected_model_idx].name.c_str()
                                                       : "Select a Model";
                   if (ImGui::BeginCombo("Active Model", combo_preview_value)) {
+                      // Get fonts from GuiInterface instance (gui_ui)
+                      ImFont* main_font = gui_ui.GetMainFont(); // Assuming gui_ui is accessible
+                      ImFont* small_font = gui_ui.GetSmallFont();
+                      float available_width_for_text = ImGui::GetContentRegionAvail().x - ImGui::GetStyle().FramePadding.x * 2.0f;
+
+
                       for (int i = 0; i < available_models_list.size(); ++i) {
+                          const GuiInterface::ModelEntry& current_entry = available_models_list[i];
                           const bool is_selected = (current_gui_selected_model_idx == i);
-                          if (ImGui::Selectable(available_models_list[i].name.c_str(), is_selected)) {
+
+                          // Attempt to fetch full model data for detailed display
+                          std::optional<ModelData> model_data_opt = db_manager.getModelById(current_entry.id);
+
+                          // Use a temporary string for the selectable label to handle multi-line structure
+                          // The actual rendering will be done manually to control fonts.
+                          std::string selectable_label = "##model_selectable_" + current_entry.id;
+                          
+                          // Calculate the height of the three lines of text.
+                          // Line 1 (main_font), Line 2 (small_font), Line 3 (small_font)
+                          float line1_height = main_font ? main_font->FontSize : ImGui::GetTextLineHeight();
+                          float line2_height = small_font ? small_font->FontSize : ImGui::GetTextLineHeightWithSpacing() * 0.8f;
+                          float line3_height = small_font ? small_font->FontSize : ImGui::GetTextLineHeightWithSpacing() * 0.8f;
+                          // Adjusted for 2 lines of text: Name (line1) and Details (line3)
+                          float total_text_height = line1_height + line3_height + ImGui::GetStyle().ItemSpacing.y * 1;
+
+
+                          if (ImGui::Selectable(selectable_label.c_str(), is_selected, 0, ImVec2(0, total_text_height))) {
                               current_gui_selected_model_idx = i;
-                              current_gui_selected_model_id = available_models_list[i].id;
-                              gui_ui.setSelectedModelInUI(current_gui_selected_model_id); // Update GuiInterface state
-                              client.setActiveModel(current_gui_selected_model_id);      // Notify ChatClient
+                              current_gui_selected_model_id = current_entry.id;
+                              gui_ui.setSelectedModelInUI(current_gui_selected_model_id);
+                              client.setActiveModel(current_gui_selected_model_id);
                           }
                           if (is_selected) { ImGui::SetItemDefaultFocus(); }
+
+                          // Custom rendering within the selectable area
+                          ImVec2 item_start_pos = ImGui::GetItemRectMin();
+                          ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+                          if (model_data_opt) {
+                              const ModelData& model = *model_data_opt;
+                              std::string line1_text, line2_text, line3_text;
+
+                              std::string icons_string;
+                              if (is_model_new_or_updated(model)) icons_string += " \u2728";
+                              if (model.top_provider_is_moderated) icons_string += " \U0001F512";
+                              std::string modality_icon = get_modality_icon_str(model);
+                              if (!modality_icon.empty()) icons_string += " " + modality_icon;
+
+                              line1_text = model.name + icons_string;
+                              
+                              // Model description (line2_text) is removed.
+
+                              // Format context string using helper
+                              std::string context_str = "Context: " + format_context_size(model.context_length);
+                              
+                              // Format pricing string using helper
+                              std::string prompt_price_formatted = format_price_per_million(model.pricing_prompt);
+                              std::string completion_price_formatted = format_price_per_million(model.pricing_completion);
+                              std::string pricing_str;
+                              if (prompt_price_formatted == "N/A" && completion_price_formatted == "N/A") {
+                                  pricing_str = "Price: N/A";
+                              } else {
+                                  pricing_str = "P: " + prompt_price_formatted + "/1M | C: " + completion_price_formatted + "/1M tokens";
+                              }
+                              line3_text = context_str + " | " + pricing_str;
+
+                              // Render Line 1
+                              if (main_font) ImGui::PushFont(main_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), line1_text.c_str());
+                              if (main_font) ImGui::PopFont();
+                              item_start_pos.y += line1_height + ImGui::GetStyle().ItemSpacing.y;
+
+                              // Line 2 (Description) is removed.
+                              
+                              // Render Line 3 (Details: Context & Price)
+                              if (small_font) ImGui::PushFont(small_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), line3_text.c_str());
+                              if (small_font) ImGui::PopFont();
+
+                          } else {
+                              // Fallback rendering
+                              if (main_font) ImGui::PushFont(main_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), current_entry.name.c_str());
+                              if (main_font) ImGui::PopFont();
+                              item_start_pos.y += line1_height + ImGui::GetStyle().ItemSpacing.y;
+
+                              // Fallback Line 2 (Details N/A)
+                              if (small_font) ImGui::PushFont(small_font);
+                              draw_list->AddText(item_start_pos, ImGui::GetColorU32(ImGuiCol_Text), "(Details N/A)");
+                              if (small_font) ImGui::PopFont();
+                          }
                       }
                       ImGui::EndCombo();
                   }
