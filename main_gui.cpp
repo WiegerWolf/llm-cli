@@ -27,13 +27,12 @@
 // Note: graph_types.h is included by graph_renderer.h and graph_manager.h
  
 // --- Graph Editor Instance & State ---
-static GraphEditor g_graph_editor; // Manages graph state and rendering (existing)
+// static GraphEditor g_graph_editor; // Manages graph state and rendering (existing) - To be phased out or integrated with GraphManager
 static GraphManager g_graph_manager; // Manages graph data (new)
-static std::vector<GraphNode> s_graph_nodes; // Owns the actual node data (placeholder, to be replaced by g_graph_manager)
+// static std::vector<GraphNode> s_graph_nodes; // Owns the actual node data (placeholder, to be replaced by g_graph_manager) - Removed
 static bool s_is_graph_view_visible = true; // To toggle graph view window (existing, might be adapted)
-static bool s_graph_data_initialized = false; // For placeholder data
-// Old static graph state variables (s_view_offset, s_is_panning_graph, etc.) are removed
-// as GraphEditor and its GraphViewState now manage this.
+// static bool s_graph_data_initialized = false; // For placeholder data - Removed
+// Old static graph state variables are managed by GraphManager's GraphViewState
 // --- End Graph Editor Instance & State ---
 
 // --- Theme State (Issue #18) ---
@@ -447,50 +446,9 @@ int main(int, char**) {
     client.setActiveModel(current_gui_selected_model_id);
     // --- End Model Selection GUI State ---
 
-    // --- Initialize Placeholder Graph Data (Step 2 Rendering) ---
-    if (!s_graph_data_initialized) {
-        HistoryMessage msg1_data; msg1_data.message_id = 1; msg1_data.content = "Node 1: Root";
-        GraphNode node1(1, msg1_data);
-        node1.position = ImVec2(100, 50); node1.size = ImVec2(150, 60);
-
-        HistoryMessage msg2_data; msg2_data.message_id = 2; msg2_data.content = "Node 2: Child of 1. This text is a bit longer to test truncation.";
-        GraphNode node2(2, msg2_data);
-        node2.position = ImVec2(50, 150); node2.size = ImVec2(180, 80);
-
-        HistoryMessage msg3_data; msg3_data.message_id = 3; msg3_data.content = "Node 3: Another Child of 1";
-        GraphNode node3(3, msg3_data);
-        node3.position = ImVec2(250, 150); node3.size = ImVec2(160, 70);
-        node3.is_expanded = false; // Test expansion indicator
-
-        HistoryMessage msg4_data; msg4_data.message_id = 4; msg4_data.content = "Node 4: Child of 3";
-        GraphNode node4(4, msg4_data);
-        node4.position = ImVec2(230, 250); node4.size = ImVec2(150,60);
-
-        s_graph_nodes.push_back(node1); // idx 0
-        s_graph_nodes.push_back(node2); // idx 1
-        s_graph_nodes.push_back(node3); // idx 2
-        s_graph_nodes.push_back(node4); // idx 3
-
-        // Establish connections (manually for placeholder)
-        // Node 1 is parent of Node 2 and Node 3
-        s_graph_nodes[0].children.push_back(&s_graph_nodes[1]);
-        s_graph_nodes[1].parent = &s_graph_nodes[0];
-        s_graph_nodes[0].children.push_back(&s_graph_nodes[2]);
-        s_graph_nodes[2].parent = &s_graph_nodes[0];
-
-        // Node 3 is parent of Node 4
-        s_graph_nodes[2].children.push_back(&s_graph_nodes[3]);
-        s_graph_nodes[3].parent = &s_graph_nodes[2];
-
-        // Add nodes to the GraphEditor
-        g_graph_editor.ClearNodes(); // Clear any previous nodes if re-initializing
-        for (GraphNode& node_ref : s_graph_nodes) { // Iterate by reference
-            g_graph_editor.AddNode(&node_ref);
-        }
-        
-        s_graph_data_initialized = true;
-    }
-    // --- End Initialize Placeholder Graph Data ---
+    // --- Placeholder Graph Data Initialization Removed ---
+    // This will now be handled by PopulateGraphFromHistory when the Graph View tab is first selected,
+    // or potentially by an explicit "load" button if desired.
 
     GLFWwindow* window = gui_ui.getWindow(); // Get the window handle
     // Apply initial theme (Issue #18)
@@ -557,8 +515,19 @@ int main(int, char**) {
             output_history.insert(output_history.end(),
                                   std::make_move_iterator(new_messages.begin()),
                                   std::make_move_iterator(new_messages.end()));
-      }
-      // --- End Process Display Updates ---
+           
+           // After adding to output_history, update the graph
+           for (const auto& new_msg_ref : new_messages) { // Iterate over the original new_messages
+               // We need to find the just-added message in output_history to pass its const ref,
+               // or HandleNewHistoryMessage could take by value if HistoryMessage is cheap to copy.
+               // Assuming new_messages contains copies of what's now in output_history.
+               // The plan is "Immediately after a new HistoryMessage is successfully added to this vector..."
+               // So, we iterate `new_messages` which were just processed.
+               // The `current_selected_node_id` comes from the graph manager's view state.
+               g_graph_manager.HandleNewHistoryMessage(new_msg_ref, g_graph_manager.graph_view_state.selected_node_id);
+           }
+       }
+     // --- End Process Display Updates ---
 
       // --- Retrieve and Apply Scroll Offsets (Comment 1) ---
       ImVec2 scroll_offsets = gui_ui.getAndClearScrollOffsets();
@@ -951,7 +920,8 @@ int main(int, char**) {
               // For now, it's declared in graph_manager.h.
               // We need a child window for the graph rendering area to get a dedicated canvas.
               ImGui::BeginChild("GraphCanvas", ImVec2(0, -bottom_elements_height - ImGui::GetFrameHeightWithSpacing()), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-              RenderGraphView(g_graph_manager); // This function will use ImGui::GetWindowDrawList(), canvas_pos, canvas_size
+              // Updated signature for RenderGraphView
+              RenderGraphView(g_graph_manager, g_graph_manager.graph_view_state);
               ImGui::EndChild();
 
               ImGui::EndTabItem();
@@ -1016,35 +986,34 @@ int main(int, char**) {
         ImGui::End(); // End Main Window
         // --- End Main UI Layout ---
 
-        // --- Graph View Window (Using GraphEditor) ---
-        if (s_is_graph_view_visible) {
+        // --- Graph View Window (Using GraphEditor) - This section seems redundant if graph is in a tab ---
+        // The plan implies the graph view is integrated, likely within a tab.
+        // If s_is_graph_view_visible controls the tab's content visibility, this separate window might be old.
+        // For now, I will comment out this separate Graph View window logic as it uses g_graph_editor
+        // which is being phased out in favor of g_graph_manager and RenderGraphView.
+        /*
+        if (s_is_graph_view_visible) { // This bool now controls the tab item's content
             ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_FirstUseEver);
-            if (ImGui::Begin("Graph View", &s_is_graph_view_visible)) {
-                ImDrawList* draw_list = ImGui::GetWindowDrawList();
-                
-                ImVec2 canvas_pos = ImGui::GetCursorScreenPos(); // Changed to use GetCursorScreenPos
-                ImVec2 canvas_size = ImGui::GetContentRegionAvail();
-                if (canvas_size.x < 50.0f) canvas_size.x = 50.0f;
-                if (canvas_size.y < 50.0f) canvas_size.y = 50.0f;
-
-                // Optional: Draw canvas background if GraphEditor doesn't draw its own.
-                // draw_list->AddRectFilled(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(30, 30, 30, 200));
-                // draw_list->AddRect(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(200, 200, 200, 255));
-                
-                // The GraphEditor's Render function will handle drawing nodes and edges
-                // relative to the canvas_pos (top-left of its drawing area).
-                // It will also handle interactions based on mouse input relative to this canvas.
-                g_graph_editor.Render(draw_list, canvas_pos, canvas_size);
-                
+            if (ImGui::Begin("Graph View Standalone", &s_is_graph_view_visible)) { // Renamed to avoid conflict
+                // This was using g_graph_editor.Render.
+                // If a standalone window is still desired, it should also use:
+                // RenderGraphView(g_graph_manager, g_graph_manager.graph_view_state);
+                // For now, focusing on the tabbed view.
             }
-            ImGui::End(); // End Graph View window
+            ImGui::End();
         }
+        */
         // --- End Graph View Window ---
 
         // --- Display Selected Node Details (after all other windows) ---
-        if (s_is_graph_view_visible) { // Only show details if graph view itself is visible
-             g_graph_editor.DisplaySelectedNodeDetails();
+        // This was tied to g_graph_editor. If selection details are needed for g_graph_manager,
+        // a similar function or logic within RenderGraphView would be required.
+        // For now, commenting out as it's tied to the old system.
+        /*
+        if (s_is_graph_view_visible) {
+             // g_graph_editor.DisplaySelectedNodeDetails();
         }
+        */
         // --- End Display Selected Node Details ---
 
         // Rendering

@@ -10,8 +10,10 @@
 
 struct GraphNode {
     // Core Data
-    int message_id;                 // Links to HistoryMessage::message_id
+    int graph_node_id;              // Unique ID for this graph node
+    int message_id;                 // Original ID from HistoryMessage (can be non-unique in graph context if messages are reused)
     HistoryMessage message_data;    // A copy of the message content and metadata
+    std::string label;              // Node label, e.g., a summary or type of message
 
     // Visual Properties
     ImVec2 position;                // On-screen position for rendering
@@ -31,17 +33,17 @@ struct GraphNode {
     int depth;                       // Depth in the graph, useful for layout algorithms
     
     // Constructor (optional, but good practice for initialization)
-    GraphNode(int id, const HistoryMessage& msg_data)
-        : message_id(id), message_data(msg_data),
+    GraphNode(int g_node_id, const HistoryMessage& msg_data) // Takes graph_node_id
+        : graph_node_id(g_node_id), message_id(msg_data.message_id), message_data(msg_data),
           position(ImVec2(0,0)), size(ImVec2(0,0)), // Default visual properties
           is_expanded(true), is_selected(false),   // Default states
-          parent(nullptr), depth(0), color(IM_COL32(200, 200, 200, 255)) {} // Default relational/layout properties and color
-};
+          parent(nullptr), depth(0), color(IM_COL32(200, 200, 200, 255)), label("") {} // Default relational/layout properties, color, and label
+ };
 
 struct GraphViewState {
     ImVec2 pan_offset;
     float zoom_scale;
-    int selected_node_id;
+    int selected_node_id; // Stores the unique graph_node_id of the selected node, -1 if none
 
     GraphViewState() : pan_offset(0.0f, 0.0f), zoom_scale(1.0f), selected_node_id(-1) {}
 };
