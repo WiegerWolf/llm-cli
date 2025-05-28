@@ -47,6 +47,9 @@ public:
     void UpdateLayout(); // Apply force-directed layout if needed
     void SetLayoutParams(const ForceDirectedLayout::LayoutParams& params);
     void ToggleForceLayout(bool enable);
+    bool IsLayoutRunning() const; // Check if layout animation is currently running
+    void RestartLayoutAnimation(); // Restart the layout animation from the beginning
+    void SetAnimationSpeed(float speed_multiplier); // Set animation speed multiplier
     
     // Get all nodes as a vector for layout algorithms
     std::vector<GraphNode*> GetAllNodes();

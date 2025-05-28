@@ -77,6 +77,11 @@ static GraphManager g_graph_manager; // Manages graph data (new)
 static bool s_is_graph_view_visible = true; // To toggle graph view window (existing, might be adapted)
 // static bool s_graph_data_initialized = false; // For placeholder data - Removed
 // Old static graph state variables are managed by GraphManager's GraphViewState
+
+// --- Animation Control Variables ---
+static bool s_animation_paused = false; // Control animation play/pause
+static float s_animation_speed = 1.0f; // Animation speed multiplier (0.1x to 3.0x)
+// --- End Animation Control Variables ---
 // --- End Graph Editor Instance & State ---
 
 // --- Theme State (Issue #18) ---
@@ -602,10 +607,14 @@ int main(int, char**) {
        // --- Ensure Graph Layout Updates (Even When Tab Not Visible) ---
        // Process graph layout updates immediately when needed, regardless of tab visibility
        // This is critical for fixing the auto-refresh issue with new message nodes
-       if (graph_needs_update || g_graph_manager.graph_layout_dirty) {
-           // Force layout recalculation if the graph is dirty
-           if (g_graph_manager.graph_layout_dirty && !g_graph_manager.all_nodes.empty()) {
+       if (graph_needs_update || g_graph_manager.graph_layout_dirty || (g_graph_manager.IsLayoutRunning() && !s_animation_paused)) {
+           // Force layout recalculation if the graph is dirty or animation is running and not paused
+           if ((g_graph_manager.graph_layout_dirty || (g_graph_manager.IsLayoutRunning() && !s_animation_paused)) && !g_graph_manager.all_nodes.empty()) {
+               // Update animation speed in the force layout system
+               g_graph_manager.SetAnimationSpeed(s_animation_speed);
+               
                // Use force-directed layout for better node organization
+               // This will now perform per-frame updates for smooth animation
                g_graph_manager.UpdateLayout();
            }
        }
@@ -999,6 +1008,55 @@ int main(int, char**) {
               }
               ImGui::SameLine();
               ImGui::Text("Nodes: %zu (Auto-updating)", g_graph_manager.all_nodes.size());
+
+              // --- Animation Controls ---
+              ImGui::Separator();
+              ImGui::Text("Animation Controls:");
+              
+              // Play/Pause button
+              if (g_graph_manager.IsLayoutRunning()) {
+                  if (s_animation_paused) {
+                      if (ImGui::Button("Resume")) {
+                          s_animation_paused = false;
+                      }
+                  } else {
+                      if (ImGui::Button("Pause")) {
+                          s_animation_paused = true;
+                      }
+                  }
+              } else {
+                  if (ImGui::Button("Start Animation")) {
+                      g_graph_manager.graph_layout_dirty = true; // Restart the animation
+                      s_animation_paused = false;
+                  }
+              }
+              
+              ImGui::SameLine();
+              
+              // Reset Layout button
+              if (ImGui::Button("Reset Layout")) {
+                  g_graph_manager.RestartLayoutAnimation();
+                  s_animation_paused = false;
+              }
+              
+              // Animation speed slider
+              ImGui::Text("Speed:");
+              ImGui::SameLine();
+              ImGui::SetNextItemWidth(150.0f);
+              ImGui::SliderFloat("##AnimSpeed", &s_animation_speed, 0.1f, 3.0f, "%.1fx");
+              
+              // Animation status
+              ImGui::SameLine();
+              if (g_graph_manager.IsLayoutRunning()) {
+                  if (s_animation_paused) {
+                      ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "PAUSED");
+                  } else {
+                      ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "RUNNING");
+                  }
+              } else {
+                  ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "STOPPED");
+              }
+              // --- End Animation Controls ---
 
               // Call the main rendering function for the graph interface
               // The graph layout is now automatically updated in the main loop,

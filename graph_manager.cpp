@@ -108,6 +108,8 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
         previous_node_ptr = current_node_ptr;
         last_node_added_to_graph = current_node_ptr;
     }
+    // Reset physics state when populating from history to ensure fresh animation
+    force_layout.ResetPhysicsState();
     graph_layout_dirty = true;
     
     // Reset user interruption flag when populating from history so auto-pan can work
@@ -166,6 +168,8 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     all_nodes[new_graph_node->graph_node_id] = std::move(new_graph_node_unique_ptr);
 
     last_node_added_to_graph = new_graph_node;
+    // Reset physics state when adding new nodes to ensure animation restarts
+    force_layout.ResetPhysicsState();
     graph_layout_dirty = true;
     
     // Reset user interruption flag when a new node is added so auto-pan can work again
@@ -177,7 +181,7 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
 
 // Layout management functions
 void GraphManager::UpdateLayout() {
-    if (!graph_layout_dirty || !use_force_layout) {
+    if (!use_force_layout) {
         return;
     }
     
@@ -189,10 +193,22 @@ void GraphManager::UpdateLayout() {
     // Calculate canvas center based on current viewport or use default
     ImVec2 canvas_center(1000.0f, 750.0f); // Default center point
     
-    // Apply force-directed layout
-    force_layout.ComputeLayout(all_nodes_vec, canvas_center);
+    // If layout is dirty, initialize the simulation
+    if (graph_layout_dirty) {
+        force_layout.Initialize(all_nodes_vec, canvas_center);
+        graph_layout_dirty = false; // Clear the dirty flag after initialization
+    }
     
-    graph_layout_dirty = false;
+    // Perform one iteration of the force-directed simulation
+    // This will return false when the simulation converges
+    bool simulation_continues = force_layout.UpdateLayout(all_nodes_vec);
+    
+    // Keep the layout "running" by not setting graph_layout_dirty to false
+    // until the simulation converges
+    if (!simulation_continues) {
+        // Simulation has converged, no need to continue updating
+        // graph_layout_dirty remains false
+    }
 }
 
 void GraphManager::SetLayoutParams(const ForceDirectedLayout::LayoutParams& params) {
@@ -205,6 +221,26 @@ void GraphManager::ToggleForceLayout(bool enable) {
     if (enable) {
         graph_layout_dirty = true; // Trigger layout recalculation
     }
+}
+
+bool GraphManager::IsLayoutRunning() const {
+    return force_layout.IsRunning();
+}
+
+void GraphManager::RestartLayoutAnimation() {
+    // Reset all node positions to trigger a fresh layout
+    for (auto& pair : all_nodes) {
+        if (pair.second) {
+            pair.second->position = ImVec2(0.0f, 0.0f);
+        }
+    }
+    // Reset the physics state to ensure a fresh start
+    force_layout.ResetPhysicsState();
+    graph_layout_dirty = true;
+}
+
+void GraphManager::SetAnimationSpeed(float speed_multiplier) {
+    force_layout.SetAnimationSpeed(speed_multiplier);
 }
 
 std::vector<GraphNode*> GraphManager::GetAllNodes() {

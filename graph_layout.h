@@ -47,14 +47,14 @@ public:
         
         // Constructor with default values
         LayoutParams()
-            : spring_strength(0.05f)     // Reduced for gentler attraction
-            , repulsion_strength(8000.0f) // Increased for better spacing
-            , damping_factor(0.85f)       // Slightly less damping for more movement
+            : spring_strength(0.1f)       // Increased for stronger attraction
+            , repulsion_strength(10000.0f) // Increased for better spacing
+            , damping_factor(0.9f)        // Higher damping for more stable animation
             , min_distance(150.0f)        // Increased minimum distance
             , ideal_edge_length(300.0f)   // Increased ideal distance between connected nodes
             , time_step(0.016f)
-            , max_iterations(50)          // Reduced iterations for faster convergence
-            , convergence_threshold(2.0f) // Higher threshold for faster stopping
+            , max_iterations(500)         // Much higher for longer animation
+            , convergence_threshold(0.5f) // Lower threshold for longer animation
             , canvas_bounds(ImVec2(2000.0f, 1500.0f))
         {}
     };
@@ -109,6 +109,16 @@ public:
      * @brief Update layout parameters
      */
     void SetParams(const LayoutParams& params) { params_ = params; }
+    
+    /**
+     * @brief Set animation speed multiplier (affects time step)
+     */
+    void SetAnimationSpeed(float speed_multiplier);
+    
+    /**
+     * @brief Reset the physics state for all nodes
+     */
+    void ResetPhysicsState();
     
     /**
      * @brief Pin a node at its current position (prevent movement)

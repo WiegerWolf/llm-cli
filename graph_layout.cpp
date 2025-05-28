@@ -73,28 +73,17 @@ void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const
         
         // If node doesn't have a position yet, place it strategically
         if (node->position.x == 0.0f && node->position.y == 0.0f) {
-            // For new nodes, try to position them near their parent if they have one
-            if (node->parent && node->parent->position.x != 0.0f && node->parent->position.y != 0.0f) {
-                // Position near parent with some offset
-                std::random_device rd;
-                std::mt19937 gen(rd());
-                std::uniform_real_distribution<float> offset_dist(-100.0f, 100.0f);
-                
-                node->position.x = node->parent->position.x + params_.ideal_edge_length + offset_dist(gen);
-                node->position.y = node->parent->position.y + offset_dist(gen);
-            } else {
-                // No parent or parent not positioned, use circular placement
-                std::random_device rd;
-                std::mt19937 gen(rd());
-                std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
-                std::uniform_real_distribution<float> radius_dist(100.0f, 400.0f);
-                
-                float angle = angle_dist(gen);
-                float radius = radius_dist(gen);
-                
-                node->position.x = canvas_center.x + radius * std::cos(angle);
-                node->position.y = canvas_center.y + radius * std::sin(angle);
-            }
+            // Always use random placement for more dramatic animation
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
+            std::uniform_real_distribution<float> radius_dist(200.0f, 600.0f); // Larger radius for more movement
+            
+            float angle = angle_dist(gen);
+            float radius = radius_dist(gen);
+            
+            node->position.x = canvas_center.x + radius * std::cos(angle);
+            node->position.y = canvas_center.y + radius * std::sin(angle);
         }
     }
 }
@@ -117,11 +106,13 @@ bool ForceDirectedLayout::UpdateLayout(const std::vector<GraphNode*>& nodes) {
     // Apply forces and update positions
     ApplyForces(nodes);
     
-    // Check for convergence
-    float total_energy = CalculateTotalEnergy(nodes);
-    if (total_energy < params_.convergence_threshold) {
-        is_running_ = false;
-        return false;
+    // Check for convergence - only after a minimum number of iterations
+    if (current_iteration_ > 20) { // Ensure at least 20 iterations for visible animation
+        float total_energy = CalculateTotalEnergy(nodes);
+        if (total_energy < params_.convergence_threshold) {
+            is_running_ = false;
+            return false;
+        }
     }
     
     current_iteration_++;
@@ -144,6 +135,22 @@ void ForceDirectedLayout::PinNode(GraphNode* node, bool pinned) {
             it->second.velocity = ImVec2(0.0f, 0.0f);
         }
     }
+}
+
+void ForceDirectedLayout::SetAnimationSpeed(float speed_multiplier) {
+    // Clamp speed multiplier to reasonable bounds
+    speed_multiplier = std::max(0.1f, std::min(3.0f, speed_multiplier));
+    
+    // Adjust time step based on speed multiplier
+    // Base time step is 0.016f (60 FPS), scale it by the multiplier
+    params_.time_step = 0.016f * speed_multiplier;
+}
+
+void ForceDirectedLayout::ResetPhysicsState() {
+    // Clear all physics data to force reinitialization
+    node_physics_.clear();
+    is_running_ = false;
+    current_iteration_ = 0;
 }
 
 void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& nodes) {
