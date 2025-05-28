@@ -452,12 +452,12 @@ private:
                 return a->message_data.timestamp < b->message_data.timestamp;
             });
         
-        // Check that Y positions are in chronological order (older messages higher up)
+        // Check that Y positions are in chronological order (older messages lower down, newer messages higher up)
         for (size_t i = 0; i < sorted_nodes.size() - 1; ++i) {
-            if (sorted_nodes[i]->position.y > sorted_nodes[i + 1]->position.y) {
-                std::cout << "    Chronological order violation: Node " 
-                          << sorted_nodes[i]->graph_node_id << " (y=" << sorted_nodes[i]->position.y 
-                          << ") should be above Node " << sorted_nodes[i + 1]->graph_node_id 
+            if (sorted_nodes[i]->position.y < sorted_nodes[i + 1]->position.y) {
+                std::cout << "    Chronological order violation: Node "
+                          << sorted_nodes[i]->graph_node_id << " (y=" << sorted_nodes[i]->position.y
+                          << ") should be below Node " << sorted_nodes[i + 1]->graph_node_id
                           << " (y=" << sorted_nodes[i + 1]->position.y << ")" << std::endl;
                 return false;
             }

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <iostream>
 
 // Legacy recursive layout function (kept for compatibility)
 void CalculateNodePositionsRecursive(
@@ -400,11 +401,15 @@ void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<Gra
     
     if (sorted_nodes.empty()) return;
     
-    // Calculate starting position - start well above canvas center for oldest messages
-    float start_y = 100.0f; // Start near the very top of the canvas
+    
+    // FIX: Calculate starting position - start at BOTTOM for oldest messages
+    // Since the visual coordinate system appears to have newer messages higher up,
+    // we need to position older messages at higher Y values (bottom of canvas)
+    float canvas_height = params_.canvas_bounds.y;
+    float start_y = canvas_height - 100.0f; // Start near the bottom of the canvas for oldest
     float current_y = start_y;
     
-    // Position nodes chronologically from top to bottom (oldest to newest)
+    // Position nodes chronologically from bottom to top (oldest to newest)
     for (size_t i = 0; i < sorted_nodes.size(); ++i) {
         GraphNode* node = sorted_nodes[i];
         if (!node) continue;
@@ -421,8 +426,9 @@ void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<Gra
         node->position.x = canvas_center.x + x_offset + x_jitter(gen);
         node->position.y = current_y;
         
-        // Increment Y position for next node (moving down for newer messages)
-        current_y += params_.chronological_spacing;
+        
+        // Decrement Y position for next node (moving up for newer messages)
+        current_y -= params_.chronological_spacing;
     }
 }
 
@@ -431,7 +437,7 @@ std::vector<GraphNode*> ForceDirectedLayout::SortNodesByTimestamp(const std::vec
     
     // Sort by timestamp (chronological order - oldest first, newest last)
     // This ensures older messages (smaller timestamps) come first in the array
-    // and will be positioned at the top of the screen
+    // and will be positioned at the bottom of the screen (higher Y coordinates)
     std::sort(sorted_nodes.begin(), sorted_nodes.end(),
         [](const GraphNode* a, const GraphNode* b) {
             if (!a || !b) return false;
@@ -471,16 +477,19 @@ void ForceDirectedLayout::CalculateTemporalForces(const std::vector<GraphNode*>&
         if (earlier_it == node_physics_.end() || later_it == node_physics_.end()) continue;
         
         // Calculate vertical bias force to maintain chronological order
-        // earlier_node should have smaller Y (higher up), later_node should have larger Y (lower down)
-        float vertical_delta = later_node->position.y - earlier_node->position.y;
+        // FIX: In the corrected coordinate system:
+        // earlier_node should have LARGER Y (lower on screen), later_node should have SMALLER Y (higher on screen)
+        float vertical_delta = earlier_node->position.y - later_node->position.y;
         
-        // If later message is above earlier message (vertical_delta < 0), apply corrective force
+        
+        // If earlier message is above later message (vertical_delta < 0), apply corrective force
         if (vertical_delta < params_.chronological_spacing * 0.5f) {
             float correction_force = params_.temporal_strength * 100.0f;
             
-            // Push earlier node up, later node down
-            earlier_it->second.force.y -= correction_force * params_.vertical_bias;
-            later_it->second.force.y += correction_force * params_.vertical_bias;
+            
+            // Push earlier node down (increase Y), later node up (decrease Y)
+            earlier_it->second.force.y += correction_force * params_.vertical_bias;
+            later_it->second.force.y -= correction_force * params_.vertical_bias;
         }
         
         // Apply weak attractive force between chronologically adjacent messages
@@ -520,9 +529,10 @@ void ForceDirectedLayout::CalculateTemporalForces(const std::vector<GraphNode*>&
         if (sorted_it != sorted_nodes.end()) {
             size_t chronological_index = std::distance(sorted_nodes.begin(), sorted_it);
             
-            // Calculate expected Y position (older messages at top, newer at bottom)
+            // Calculate expected Y position (older messages at bottom, newer at top)
             // Use same calculation as in InitializeChronologicalPositions
-            float expected_y = 100.0f + (chronological_index * params_.chronological_spacing);
+            float canvas_height = params_.canvas_bounds.y;
+            float expected_y = canvas_height - 100.0f - (chronological_index * params_.chronological_spacing);
             
             float y_deviation = node->position.y - expected_y;
             
