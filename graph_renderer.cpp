@@ -833,14 +833,27 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
                                    ImVec2(node_abs_screen_pos.x + node_screen_size.x, node_abs_screen_pos.y + node_screen_size.y),
                                    node_border_color, 4.0f * temp_editor_for_render.GetViewState().zoom_scale);
                 
-                // Simplified text
-                ImVec2 text_render_pos = ImVec2(node_abs_screen_pos.x + 5, node_abs_screen_pos.y + 5);
-                 if (node_screen_size.x > 10 && node_screen_size.y > 10) { // Only if node is somewhat visible
-                    AddTextTruncated(draw_list, ImGui::GetFont(), ImGui::GetFontSize() * temp_editor_for_render.GetViewState().zoom_scale,
-                                     text_render_pos, text_color,
-                                     node->label.c_str(), node->label.c_str() + node->label.length(),
-                                     node_screen_size.x - 10, nullptr);
-                 }
+                // Render full text with proper wrapping instead of truncation
+                float padding = 5.0f;
+                ImVec2 text_render_pos = ImVec2(node_abs_screen_pos.x + padding, node_abs_screen_pos.y + padding);
+                if (node_screen_size.x > 10 && node_screen_size.y > 10) { // Only if node is somewhat visible
+                    float content_width = node_screen_size.x - (2 * padding);
+                    float content_height = node_screen_size.y - (2 * padding);
+                    
+                    // Use the full content from label (which contains the formatted message)
+                    const char* text_to_display = node->label.empty() ? "[Empty Node]" : node->label.c_str();
+                    
+                    // Create clipping rectangle for the text area
+                    ImVec4 clip_rect_vec4(node_abs_screen_pos.x + padding, node_abs_screen_pos.y + padding,
+                                          node_abs_screen_pos.x + padding + content_width,
+                                          node_abs_screen_pos.y + padding + content_height);
+                    
+                    // Use RenderWrappedText for full message content display
+                    RenderWrappedText(draw_list, ImGui::GetFont(),
+                                     ImGui::GetFontSize() * temp_editor_for_render.GetViewState().zoom_scale,
+                                     text_render_pos, text_color, text_to_display,
+                                     content_width, content_height, &clip_rect_vec4);
+                }
             }
         }
 
