@@ -77,7 +77,7 @@ void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const
             std::random_device rd;
             std::mt19937 gen(rd());
             std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
-            std::uniform_real_distribution<float> radius_dist(200.0f, 600.0f); // Larger radius for more movement
+            std::uniform_real_distribution<float> radius_dist(400.0f, 1000.0f); // Larger radius for more movement
             
             float angle = angle_dist(gen);
             float radius = radius_dist(gen);
@@ -107,7 +107,7 @@ bool ForceDirectedLayout::UpdateLayout(const std::vector<GraphNode*>& nodes) {
     ApplyForces(nodes);
     
     // Check for convergence - only after a minimum number of iterations
-    if (current_iteration_ > 20) { // Ensure at least 20 iterations for visible animation
+    if (current_iteration_ > 50) { // Ensure at least 50 iterations for proper separation
         float total_energy = CalculateTotalEnergy(nodes);
         if (total_energy < params_.convergence_threshold) {
             is_running_ = false;
@@ -250,7 +250,7 @@ void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<GraphNode*>
                 }
                 
                 // Cap maximum force to prevent instability
-                force_magnitude = std::min(force_magnitude, 1000.0f);
+                force_magnitude = std::min(force_magnitude, 5000.0f);
                 
                 ImVec2 force_direction = Normalize(delta);
                 ImVec2 repulsive_force = ImVec2(force_direction.x * force_magnitude,

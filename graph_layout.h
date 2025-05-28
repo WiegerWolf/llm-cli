@@ -47,14 +47,14 @@ public:
         
         // Constructor with default values
         LayoutParams()
-            : spring_strength(0.1f)       // Increased for stronger attraction
-            , repulsion_strength(10000.0f) // Increased for better spacing
-            , damping_factor(0.9f)        // Higher damping for more stable animation
-            , min_distance(150.0f)        // Increased minimum distance
-            , ideal_edge_length(300.0f)   // Increased ideal distance between connected nodes
-            , time_step(0.016f)
-            , max_iterations(500)         // Much higher for longer animation
-            , convergence_threshold(0.5f) // Lower threshold for longer animation
+            : spring_strength(0.05f)       // Reduce from 0.1 (weaker attraction)
+            , repulsion_strength(50000.0f) // Increase from 10000 (5x stronger)
+            , damping_factor(0.85f)        // Reduce from 0.9 (less damping)
+            , min_distance(200.0f)         // Increase from 150px
+            , ideal_edge_length(400.0f)    // Increase from 300px
+            , time_step(0.008f)            // Reduce from 0.016 (prevent overshooting)
+            , max_iterations(500)          // Much higher for longer animation
+            , convergence_threshold(0.1f)  // Lower from 0.5 (longer animation)
             , canvas_bounds(ImVec2(2000.0f, 1500.0f))
         {}
     };
