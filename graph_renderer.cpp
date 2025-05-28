@@ -6,7 +6,7 @@
 #include <cstdio>     // For sprintf
 #include <cmath>      // For sqrtf, FLT_MAX
 #include <chrono>     // For std::chrono::system_clock
-#include &lt;functional&gt; // For std::function
+#include <functional> // For std::function
 #include "graph_manager.h" // For GraphManager
 #include "graph_layout.h" // For CalculateNodePositionsRecursive
 
@@ -250,7 +250,7 @@ void GraphEditor::DisplaySelectedNodeDetails() {
             ImGui::TextWrapped("Content: %s", selected_node_ptr->message_data.content.c_str());
             ImGui::Text("Type: %d", static_cast<int>(selected_node_ptr->message_data.type));
             if (selected_node_ptr->message_data.model_id.has_value()) {
-                ImGui::Text("Model ID: %d", selected_node_ptr->message_data.model_id.value());
+                ImGui::Text("Model ID: %s", selected_node_ptr->message_data.model_id.value().c_str());
             }
         } else {
             ImGui::TextWrapped("Error: Selected node data not found (ID: %d).", view_state_.selected_node_id);
@@ -562,7 +562,7 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
 
 // This is a free function, not part of GraphEditor class.
 // It's a placeholder for how the graph view might be rendered using GraphManager.
-void RenderGraphView(GraphManager& graph_manager) {
+void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImVec2 canvas_pos = ImGui::GetCursorScreenPos(); // Top-left of the current window's drawable area
     ImVec2 canvas_size = ImGui::GetContentRegionAvail(); // Size of the drawable area
@@ -603,7 +603,7 @@ void RenderGraphView(GraphManager& graph_manager) {
     // A more robust design would have GraphEditor take GraphManager's data.
 
     GraphEditor temp_editor_for_render; // Temporary, to use its WorldToScreen, IsNodeVisible
-    temp_editor_for_render.GetViewState() = graph_manager.graph_view_state; // Sync view state
+    temp_editor_for_render.GetViewState() = view_state; // Sync view state
 
     std::function<void(GraphNode*)> render_recursive_lambda;
     render_recursive_lambda = 

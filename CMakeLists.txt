@@ -152,6 +152,13 @@ add_executable(llm-gui
     main_gui.cpp
     gui_interface/gui_interface.cpp
     gui_interface/gui_interface.h
+    gui_interface/graph_types.h
+    graph_manager.cpp
+    graph_manager.h
+    graph_renderer.cpp
+    graph_renderer.h
+    graph_layout.cpp
+    graph_layout.h
     extern/imgui/imgui.cpp
     extern/imgui/imgui_draw.cpp
     extern/imgui/imgui_tables.cpp

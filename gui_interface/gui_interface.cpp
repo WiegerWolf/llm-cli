@@ -235,7 +235,7 @@ void GuiInterface::displayOutput(const std::string& output, const std::string& m
     // Lock the display mutex to ensure exclusive access to the display queue.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the message and its type onto the queue for the GUI thread to process.
-    display_queue.push({MessageType::LLM_RESPONSE, output, std::make_optional(model_id)}); // Updated for Issue #8 and Part IV
+    display_queue.push({0, MessageType::LLM_RESPONSE, output, std::make_optional(model_id), 0, -1}); // Updated for Issue #8 and Part IV
     // The GUI thread periodically calls processDisplayQueue to check this queue.
 }
 
@@ -244,7 +244,7 @@ void GuiInterface::displayError(const std::string& error) {
     // Lock the display mutex.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the error message and its type onto the queue.
-    display_queue.push({MessageType::ERROR, error}); // Updated for Issue #8
+    display_queue.push({0, MessageType::ERROR, error, std::nullopt, 0, -1}); // Updated for Issue #8
 }
 
 // Called by the *worker thread* to update the status text in the display queue.
@@ -252,7 +252,7 @@ void GuiInterface::displayStatus(const std::string& status) {
     // Lock the display mutex.
     std::lock_guard<std::mutex> lock(display_mutex);
     // Push the status message and its type onto the queue.
-    display_queue.push({MessageType::STATUS, status}); // Updated for Issue #8
+    display_queue.push({0, MessageType::STATUS, status, std::nullopt, 0, -1}); // Updated for Issue #8
 }
 
 

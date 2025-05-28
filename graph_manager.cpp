@@ -96,7 +96,7 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
         case MessageType::USER_INPUT: new_graph_node->label = "User"; break;
         case MessageType::LLM_RESPONSE: new_graph_node->label = "LLM"; break;
         case MessageType::STATUS: new_graph_node->label = "Status"; break;
-        case MessageType::ERROR: new_graph_node->label =.label = "Error"; break; // Typo fixed here
+        case MessageType::ERROR: new_graph_node->label = "Error"; break; // Typo fixed here
         case MessageType::USER_REPLY: new_graph_node->label = "Reply"; break;
         default: new_graph_node->label = "Message"; break;
     }

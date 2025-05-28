@@ -10,6 +10,9 @@
 // or include the necessary header if it's simple.
 // Assuming GraphNode is defined in "gui_interface/graph_types.h"
 
+// Forward declaration for GraphManager
+class GraphManager;
+
 class GraphEditor {
 public:
     GraphEditor();
@@ -53,5 +56,8 @@ private:
     // Recursive rendering helper for nodes and their children if expanded
     void RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size);
 };
+
+// Graph view rendering function that works with GraphManager
+void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state);
 
 #endif // GRAPH_RENDERER_H
