@@ -70,20 +70,29 @@ void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const
             physics.is_fixed = false;
             node_physics_[node] = physics;
         }
-        
-        // If node doesn't have a position yet, place it strategically
-        if (node->position.x == 0.0f && node->position.y == 0.0f) {
-            // Always use random placement for more dramatic animation
-            std::random_device rd;
-            std::mt19937 gen(rd());
-            std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
-            std::uniform_real_distribution<float> radius_dist(400.0f, 1000.0f); // Larger radius for more movement
+    }
+    
+    // Use chronological initialization if enabled
+    if (params_.use_chronological_init) {
+        InitializeChronologicalPositions(nodes, canvas_center);
+    } else {
+        // Fallback to random positioning for nodes without positions
+        for (GraphNode* node : nodes) {
+            if (!node) continue;
             
-            float angle = angle_dist(gen);
-            float radius = radius_dist(gen);
-            
-            node->position.x = canvas_center.x + radius * std::cos(angle);
-            node->position.y = canvas_center.y + radius * std::sin(angle);
+            // If node doesn't have a position yet, place it randomly
+            if (node->position.x == 0.0f && node->position.y == 0.0f) {
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
+                std::uniform_real_distribution<float> radius_dist(400.0f, 1000.0f);
+                
+                float angle = angle_dist(gen);
+                float radius = radius_dist(gen);
+                
+                node->position.x = canvas_center.x + radius * std::cos(angle);
+                node->position.y = canvas_center.y + radius * std::sin(angle);
+            }
         }
     }
 }
@@ -102,6 +111,11 @@ bool ForceDirectedLayout::UpdateLayout(const std::vector<GraphNode*>& nodes) {
     // Calculate forces
     CalculateSpringForces(nodes);
     CalculateRepulsiveForces(nodes);
+    
+    // Add chronological ordering forces if enabled
+    if (params_.use_chronological_init) {
+        CalculateTemporalForces(nodes);
+    }
     
     // Apply forces and update positions
     ApplyForces(nodes);
@@ -175,6 +189,15 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
                 // Spring force: F = k * (distance - ideal_length) * direction
                 float force_magnitude = params_.spring_strength * (distance - params_.ideal_edge_length);
                 
+                // Enhance spring force for chronologically adjacent nodes
+                if (params_.use_chronological_init) {
+                    long long time_diff = std::abs(child->message_data.timestamp - node->message_data.timestamp);
+                    // If messages are close in time (within 5 minutes), strengthen the connection
+                    if (time_diff < 300000) { // 5 minutes in milliseconds
+                        force_magnitude *= 1.5f; // Stronger attraction for temporally close messages
+                    }
+                }
+                
                 // Cap spring force to prevent instability
                 force_magnitude = std::max(-500.0f, std::min(500.0f, force_magnitude));
                 
@@ -200,6 +223,15 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
                 
                 if (distance > 0.1f) {
                     float force_magnitude = params_.spring_strength * (distance - params_.ideal_edge_length);
+                    
+                    // Enhance spring force for chronologically adjacent nodes
+                    if (params_.use_chronological_init) {
+                        long long time_diff = std::abs(node->parent->message_data.timestamp - node->message_data.timestamp);
+                        if (time_diff < 300000) { // 5 minutes in milliseconds
+                            force_magnitude *= 1.5f;
+                        }
+                    }
+                    
                     force_magnitude = std::max(-500.0f, std::min(500.0f, force_magnitude));
                     
                     ImVec2 force_direction = Normalize(delta);
@@ -362,8 +394,149 @@ float ForceDirectedLayout::CalculateTotalEnergy(const std::vector<GraphNode*>& n
     return total_energy;
 }
 
+void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center) {
+    // Sort nodes by timestamp (oldest first)
+    std::vector<GraphNode*> sorted_nodes = SortNodesByTimestamp(nodes);
+    
+    if (sorted_nodes.empty()) return;
+    
+    // Calculate starting position - start well above canvas center for oldest messages
+    float start_y = 100.0f; // Start near the very top of the canvas
+    float current_y = start_y;
+    
+    // Position nodes chronologically from top to bottom (oldest to newest)
+    for (size_t i = 0; i < sorted_nodes.size(); ++i) {
+        GraphNode* node = sorted_nodes[i];
+        if (!node) continue;
+        
+        // ALWAYS override position for chronological layout to ensure correct ordering
+        // Use depth for horizontal offset to maintain conversation structure
+        float x_offset = static_cast<float>(node->depth) * 200.0f;
+        
+        // Add some randomness to avoid perfect alignment
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> x_jitter(-50.0f, 50.0f);
+        
+        node->position.x = canvas_center.x + x_offset + x_jitter(gen);
+        node->position.y = current_y;
+        
+        // Increment Y position for next node (moving down for newer messages)
+        current_y += params_.chronological_spacing;
+    }
+}
+
+std::vector<GraphNode*> ForceDirectedLayout::SortNodesByTimestamp(const std::vector<GraphNode*>& nodes) {
+    std::vector<GraphNode*> sorted_nodes = nodes;
+    
+    // Sort by timestamp (chronological order - oldest first, newest last)
+    // This ensures older messages (smaller timestamps) come first in the array
+    // and will be positioned at the top of the screen
+    std::sort(sorted_nodes.begin(), sorted_nodes.end(),
+        [](const GraphNode* a, const GraphNode* b) {
+            if (!a || !b) return false;
+            return a->message_data.timestamp < b->message_data.timestamp;
+        });
+    
+    return sorted_nodes;
+}
+
+std::vector<std::pair<GraphNode*, GraphNode*>> ForceDirectedLayout::GetChronologicalNeighbors(const std::vector<GraphNode*>& sorted_nodes) {
+    std::vector<std::pair<GraphNode*, GraphNode*>> neighbors;
+    
+    // Create pairs of chronologically adjacent nodes
+    for (size_t i = 0; i < sorted_nodes.size() - 1; ++i) {
+        if (sorted_nodes[i] && sorted_nodes[i + 1]) {
+            neighbors.emplace_back(sorted_nodes[i], sorted_nodes[i + 1]);
+        }
+    }
+    
+    return neighbors;
+}
+
+void ForceDirectedLayout::CalculateTemporalForces(const std::vector<GraphNode*>& nodes) {
+    // Sort nodes by timestamp to find chronological neighbors
+    std::vector<GraphNode*> sorted_nodes = SortNodesByTimestamp(nodes);
+    std::vector<std::pair<GraphNode*, GraphNode*>> chronological_pairs = GetChronologicalNeighbors(sorted_nodes);
+    
+    // Apply temporal ordering forces between chronologically adjacent messages
+    for (const auto& pair : chronological_pairs) {
+        GraphNode* earlier_node = pair.first;  // Should be higher up (smaller Y)
+        GraphNode* later_node = pair.second;   // Should be lower down (larger Y)
+        
+        if (!earlier_node || !later_node) continue;
+        
+        auto earlier_it = node_physics_.find(earlier_node);
+        auto later_it = node_physics_.find(later_node);
+        if (earlier_it == node_physics_.end() || later_it == node_physics_.end()) continue;
+        
+        // Calculate vertical bias force to maintain chronological order
+        // earlier_node should have smaller Y (higher up), later_node should have larger Y (lower down)
+        float vertical_delta = later_node->position.y - earlier_node->position.y;
+        
+        // If later message is above earlier message (vertical_delta < 0), apply corrective force
+        if (vertical_delta < params_.chronological_spacing * 0.5f) {
+            float correction_force = params_.temporal_strength * 100.0f;
+            
+            // Push earlier node up, later node down
+            earlier_it->second.force.y -= correction_force * params_.vertical_bias;
+            later_it->second.force.y += correction_force * params_.vertical_bias;
+        }
+        
+        // Apply weak attractive force between chronologically adjacent messages
+        ImVec2 delta = ImVec2(later_node->position.x - earlier_node->position.x,
+                             later_node->position.y - earlier_node->position.y);
+        float distance = Distance(earlier_node->position, later_node->position);
+        
+        if (distance > 0.1f) {
+            // Temporal spring force (much weaker than structural springs)
+            float ideal_temporal_distance = params_.chronological_spacing;
+            float force_magnitude = params_.temporal_strength * (distance - ideal_temporal_distance) * 0.2f;
+            
+            // Cap temporal force
+            force_magnitude = std::max(-100.0f, std::min(100.0f, force_magnitude));
+            
+            ImVec2 force_direction = Normalize(delta);
+            ImVec2 temporal_force = ImVec2(force_direction.x * force_magnitude,
+                                         force_direction.y * force_magnitude);
+            
+            // Apply temporal attraction forces (weaker)
+            earlier_it->second.force.x += temporal_force.x * 0.5f;
+            earlier_it->second.force.y += temporal_force.y * 0.5f;
+            later_it->second.force.x -= temporal_force.x * 0.5f;
+            later_it->second.force.y -= temporal_force.y * 0.5f;
+        }
+    }
+    
+    // Apply general vertical bias to all nodes to maintain top-to-bottom chronological flow
+    for (GraphNode* node : nodes) {
+        if (!node) continue;
+        
+        auto it = node_physics_.find(node);
+        if (it == node_physics_.end()) continue;
+        
+        // Find the node's chronological position
+        auto sorted_it = std::find(sorted_nodes.begin(), sorted_nodes.end(), node);
+        if (sorted_it != sorted_nodes.end()) {
+            size_t chronological_index = std::distance(sorted_nodes.begin(), sorted_it);
+            
+            // Calculate expected Y position (older messages at top, newer at bottom)
+            // Use same calculation as in InitializeChronologicalPositions
+            float expected_y = 100.0f + (chronological_index * params_.chronological_spacing);
+            
+            float y_deviation = node->position.y - expected_y;
+            
+            // Apply corrective force if node deviates from expected chronological position
+            if (std::abs(y_deviation) > params_.chronological_spacing * 0.3f) {
+                float correction_strength = params_.vertical_bias * 0.2f;
+                it->second.force.y -= y_deviation * correction_strength;
+            }
+        }
+    }
+}
+
 // Convenience function
-void ApplyForceDirectedLayout(const std::vector<GraphNode*>& nodes, 
+void ApplyForceDirectedLayout(const std::vector<GraphNode*>& nodes,
                              const ImVec2& canvas_center,
                              const ForceDirectedLayout::LayoutParams& params) {
     ForceDirectedLayout layout(params);

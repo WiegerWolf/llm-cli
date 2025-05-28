@@ -45,6 +45,12 @@ public:
         float convergence_threshold; // Stop when total force is below this
         ImVec2 canvas_bounds;       // Layout bounds
         
+        // Chronological layout parameters
+        float temporal_strength;    // Strength of chronological ordering forces
+        float vertical_bias;        // Bias to maintain top-to-bottom chronological order
+        float chronological_spacing; // Vertical spacing between chronologically adjacent messages
+        bool use_chronological_init; // Whether to use chronological initialization
+        
         // Constructor with default values
         LayoutParams()
             : spring_strength(0.05f)       // Reduce from 0.1 (weaker attraction)
@@ -56,6 +62,10 @@ public:
             , max_iterations(500)          // Much higher for longer animation
             , convergence_threshold(0.1f)  // Lower from 0.5 (longer animation)
             , canvas_bounds(ImVec2(2000.0f, 1500.0f))
+            , temporal_strength(0.1f)      // Moderate temporal force strength
+            , vertical_bias(0.3f)          // Moderate vertical bias
+            , chronological_spacing(150.0f) // Default vertical spacing between messages
+            , use_chronological_init(true) // Enable chronological initialization by default
         {}
     };
 
@@ -137,6 +147,11 @@ private:
     void CalculateRepulsiveForces(const std::vector<GraphNode*>& nodes);
     
     /**
+     * @brief Calculate chronological ordering forces
+     */
+    void CalculateTemporalForces(const std::vector<GraphNode*>& nodes);
+    
+    /**
      * @brief Apply forces to update node positions
      */
     void ApplyForces(const std::vector<GraphNode*>& nodes);
@@ -160,6 +175,21 @@ private:
      * @brief Calculate total kinetic energy of the system
      */
     float CalculateTotalEnergy(const std::vector<GraphNode*>& nodes);
+    
+    /**
+     * @brief Initialize nodes with chronological positioning
+     */
+    void InitializeChronologicalPositions(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center);
+    
+    /**
+     * @brief Sort nodes by chronological order (timestamp)
+     */
+    std::vector<GraphNode*> SortNodesByTimestamp(const std::vector<GraphNode*>& nodes);
+    
+    /**
+     * @brief Find chronologically adjacent nodes for temporal forces
+     */
+    std::vector<std::pair<GraphNode*, GraphNode*>> GetChronologicalNeighbors(const std::vector<GraphNode*>& sorted_nodes);
 };
 
 /**

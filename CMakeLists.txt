@@ -214,8 +214,29 @@ install(TARGETS llm-cli llm-gui # Install both executables
 #   by the GUI, so none are installed. If resources are added later,
 #   install rules will be needed here using install(FILES ...).
 
+# --- Test Executables ---
+add_executable(test_chronological_layout
+    test_chronological_layout.cpp
+    graph_layout.cpp
+    graph_layout.h
+    gui_interface/graph_types.h
+    gui_interface/gui_interface.h
+)
+
+target_link_libraries(test_chronological_layout PRIVATE
+    llm_core            # Link against the core library
+    Threads::Threads    # Link against Threads
+)
+
+target_include_directories(test_chronological_layout PRIVATE
+    ${PROJECT_SOURCE_DIR} # For project headers
+    extern/imgui          # For ImGui headers (ImVec2)
+)
+target_compile_options(test_chronological_layout PRIVATE $<$<CONFIG:Release>:-O3>)
+
 # Optional: Add tests
 enable_testing()
 # Update test command if needed, or keep using the installed name 'llm-cli'
 # For now, assuming the test runs the built executable directly
 add_test(NAME BasicTest COMMAND llm-cli)
+add_test(NAME ChronologicalLayoutTest COMMAND test_chronological_layout)
