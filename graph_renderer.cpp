@@ -65,34 +65,83 @@ static void AddTextTruncated(ImDrawList* draw_list, ImFont* font, float font_siz
 
 // Helper function to render wrapped text within a bounded area
 static void RenderWrappedText(ImDrawList* draw_list, ImFont* font, float font_size, const ImVec2& pos, ImU32 col, const char* text, float wrap_width, float max_height, const ImVec4* cpu_fine_clip_rect) {
-    if (!text || font_size <= 0.0f || font == nullptr || wrap_width <= 0.0f)
+    if (!text || font_size <= 0.0f || font == nullptr || wrap_width <= 10.0f) // Ensure minimum wrap width
         return;
 
+    // Use ImGui's built-in text wrapping which is more reliable
+    ImVec2 text_size = ImGui::CalcTextSize(text, nullptr, false, wrap_width);
+    
+    // If the text fits in one line and within bounds, render it directly
+    if (text_size.y <= max_height) {
+        draw_list->AddText(font, font_size, pos, col, text, nullptr, wrap_width, cpu_fine_clip_rect);
+        return;
+    }
+    
+    // For multi-line text that exceeds max_height, we need to truncate
     float scale = font->FontSize > 0 ? font_size / font->FontSize : 1.0f;
-    float line_height = font_size;
+    float line_height = font_size * 1.2f;
+    const int max_lines = std::max(1, (int)(max_height / line_height));
     
     const char* text_ptr = text;
     const char* text_end = text + strlen(text);
     ImVec2 current_pos = pos;
+    int line_count = 0;
     
-    while (text_ptr < text_end && (current_pos.y - pos.y + line_height) <= max_height) {
-        // Find the end of the current line that fits within wrap_width
-        const char* line_end = font->CalcWordWrapPositionA(scale, text_ptr, text_end, wrap_width);
+    while (text_ptr < text_end && line_count < max_lines) {
+        // Handle explicit newlines first
+        const char* newline_pos = text_ptr;
+        while (newline_pos < text_end && *newline_pos != '\n') {
+            newline_pos++;
+        }
         
-        if (line_end == text_ptr) {
-            // If we can't fit even one character, try to fit at least something
+        // Find the end of the current line that fits within wrap_width
+        const char* line_end = font->CalcWordWrapPositionA(scale, text_ptr, newline_pos, wrap_width);
+        
+        if (line_end == text_ptr && text_ptr < text_end) {
+            // If we can't fit even one character, force at least one character
             line_end = text_ptr + 1;
             if (line_end > text_end) line_end = text_end;
         }
         
-        // Render this line
-        draw_list->AddText(font, font_size, current_pos, col, text_ptr, line_end, 0.0f, cpu_fine_clip_rect);
+        // Check if this is the last line we can fit and there's more text
+        bool is_last_line = (line_count == max_lines - 1) && (line_end < text_end || (text_ptr < text_end && *text_ptr == '\n'));
+        
+        if (is_last_line) {
+            // Reserve space for ellipsis
+            const char* ellipsis = "...";
+            ImVec2 ellipsis_size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, ellipsis);
+            float available_width = wrap_width - ellipsis_size.x;
+            
+            if (available_width > 0) {
+                line_end = font->CalcWordWrapPositionA(scale, text_ptr, newline_pos, available_width);
+                if (line_end == text_ptr && text_ptr < text_end) {
+                    line_end = text_ptr + 1;
+                    if (line_end > text_end) line_end = text_end;
+                }
+            }
+            
+            // Render the truncated line
+            if (line_end > text_ptr) {
+                draw_list->AddText(font, font_size, current_pos, col, text_ptr, line_end, 0.0f, cpu_fine_clip_rect);
+            }
+            
+            // Add ellipsis
+            ImVec2 ellipsis_pos = ImVec2(current_pos.x + font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, text_ptr, line_end).x, current_pos.y);
+            draw_list->AddText(font, font_size, ellipsis_pos, col, ellipsis, ellipsis + strlen(ellipsis), 0.0f, cpu_fine_clip_rect);
+            break;
+        } else {
+            // Render this line normally
+            if (line_end > text_ptr) {
+                draw_list->AddText(font, font_size, current_pos, col, text_ptr, line_end, 0.0f, cpu_fine_clip_rect);
+            }
+        }
         
         // Move to next line
         current_pos.y += line_height;
+        line_count++;
         text_ptr = line_end;
         
-        // Skip whitespace at the beginning of the next line
+        // Skip whitespace at the beginning of the next line (but not newlines)
         while (text_ptr < text_end && (*text_ptr == ' ' || *text_ptr == '\t')) {
             text_ptr++;
         }
@@ -410,7 +459,7 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
     draw_list->AddRectFilled(final_draw_pos, node_end_pos, bg_color, rounding); 
     draw_list->AddRect(final_draw_pos, node_end_pos, border_color, rounding, 0, border_thickness);
 
-    float padding = std::max(1.0f, 5.0f * view_state_.zoom_scale); 
+    float padding = std::max(15.0f, 20.0f * view_state_.zoom_scale); // Match the padding used in size calculation
     ImVec2 text_pos = ImVec2(final_draw_pos.x + padding, final_draw_pos.y + padding);
     ImVec2 content_area_size = ImVec2(node_size_screen.x - 2 * padding, node_size_screen.y - 2 * padding);
     
@@ -442,6 +491,10 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
         ImU32 text_color = GetThemeTextColor(current_theme_);
         
         // Use proper text wrapping instead of truncation for full content display
+        // Debug: Ensure we have reasonable content area size
+        if (content_area_size.x < 50.0f) content_area_size.x = 50.0f;
+        if (content_area_size.y < 20.0f) content_area_size.y = 20.0f;
+        
         RenderWrappedText(draw_list, current_font, scaled_font_size, text_pos, text_color,
                          text_to_display, content_area_size.x, content_area_size.y, &clip_rect_vec4);
         draw_list->PopClipRect();

@@ -4,27 +4,41 @@
 #include <algorithm> // For std::find_if
 #include <cmath> // For std::max, std::min
 
+// Forward declaration of helper function from main_gui.cpp
+extern std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager& db_manager);
+
 // Helper function to calculate dynamic node size based on content
 ImVec2 CalculateNodeSize(const std::string& content) {
     if (content.empty()) {
-        return ImVec2(200.0f, 60.0f); // Minimum size for empty content
+        return ImVec2(300.0f, 100.0f); // Larger minimum size for empty content
     }
     
     // Calculate text size with wrapping
-    float max_width = 400.0f; // Maximum node width
-    float min_width = 200.0f; // Minimum node width
-    float min_height = 60.0f; // Minimum node height
-    float padding = 10.0f; // Internal padding
+    float max_width = 500.0f; // Increased maximum node width
+    float min_width = 300.0f; // Increased minimum width for better readability
+    float min_height = 100.0f; // Increased minimum node height
+    float padding = 20.0f; // Increased internal padding
     
-    // Use ImGui to calculate text size with wrapping
-    ImVec2 text_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, max_width - 2 * padding);
+    // Calculate the optimal width first
+    ImVec2 single_line_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, FLT_MAX);
+    float node_width = std::max(min_width, std::min(max_width, single_line_size.x + 2 * padding));
     
-    // Calculate node dimensions
-    float node_width = std::max(min_width, std::min(max_width, text_size.x + 2 * padding));
-    float node_height = std::max(min_height, text_size.y + 2 * padding);
+    // Now calculate height with the determined width
+    float effective_width = node_width - 2 * padding;
+    ImVec2 wrapped_text_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, effective_width);
+    float node_height = std::max(min_height, wrapped_text_size.y + 2 * padding);
     
-    // Add some extra height for expand/collapse icons if needed
-    node_height += 10.0f;
+    // Add extra height for expand/collapse icons and better spacing
+    node_height += 30.0f;
+    
+    // Ensure reasonable aspect ratio - don't make nodes too tall and narrow
+    if (node_height > node_width * 1.5f) {
+        node_width = std::min(max_width, node_height / 1.5f);
+        // Recalculate height with new width
+        effective_width = node_width - 2 * padding;
+        wrapped_text_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, effective_width);
+        node_height = std::max(min_height, wrapped_text_size.y + 2 * padding + 30.0f);
+    }
     
     return ImVec2(node_width, node_height);
 }
@@ -48,7 +62,7 @@ GraphNode* GraphManager::GetNodeById(NodeIdType graph_node_id) {
 }
 
 // Implementation of PopulateGraphFromHistory
-void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages) {
+void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, PersistenceManager& db_manager) {
     all_nodes.clear();
     root_nodes.clear();
     last_node_added_to_graph = nullptr;
@@ -63,22 +77,8 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
         auto new_node_unique_ptr = std::make_unique<GraphNode>(current_g_node_id, msg);
         GraphNode* current_node_ptr = new_node_unique_ptr.get();
 
-        // Use actual message content instead of type labels
-        std::string content_prefix;
-        switch (msg.type) {
-            case MessageType::USER_INPUT: content_prefix = "User: "; break;
-            case MessageType::LLM_RESPONSE:
-                content_prefix = "Assistant: ";
-                if (msg.model_id.has_value()) {
-                    content_prefix = "Assistant (" + msg.model_id.value() + "): ";
-                }
-                break;
-            case MessageType::STATUS: content_prefix = "[STATUS] "; break;
-            case MessageType::ERROR: content_prefix = "ERROR: "; break;
-            case MessageType::USER_REPLY: content_prefix = "Reply: "; break;
-            default: content_prefix = "[Unknown Type] "; break;
-        }
-        current_node_ptr->label = content_prefix + msg.content;
+        // Use the helper function to format message content consistently with linear view
+        current_node_ptr->label = FormatMessageForGraph(msg, db_manager);
 
         current_node_ptr->parent = previous_node_ptr;
         if (previous_node_ptr != nullptr) {
@@ -92,7 +92,7 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
         current_node_ptr->size = CalculateNodeSize(current_node_ptr->label);
         
         // Calculate position based on depth and previous nodes
-        float x_pos = 50.0f + current_node_ptr->depth * 450.0f; // Increased spacing for wider nodes
+        float x_pos = 50.0f + current_node_ptr->depth * 550.0f; // Increased spacing for wider nodes
         float y_pos = 50.0f;
         
         // For root nodes, stack them vertically with proper spacing
@@ -100,14 +100,14 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
             float total_height = 0.0f;
             for (GraphNode* root : root_nodes) {
                 if (root != current_node_ptr) {
-                    total_height += root->size.y + 20.0f; // 20px spacing between nodes
+                    total_height += root->size.y + 30.0f; // Increased spacing between nodes
                 }
             }
             y_pos = 50.0f + total_height;
         } else {
             // For child nodes, position relative to parent
             if (previous_node_ptr) {
-                y_pos = previous_node_ptr->position.y + previous_node_ptr->size.y + 40.0f;
+                y_pos = previous_node_ptr->position.y + previous_node_ptr->size.y + 50.0f; // Increased vertical spacing
             }
         }
         
@@ -124,7 +124,7 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
 
 // Implementation of HandleNewHistoryMessage
 // current_selected_graph_node_id is GraphNode::graph_node_id or -1
-void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id) {
+void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager) {
     GraphNode* parent_node = nullptr;
 
     // 1. Determine Parent Node
@@ -146,22 +146,8 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     auto new_graph_node_unique_ptr = std::make_unique<GraphNode>(new_g_node_id, new_msg);
     GraphNode* new_graph_node = new_graph_node_unique_ptr.get();
 
-    // Use actual message content instead of type labels
-    std::string content_prefix;
-    switch (new_msg.type) {
-        case MessageType::USER_INPUT: content_prefix = "User: "; break;
-        case MessageType::LLM_RESPONSE:
-            content_prefix = "Assistant: ";
-            if (new_msg.model_id.has_value()) {
-                content_prefix = "Assistant (" + new_msg.model_id.value() + "): ";
-            }
-            break;
-        case MessageType::STATUS: content_prefix = "[STATUS] "; break;
-        case MessageType::ERROR: content_prefix = "ERROR: "; break;
-        case MessageType::USER_REPLY: content_prefix = "Reply: "; break;
-        default: content_prefix = "[Unknown Type] "; break;
-    }
-    new_graph_node->label = content_prefix + new_msg.content;
+    // Use the helper function to format message content consistently with linear view
+    new_graph_node->label = FormatMessageForGraph(new_msg, db_manager);
 
     new_graph_node->parent = parent_node;
     if (parent_node) {
@@ -176,13 +162,13 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     
     if (parent_node) {
         // Position child nodes to the right of parent with proper spacing
-        float x_pos = parent_node->position.x + 450.0f; // Increased spacing for wider nodes
+        float x_pos = parent_node->position.x + 550.0f; // Increased spacing for wider nodes
         float y_pos = parent_node->position.y;
         
         // If parent already has children, stack this one below them
         if (!parent_node->children.empty()) {
             GraphNode* last_child = parent_node->children.back();
-            y_pos = last_child->position.y + last_child->size.y + 20.0f;
+            y_pos = last_child->position.y + last_child->size.y + 30.0f; // Increased spacing
         }
         
         new_graph_node->position = ImVec2(x_pos, y_pos);
@@ -197,7 +183,7 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
                     break;
                  }
              }
-             if(last_prev_root) y_offset = last_prev_root->position.y + last_prev_root->size.y + 20.0f;
+             if(last_prev_root) y_offset = last_prev_root->position.y + last_prev_root->size.y + 30.0f; // Increased spacing
         }
         new_graph_node->position = ImVec2(50.0f, y_offset);
     }

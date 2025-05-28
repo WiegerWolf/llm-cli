@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include "gui_interface/graph_types.h"
 #include "gui_interface/gui_interface.h" // For HistoryMessage
+#include "database.h" // For PersistenceManager
 
 // Define MessageId if it's not globally available
 // NodeIdType will be the type for unique graph node IDs.
@@ -30,9 +31,9 @@ public:
 
     GraphManager(); // Constructor to initialize members
 
-    void PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages);
+    void PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, PersistenceManager& db_manager);
     // current_selected_node_id is GraphNode::graph_node_id
-    void HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id);
+    void HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager);
     
     // Helper to get a node pointer by its unique graph_node_id
     GraphNode* GetNodeById(NodeIdType graph_node_id);

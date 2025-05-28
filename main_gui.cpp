@@ -25,7 +25,51 @@
 #include "graph_renderer.h" // For GraphEditor class
 #include "graph_manager.h"  // For GraphManager class
 // Note: graph_types.h is included by graph_renderer.h and graph_manager.h
- 
+
+// Forward declaration for helper function
+std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager& db_manager);
+
+// Helper function to format message content for graph display (matches linear view formatting)
+std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager& db_manager) {
+    std::string content_prefix;
+    switch (msg.type) {
+        case MessageType::USER_INPUT:
+            content_prefix = "User: ";
+            break;
+        case MessageType::LLM_RESPONSE: {
+            std::string prefix = "Assistant: ";
+            if (msg.model_id.has_value()) {
+                const std::string& actual_model_id = msg.model_id.value();
+                if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
+                    prefix = "Assistant (Legacy Model): ";
+                } else {
+                    std::optional<std::string> model_name_opt = db_manager.getModelNameById(actual_model_id);
+                    if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
+                        prefix = "Assistant (" + model_name_opt.value() + "): ";
+                    } else {
+                        prefix = "Assistant (" + actual_model_id + "): ";
+                    }
+                }
+            }
+            content_prefix = prefix;
+            break;
+        }
+        case MessageType::STATUS:
+            content_prefix = "[STATUS] ";
+            break;
+        case MessageType::ERROR:
+            content_prefix = "ERROR: ";
+            break;
+        case MessageType::USER_REPLY:
+            content_prefix = "Reply: ";
+            break;
+        default:
+            content_prefix = "[Unknown Type] ";
+            break;
+    }
+    return content_prefix + msg.content;
+}
+
 // --- Graph Editor Instance & State ---
 // static GraphEditor g_graph_editor; // Manages graph state and rendering (existing) - To be phased out or integrated with GraphManager
 static GraphManager g_graph_manager; // Manages graph data (new)
@@ -526,7 +570,7 @@ int main(int, char**) {
                // The plan is "Immediately after a new HistoryMessage is successfully added to this vector..."
                // So, we iterate `new_messages` which were just processed.
                // The `current_selected_node_id` comes from the graph manager's view state.
-               g_graph_manager.HandleNewHistoryMessage(new_msg_ref, g_graph_manager.graph_view_state.selected_node_id);
+               g_graph_manager.HandleNewHistoryMessage(new_msg_ref, g_graph_manager.graph_view_state.selected_node_id, db_manager);
            }
            graph_needs_update = true;
        }
@@ -543,7 +587,7 @@ int main(int, char**) {
                if (output_history.size() < last_known_history_size ||
                    (output_history.size() > last_known_history_size + new_messages.size())) {
                    // History was modified (messages removed or bulk changes), repopulate graph
-                   g_graph_manager.PopulateGraphFromHistory(output_history);
+                   g_graph_manager.PopulateGraphFromHistory(output_history, db_manager);
                    graph_needs_update = true;
                }
            }
@@ -970,17 +1014,20 @@ int main(int, char**) {
 
           // --- Graph View Tab ---
           if (s_is_graph_view_visible && ImGui::BeginTabItem("Graph View")) {
-              // Populate graph if it's empty and this tab is active
-              // The graph is now automatically synchronized with history in the main loop,
-              // but we still need initial population when the tab is first opened
-              if (g_graph_manager.all_nodes.empty() && ImGui::IsItemVisible()) {
+              // Populate graph when this tab is active to ensure content is up to date
+              // This ensures that any changes to content formatting are reflected
+              static bool graph_tab_was_active = false;
+              bool graph_tab_is_active = ImGui::IsItemVisible();
+              
+              if (graph_tab_is_active && (!graph_tab_was_active || g_graph_manager.all_nodes.empty())) {
                    if (!output_history.empty()) { // Only populate if there's history
-                       g_graph_manager.PopulateGraphFromHistory(output_history);
+                       g_graph_manager.PopulateGraphFromHistory(output_history, db_manager);
                    }
               }
+              graph_tab_was_active = graph_tab_is_active;
 
               if (ImGui::Button("Refresh Graph")) {
-                  g_graph_manager.PopulateGraphFromHistory(output_history);
+                  g_graph_manager.PopulateGraphFromHistory(output_history, db_manager);
               }
               ImGui::SameLine();
               ImGui::Text("Nodes: %zu (Auto-updating)", g_graph_manager.all_nodes.size());
@@ -1048,7 +1095,7 @@ int main(int, char**) {
                 output_history.push_back(user_msg);
                 
                 // Immediately update the graph with the new user input
-                g_graph_manager.HandleNewHistoryMessage(user_msg, g_graph_manager.graph_view_state.selected_node_id);
+                g_graph_manager.HandleNewHistoryMessage(user_msg, g_graph_manager.graph_view_state.selected_node_id, db_manager);
                 
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
