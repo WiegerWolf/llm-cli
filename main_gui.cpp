@@ -573,6 +573,10 @@ int main(int, char**) {
                g_graph_manager.HandleNewHistoryMessage(new_msg_ref, g_graph_manager.graph_view_state.selected_node_id, db_manager);
            }
            graph_needs_update = true;
+           
+           // Force immediate layout update for new messages to fix auto-refresh issue
+           // This ensures new nodes are properly positioned and rendered immediately
+           g_graph_manager.graph_layout_dirty = true;
        }
        
        // --- Automatic Graph Synchronization ---
@@ -597,48 +601,12 @@ int main(int, char**) {
        
        // --- Ensure Graph Layout Updates (Even When Tab Not Visible) ---
        // Process graph layout updates immediately when needed, regardless of tab visibility
+       // This is critical for fixing the auto-refresh issue with new message nodes
        if (graph_needs_update || g_graph_manager.graph_layout_dirty) {
            // Force layout recalculation if the graph is dirty
            if (g_graph_manager.graph_layout_dirty && !g_graph_manager.all_nodes.empty()) {
-               // Simple automatic layout algorithm for real-time updates
-               float vertical_spacing = 120.0f;
-               float horizontal_spacing = 250.0f;
-               ImVec2 layout_start_pos(20.0f, 20.0f);
-               float current_y = layout_start_pos.y;
-               
-               // Layout root nodes vertically
-               for (size_t i = 0; i < g_graph_manager.root_nodes.size(); ++i) {
-                   GraphNode* root_node = g_graph_manager.root_nodes[i];
-                   if (root_node) {
-                       root_node->position = ImVec2(layout_start_pos.x, current_y);
-                       current_y += vertical_spacing;
-                       
-                       // Layout children horizontally from each root
-                       std::function<void(GraphNode*, int)> layout_children_recursive =
-                           [&](GraphNode* parent_node, int depth) {
-                               if (!parent_node || parent_node->children.empty()) {
-                                   return;
-                               }
-                               
-                               float child_y_start = parent_node->position.y + parent_node->size.y + 40.0f;
-                               float child_x = parent_node->position.x + horizontal_spacing;
-                               
-                               for (size_t j = 0; j < parent_node->children.size(); ++j) {
-                                   GraphNode* child = parent_node->children[j];
-                                   if (child) {
-                                       child->position = ImVec2(child_x, child_y_start + (j * 100.0f));
-                                       
-                                       // Recursively layout grandchildren
-                                       layout_children_recursive(child, depth + 1);
-                                   }
-                               }
-                           };
-                       
-                       layout_children_recursive(root_node, 1);
-                   }
-               }
-               
-               g_graph_manager.graph_layout_dirty = false;
+               // Use force-directed layout for better node organization
+               g_graph_manager.UpdateLayout();
            }
        }
        // --- End Ensure Graph Layout Updates ---
@@ -1096,6 +1064,9 @@ int main(int, char**) {
                 
                 // Immediately update the graph with the new user input
                 g_graph_manager.HandleNewHistoryMessage(user_msg, g_graph_manager.graph_view_state.selected_node_id, db_manager);
+                
+                // Force immediate layout update to ensure new user input node displays properly
+                g_graph_manager.graph_layout_dirty = true;
                 
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';

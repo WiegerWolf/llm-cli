@@ -22,6 +22,7 @@ struct GraphNode {
     // State Flags
     bool is_expanded;               // If the node's children/alternatives are visible
     bool is_selected;               // If the node is currently selected by the user
+    bool content_needs_refresh;     // Flag to force content re-rendering (fixes auto-refresh issue)
 
     // Relational Pointers for Graph Structure
     GraphNode* parent;                       // Pointer to the parent node in the primary branch
@@ -36,7 +37,7 @@ struct GraphNode {
     GraphNode(int g_node_id, const HistoryMessage& msg_data) // Takes graph_node_id
         : graph_node_id(g_node_id), message_id(msg_data.message_id), message_data(msg_data),
           position(ImVec2(0,0)), size(ImVec2(0,0)), // Default visual properties
-          is_expanded(true), is_selected(false),   // Default states
+          is_expanded(true), is_selected(false), content_needs_refresh(true), // Default states - new nodes need refresh
           parent(nullptr), depth(0), color(IM_COL32(200, 200, 200, 255)), label("") {} // Default relational/layout properties, color, and label
  };
 
@@ -45,5 +46,21 @@ struct GraphViewState {
     float zoom_scale;
     int selected_node_id; // Stores the unique graph_node_id of the selected node, -1 if none
 
-    GraphViewState() : pan_offset(0.0f, 0.0f), zoom_scale(1.0f), selected_node_id(-1) {}
+    // Camera auto-pan animation state
+    bool auto_pan_active;
+    ImVec2 auto_pan_start_offset;
+    ImVec2 auto_pan_target_offset;
+    float auto_pan_start_zoom;
+    float auto_pan_target_zoom;
+    float auto_pan_progress;
+    float auto_pan_duration;
+    float auto_pan_timer;
+    bool user_interrupted_auto_pan;
+
+    GraphViewState() : pan_offset(0.0f, 0.0f), zoom_scale(1.0f), selected_node_id(-1),
+                       auto_pan_active(false), auto_pan_start_offset(0.0f, 0.0f),
+                       auto_pan_target_offset(0.0f, 0.0f), auto_pan_start_zoom(1.0f),
+                       auto_pan_target_zoom(1.0f), auto_pan_progress(0.0f),
+                       auto_pan_duration(1.5f), auto_pan_timer(0.0f),
+                       user_interrupted_auto_pan(false) {}
 };

@@ -3,36 +3,163 @@
 
 #include <vector>
 #include <map>
-#include <string> // Included for std::string if GraphNode uses it, otherwise can be removed.
+#include <string>
 #include "extern/imgui/imgui.h"
-#include "gui_interface/graph_types.h" // Assuming GraphNode is defined here
+#include "gui_interface/graph_types.h"
 
 // Forward declaration if GraphNode is not fully defined via graph_types.h or for header hygiene
 // struct GraphNode; 
 
 /**
- * @brief Recursively calculates the positions of graph nodes using a simple top-down tree layout.
+ * @brief Legacy recursive layout function (kept for compatibility)
  * 
- * @param node The current node to process.
- * @param current_pos Base position for the current node (primarily for the first node at each level).
- *                    This parameter seems less used if level_x_offset and canvas_start_pos dictate absolute positions.
- *                    The problem description for CalculateNodePositionsRecursive logic uses canvas_start_pos and level_x_offset for x,
- *                    and canvas_start_pos and depth * y_spacing for y.
- * @param x_spacing Horizontal space between sibling nodes.
- * @param y_spacing Vertical space between parent and child levels.
- * @param depth Current depth of the node in the tree.
- * @param level_x_offset A map where level_x_offset[depth] stores the next available x-coordinate 
- *                       for placing a node at that depth. This is updated by the function.
- * @param canvas_start_pos The top-left starting point for the entire graph layout on the canvas.
+ * Recursively calculates the positions of graph nodes using a simple top-down tree layout.
+ * This function is being replaced by the force-directed layout algorithm.
  */
 void CalculateNodePositionsRecursive(
     GraphNode* node, 
-    ImVec2 current_pos, // This might be redundant if using canvas_start_pos and level_x_offset for absolute positioning
+    ImVec2 current_pos,
     float x_spacing, 
     float y_spacing, 
     int depth, 
     std::map<int, float>& level_x_offset, 
     const ImVec2& canvas_start_pos
 );
+
+/**
+ * @brief Force-directed layout algorithm for graph nodes
+ * 
+ * Implements a physics-based layout using spring forces for connected nodes
+ * and repulsive forces between all nodes to prevent overlap.
+ */
+class ForceDirectedLayout {
+public:
+    struct LayoutParams {
+        float spring_strength;      // Attractive force strength for connected nodes
+        float repulsion_strength;   // Repulsive force strength between all nodes
+        float damping_factor;       // Velocity damping to stabilize simulation
+        float min_distance;         // Minimum distance between nodes
+        float ideal_edge_length;    // Ideal distance for connected nodes
+        float time_step;            // Simulation time step (60 FPS)
+        int max_iterations;         // Maximum iterations per update
+        float convergence_threshold; // Stop when total force is below this
+        ImVec2 canvas_bounds;       // Layout bounds
+        
+        // Constructor with default values
+        LayoutParams()
+            : spring_strength(0.05f)     // Reduced for gentler attraction
+            , repulsion_strength(8000.0f) // Increased for better spacing
+            , damping_factor(0.85f)       // Slightly less damping for more movement
+            , min_distance(150.0f)        // Increased minimum distance
+            , ideal_edge_length(300.0f)   // Increased ideal distance between connected nodes
+            , time_step(0.016f)
+            , max_iterations(50)          // Reduced iterations for faster convergence
+            , convergence_threshold(2.0f) // Higher threshold for faster stopping
+            , canvas_bounds(ImVec2(2000.0f, 1500.0f))
+        {}
+    };
+
+private:
+    struct NodePhysics {
+        ImVec2 velocity = ImVec2(0.0f, 0.0f);
+        ImVec2 force = ImVec2(0.0f, 0.0f);
+        bool is_fixed = false; // For pinning nodes in place
+    };
+
+    LayoutParams params_;
+    std::map<GraphNode*, NodePhysics> node_physics_;
+    bool is_running_ = false;
+    int current_iteration_ = 0;
+
+public:
+    ForceDirectedLayout(const LayoutParams& params = LayoutParams());
+    
+    /**
+     * @brief Initialize the layout with a set of nodes
+     * @param nodes Vector of all nodes to layout
+     * @param canvas_center Center point of the layout area
+     */
+    void Initialize(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center);
+    
+    /**
+     * @brief Perform one iteration of the force-directed simulation
+     * @param nodes Vector of all nodes to update
+     * @return true if simulation should continue, false if converged
+     */
+    bool UpdateLayout(const std::vector<GraphNode*>& nodes);
+    
+    /**
+     * @brief Run the complete layout algorithm until convergence
+     * @param nodes Vector of all nodes to layout
+     * @param canvas_center Center point of the layout area
+     */
+    void ComputeLayout(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center);
+    
+    /**
+     * @brief Check if the layout simulation is currently running
+     */
+    bool IsRunning() const { return is_running_; }
+    
+    /**
+     * @brief Get current layout parameters
+     */
+    const LayoutParams& GetParams() const { return params_; }
+    
+    /**
+     * @brief Update layout parameters
+     */
+    void SetParams(const LayoutParams& params) { params_ = params; }
+    
+    /**
+     * @brief Pin a node at its current position (prevent movement)
+     */
+    void PinNode(GraphNode* node, bool pinned = true);
+
+private:
+    /**
+     * @brief Calculate attractive forces between connected nodes
+     */
+    void CalculateSpringForces(const std::vector<GraphNode*>& nodes);
+    
+    /**
+     * @brief Calculate repulsive forces between all node pairs
+     */
+    void CalculateRepulsiveForces(const std::vector<GraphNode*>& nodes);
+    
+    /**
+     * @brief Apply forces to update node positions
+     */
+    void ApplyForces(const std::vector<GraphNode*>& nodes);
+    
+    /**
+     * @brief Keep nodes within canvas bounds
+     */
+    void ConstrainToBounds(GraphNode* node);
+    
+    /**
+     * @brief Calculate distance between two points
+     */
+    float Distance(const ImVec2& a, const ImVec2& b);
+    
+    /**
+     * @brief Normalize a vector
+     */
+    ImVec2 Normalize(const ImVec2& vec);
+    
+    /**
+     * @brief Calculate total kinetic energy of the system
+     */
+    float CalculateTotalEnergy(const std::vector<GraphNode*>& nodes);
+};
+
+/**
+ * @brief Convenience function to apply force-directed layout to a graph
+ * @param nodes Vector of all nodes to layout
+ * @param canvas_center Center point of the layout area
+ * @param params Layout parameters (optional)
+ */
+void ApplyForceDirectedLayout(const std::vector<GraphNode*>& nodes, 
+                             const ImVec2& canvas_center,
+                             const ForceDirectedLayout::LayoutParams& params = ForceDirectedLayout::LayoutParams());
 
 #endif // GRAPH_LAYOUT_H

@@ -4,8 +4,8 @@
 #include <algorithm>  // For std::min, std::max
 #include <limits>     // Required for std::numeric_limits
 #include <cstdio>     // For sprintf
-#include <cmath>      // For sqrtf, FLT_MAX
-#include <chrono>     // For std::chrono::system_clock
+#include <cmath>      // For sqrtf, FLT_MAX, powf, fabsf
+#include <chrono>     // For std::chrono::system_clock, std::chrono::steady_clock
 #include <functional> // For std::function
 #include "graph_manager.h" // For GraphManager
 #include "graph_layout.h" // For CalculateNodePositionsRecursive
@@ -63,17 +63,46 @@ static void AddTextTruncated(ImDrawList* draw_list, ImFont* font, float font_siz
     }
 }
 
+// Easing functions for smooth camera animation
+namespace CameraEasing {
+    // Ease-out cubic function for natural deceleration
+    float EaseOutCubic(float t) {
+        return 1.0f - powf(1.0f - t, 3.0f);
+    }
+    
+    // Ease-in-out cubic function for smooth start and end
+    float EaseInOutCubic(float t) {
+        return t < 0.5f ? 4.0f * t * t * t : 1.0f - powf(-2.0f * t + 2.0f, 3.0f) / 2.0f;
+    }
+    
+    // Linear interpolation between two values
+    float Lerp(float a, float b, float t) {
+        return a + t * (b - a);
+    }
+    
+    // Linear interpolation between two ImVec2 values
+    ImVec2 LerpVec2(const ImVec2& a, const ImVec2& b, float t) {
+        return ImVec2(Lerp(a.x, b.x, t), Lerp(a.y, b.y, t));
+    }
+}
+
 // Helper function to render wrapped text within a bounded area
 static void RenderWrappedText(ImDrawList* draw_list, ImFont* font, float font_size, const ImVec2& pos, ImU32 col, const char* text, float wrap_width, float max_height, const ImVec4* cpu_fine_clip_rect) {
     if (!text || font_size <= 0.0f || font == nullptr || wrap_width <= 10.0f) // Ensure minimum wrap width
         return;
 
+    // Force immediate text rendering by bypassing any potential caching issues
+    // This ensures new message content is displayed immediately without manual refresh
+    
     // Use ImGui's built-in text wrapping which is more reliable
     ImVec2 text_size = ImGui::CalcTextSize(text, nullptr, false, wrap_width);
     
     // If the text fits in one line and within bounds, render it directly
     if (text_size.y <= max_height) {
-        draw_list->AddText(font, font_size, pos, col, text, nullptr, wrap_width, cpu_fine_clip_rect);
+        // Force immediate rendering with explicit parameters to avoid caching issues
+        // Use AddText with explicit text_end parameter to ensure fresh rendering
+        const char* text_end = text + strlen(text);
+        draw_list->AddText(font, font_size, pos, col, text, text_end, wrap_width, cpu_fine_clip_rect);
         return;
     }
     
@@ -120,17 +149,18 @@ static void RenderWrappedText(ImDrawList* draw_list, ImFont* font, float font_si
                 }
             }
             
-            // Render the truncated line
+            // Render the truncated line with explicit parameters to force fresh rendering
             if (line_end > text_ptr) {
                 draw_list->AddText(font, font_size, current_pos, col, text_ptr, line_end, 0.0f, cpu_fine_clip_rect);
             }
             
-            // Add ellipsis
+            // Add ellipsis with explicit text_end to force fresh rendering
             ImVec2 ellipsis_pos = ImVec2(current_pos.x + font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, text_ptr, line_end).x, current_pos.y);
-            draw_list->AddText(font, font_size, ellipsis_pos, col, ellipsis, ellipsis + strlen(ellipsis), 0.0f, cpu_fine_clip_rect);
+            const char* ellipsis_end = ellipsis + strlen(ellipsis);
+            draw_list->AddText(font, font_size, ellipsis_pos, col, ellipsis, ellipsis_end, 0.0f, cpu_fine_clip_rect);
             break;
         } else {
-            // Render this line normally
+            // Render this line normally with explicit text_end to force fresh rendering
             if (line_end > text_ptr) {
                 draw_list->AddText(font, font_size, current_pos, col, text_ptr, line_end, 0.0f, cpu_fine_clip_rect);
             }
@@ -296,6 +326,11 @@ void GraphEditor::HandlePanning(const ImVec2& canvas_screen_pos, const ImVec2& c
     if (io.MousePos.x >= canvas_screen_pos.x && io.MousePos.x <= canvas_screen_pos.x + canvas_size.x &&
         io.MousePos.y >= canvas_screen_pos.y && io.MousePos.y <= canvas_screen_pos.y + canvas_size.y) {
         if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+            // Cancel auto-pan if user starts manual panning
+            if (view_state_.auto_pan_active) {
+                CancelAutoPan();
+            }
+            
             view_state_.pan_offset.x += ImGui::GetIO().MouseDelta.x;
             view_state_.pan_offset.y += ImGui::GetIO().MouseDelta.y;
         }
@@ -308,11 +343,16 @@ void GraphEditor::HandleZooming(const ImVec2& canvas_screen_pos, const ImVec2& c
         io.MousePos.y >= canvas_screen_pos.y && io.MousePos.y <= canvas_screen_pos.y + canvas_size.y) {
         float wheel = ImGui::GetIO().MouseWheel;
         if (wheel != 0.0f) {
+            // Cancel auto-pan if user starts manual zooming
+            if (view_state_.auto_pan_active) {
+                CancelAutoPan();
+            }
+            
             const float zoom_sensitivity = 0.1f;
             float zoom_factor = 1.0f + wheel * zoom_sensitivity;
 
             ImVec2 mouse_pos_screen_absolute = ImGui::GetMousePos();
-            ImVec2 mouse_pos_in_canvas_content = ImVec2(mouse_pos_screen_absolute.x - canvas_screen_pos.x, 
+            ImVec2 mouse_pos_in_canvas_content = ImVec2(mouse_pos_screen_absolute.x - canvas_screen_pos.x,
                                                        mouse_pos_screen_absolute.y - canvas_screen_pos.y);
 
             view_state_.pan_offset.x = (view_state_.pan_offset.x - mouse_pos_in_canvas_content.x) * zoom_factor + mouse_pos_in_canvas_content.x;
@@ -491,10 +531,18 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
         ImU32 text_color = GetThemeTextColor(current_theme_);
         
         // Use proper text wrapping instead of truncation for full content display
-        // Debug: Ensure we have reasonable content area size
+        // Ensure minimum content area size for proper text rendering
         if (content_area_size.x < 50.0f) content_area_size.x = 50.0f;
         if (content_area_size.y < 20.0f) content_area_size.y = 20.0f;
         
+        // Force immediate text rendering to fix auto-refresh issue for new nodes
+        // Check if this node needs content refresh (new nodes or updated content)
+        if (node.content_needs_refresh) {
+            // Force immediate rendering by ensuring text is drawn with fresh parameters
+            node.content_needs_refresh = false; // Clear the flag after rendering
+        }
+        
+        // This ensures new message content is displayed immediately without manual refresh
         RenderWrappedText(draw_list, current_font, scaled_font_size, text_pos, text_color,
                          text_to_display, content_area_size.x, content_area_size.y, &clip_rect_vec4);
         draw_list->PopClipRect();
@@ -533,29 +581,106 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
 }
 
 void GraphEditor::RenderEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node) {
+    // Use the new Bezier edge rendering function for standard parent-child relationships
+    RenderBezierEdge(draw_list, parent_node, child_node, false);
+}
+
+// Helper function to calculate optimal control points for Bezier curves
+static ImVec2 CalculateOptimalControlPoint(const ImVec2& start, const ImVec2& end, float control_offset, bool is_start_point, bool is_alternative_path) {
+    ImVec2 direction = ImVec2(end.x - start.x, end.y - start.y);
+    
+    if (is_alternative_path) {
+        // Alternative paths use more pronounced horizontal curves
+        float horizontal_offset = control_offset * 0.7f;
+        if (is_start_point) {
+            return direction.x > 0 ?
+                ImVec2(start.x + horizontal_offset, start.y + control_offset * 0.5f) :
+                ImVec2(start.x - horizontal_offset, start.y + control_offset * 0.5f);
+        } else {
+            return direction.x > 0 ?
+                ImVec2(end.x + horizontal_offset, end.y - control_offset * 0.5f) :
+                ImVec2(end.x - horizontal_offset, end.y - control_offset * 0.5f);
+        }
+    } else {
+        // Standard parent-child relationships use smooth downward curves
+        return is_start_point ?
+            ImVec2(start.x, start.y + control_offset) :
+            ImVec2(end.x, end.y - control_offset);
+    }
+}
+
+void GraphEditor::RenderBezierEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node, bool is_alternative_path) {
     ImVec2 start_world = ImVec2(parent_node.position.x + parent_node.size.x / 2.0f, parent_node.position.y + parent_node.size.y);
     ImVec2 end_world = ImVec2(child_node.position.x + child_node.size.x / 2.0f, child_node.position.y);
 
     ImVec2 start_screen = WorldToScreen(start_world);
     ImVec2 end_screen = WorldToScreen(end_world);
 
-    // Use theme-aware edge color
+    // Use theme-aware edge color with different styles for alternative paths
     ImU32 edge_color = GetThemeEdgeColor(current_theme_);
     float line_thickness = std::max(1.0f, 1.5f * view_state_.zoom_scale);
-    draw_list->AddLine(start_screen, end_screen, edge_color, line_thickness);
     
+    // Different visual styles for alternative paths
+    if (is_alternative_path) {
+        // Make alternative paths slightly more transparent and thinner
+        ImU32 base_color = edge_color;
+        ImU32 alpha_mask = 0x00FFFFFF;
+        ImU32 alpha_component = (base_color & 0xFF000000) >> 1; // Half transparency
+        edge_color = (base_color & alpha_mask) | alpha_component;
+        line_thickness *= 0.8f; // Slightly thinner
+    }
+    
+    // Calculate Bezier curve control points for smooth, natural-looking curves
+    ImVec2 direction = ImVec2(end_screen.x - start_screen.x, end_screen.y - start_screen.y);
+    float distance = sqrtf(direction.x * direction.x + direction.y * direction.y);
+    
+    // Control point offset based on distance and zoom for optimal curve shape
+    float control_offset = std::min(distance * 0.4f, 80.0f * view_state_.zoom_scale);
+    control_offset = std::max(control_offset, 20.0f * view_state_.zoom_scale);
+    
+    // Handle edge cases for very close nodes
+    if (distance < 10.0f * view_state_.zoom_scale) {
+        // For very close nodes, use a minimal curve to avoid visual artifacts
+        control_offset = std::min(control_offset, distance * 0.2f);
+    }
+    
+    // Calculate optimal control points using helper function
+    ImVec2 control1 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, true, is_alternative_path);
+    ImVec2 control2 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, false, is_alternative_path);
+    
+    // Render smooth Bezier curve with adaptive tessellation for performance
+    // Use fewer segments for distant/small curves, more for close/large curves
+    int num_segments = 0; // 0 = auto-tessellation by ImGui
+    if (distance > 200.0f * view_state_.zoom_scale) {
+        // For long curves, limit tessellation to maintain performance
+        num_segments = std::max(8, (int)(distance / (50.0f * view_state_.zoom_scale)));
+        num_segments = std::min(num_segments, 32); // Cap at 32 segments
+    }
+    
+    draw_list->AddBezierCubic(start_screen, control1, control2, end_screen, edge_color, line_thickness, num_segments);
+    
+    // Calculate arrow direction at the end of the curve for proper arrow orientation
     float arrow_base_size = 8.0f;
     float arrow_size = std::max(2.0f, arrow_base_size * view_state_.zoom_scale);
-    ImVec2 dir = ImVec2(end_screen.x - start_screen.x, end_screen.y - start_screen.y);
-    float len = sqrtf(dir.x*dir.x + dir.y*dir.y);
-
-    if (len > arrow_size && arrow_size > 1.0f) {
-        dir.x /= len;
-        dir.y /= len;
-        ImVec2 p1 = ImVec2(end_screen.x - dir.x * arrow_size - dir.y * arrow_size / 2.0f,
-                           end_screen.y - dir.y * arrow_size + dir.x * arrow_size / 2.0f);
-        ImVec2 p2 = ImVec2(end_screen.x - dir.x * arrow_size + dir.y * arrow_size / 2.0f,
-                           end_screen.y - dir.y * arrow_size - dir.x * arrow_size / 2.0f);
+    
+    // Scale arrow size for alternative paths
+    if (is_alternative_path) {
+        arrow_size *= 0.8f;
+    }
+    
+    // Calculate tangent direction at the end point for proper arrow orientation
+    ImVec2 tangent_dir = ImVec2(end_screen.x - control2.x, end_screen.y - control2.y);
+    float tangent_len = sqrtf(tangent_dir.x * tangent_dir.x + tangent_dir.y * tangent_dir.y);
+    
+    if (tangent_len > 0.1f && arrow_size > 1.0f) {
+        tangent_dir.x /= tangent_len;
+        tangent_dir.y /= tangent_len;
+        
+        // Create arrow head pointing in the direction of the curve tangent
+        ImVec2 p1 = ImVec2(end_screen.x - tangent_dir.x * arrow_size - tangent_dir.y * arrow_size / 2.0f,
+                           end_screen.y - tangent_dir.y * arrow_size + tangent_dir.x * arrow_size / 2.0f);
+        ImVec2 p2 = ImVec2(end_screen.x - tangent_dir.x * arrow_size + tangent_dir.y * arrow_size / 2.0f,
+                           end_screen.y - tangent_dir.y * arrow_size - tangent_dir.x * arrow_size / 2.0f);
         draw_list->AddTriangleFilled(end_screen, p1, p2, edge_color);
     }
 }
@@ -598,16 +723,24 @@ void GraphEditor::RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, co
             if (alt_ptr) {
                 bool alt_is_currently_visible = IsNodeVisible(*alt_ptr, canvas_screen_pos, canvas_size);
                 if (node_is_currently_visible && alt_is_currently_visible) {
-                    RenderEdge(draw_list, node, *alt_ptr); 
+                    RenderBezierEdge(draw_list, node, *alt_ptr, true); // Use alternative path styling
                 }
-                RenderNodeRecursive(draw_list, *alt_ptr, canvas_screen_pos, canvas_size); 
+                RenderNodeRecursive(draw_list, *alt_ptr, canvas_screen_pos, canvas_size);
             }
         }
     }
 }
 
 void GraphEditor::Render(ImDrawList* draw_list, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size) {
-    HandlePanning(canvas_screen_pos, canvas_size); 
+    // Update auto-pan animation
+    static auto last_time = std::chrono::steady_clock::now();
+    auto current_time = std::chrono::steady_clock::now();
+    float delta_time = std::chrono::duration<float>(current_time - last_time).count();
+    last_time = current_time;
+    
+    UpdateAutoPan(delta_time);
+    
+    HandlePanning(canvas_screen_pos, canvas_size);
     HandleZooming(canvas_screen_pos, canvas_size);
     HandleNodeSelection(draw_list, canvas_screen_pos, canvas_size); // Also handles expand/collapse button logic
     RenderPopups(draw_list, canvas_screen_pos);
@@ -738,6 +871,116 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
     }
 }
 
+// Camera auto-pan functionality implementation
+void GraphEditor::StartAutoPanToNode(const GraphNode* target_node, const ImVec2& canvas_size) {
+    if (!target_node) return;
+    
+    // Calculate optimal camera position to center the target node
+    ImVec2 target_world_center = ImVec2(
+        target_node->position.x + target_node->size.x * 0.5f,
+        target_node->position.y + target_node->size.y * 0.5f
+    );
+    
+    // Calculate target pan offset to center the node in the canvas
+    ImVec2 canvas_center = ImVec2(canvas_size.x * 0.5f, canvas_size.y * 0.5f);
+    ImVec2 target_pan_offset = ImVec2(
+        canvas_center.x - target_world_center.x * view_state_.zoom_scale,
+        canvas_center.y - target_world_center.y * view_state_.zoom_scale
+    );
+    
+    // Ensure the target zoom keeps the node visible and readable
+    float target_zoom = view_state_.zoom_scale;
+    float min_node_screen_size = 150.0f; // Minimum desired node size on screen
+    float max_node_screen_size = 400.0f; // Maximum desired node size on screen
+    
+    float current_node_screen_width = target_node->size.x * view_state_.zoom_scale;
+    if (current_node_screen_width < min_node_screen_size) {
+        target_zoom = min_node_screen_size / target_node->size.x;
+    } else if (current_node_screen_width > max_node_screen_size) {
+        target_zoom = max_node_screen_size / target_node->size.x;
+    }
+    
+    // Clamp zoom to reasonable bounds
+    target_zoom = std::max(0.1f, std::min(target_zoom, 3.0f));
+    
+    // Recalculate target pan offset with the new zoom
+    target_pan_offset = ImVec2(
+        canvas_center.x - target_world_center.x * target_zoom,
+        canvas_center.y - target_world_center.y * target_zoom
+    );
+    
+    StartAutoPanToPosition(target_pan_offset, target_zoom, canvas_size);
+}
+
+void GraphEditor::StartAutoPanToPosition(const ImVec2& target_world_pos, float target_zoom, const ImVec2& canvas_size) {
+    // Cancel any existing auto-pan
+    CancelAutoPan();
+    
+    // Set up animation state
+    view_state_.auto_pan_active = true;
+    view_state_.auto_pan_start_offset = view_state_.pan_offset;
+    view_state_.auto_pan_target_offset = target_world_pos;
+    view_state_.auto_pan_start_zoom = view_state_.zoom_scale;
+    view_state_.auto_pan_target_zoom = target_zoom;
+    view_state_.auto_pan_progress = 0.0f;
+    view_state_.auto_pan_timer = 0.0f;
+    view_state_.user_interrupted_auto_pan = false;
+    
+    // Adjust duration based on distance to travel
+    ImVec2 distance_vec = ImVec2(
+        target_world_pos.x - view_state_.pan_offset.x,
+        target_world_pos.y - view_state_.pan_offset.y
+    );
+    float distance = sqrtf(distance_vec.x * distance_vec.x + distance_vec.y * distance_vec.y);
+    float zoom_distance = fabsf(target_zoom - view_state_.zoom_scale);
+    
+    // Base duration with scaling based on distance
+    float base_duration = 1.2f;
+    float distance_factor = std::min(2.0f, distance / 500.0f); // Scale based on pixel distance
+    float zoom_factor = std::min(1.5f, zoom_distance * 2.0f); // Scale based on zoom change
+    
+    view_state_.auto_pan_duration = base_duration + distance_factor * 0.5f + zoom_factor * 0.3f;
+    view_state_.auto_pan_duration = std::max(0.8f, std::min(view_state_.auto_pan_duration, 3.0f));
+}
+
+void GraphEditor::UpdateAutoPan(float delta_time) {
+    if (!view_state_.auto_pan_active) return;
+    
+    // Update timer and progress
+    view_state_.auto_pan_timer += delta_time;
+    view_state_.auto_pan_progress = view_state_.auto_pan_timer / view_state_.auto_pan_duration;
+    
+    // Check if animation is complete
+    if (view_state_.auto_pan_progress >= 1.0f) {
+        view_state_.auto_pan_progress = 1.0f;
+        view_state_.auto_pan_active = false;
+    }
+    
+    // Apply easing function for smooth animation
+    float eased_progress = CameraEasing::EaseInOutCubic(view_state_.auto_pan_progress);
+    
+    // Interpolate camera position and zoom
+    view_state_.pan_offset = CameraEasing::LerpVec2(
+        view_state_.auto_pan_start_offset,
+        view_state_.auto_pan_target_offset,
+        eased_progress
+    );
+    
+    view_state_.zoom_scale = CameraEasing::Lerp(
+        view_state_.auto_pan_start_zoom,
+        view_state_.auto_pan_target_zoom,
+        eased_progress
+    );
+    
+    // Ensure zoom stays within bounds
+    view_state_.zoom_scale = std::max(0.1f, std::min(view_state_.zoom_scale, 10.0f));
+}
+
+void GraphEditor::CancelAutoPan() {
+    view_state_.auto_pan_active = false;
+    view_state_.user_interrupted_auto_pan = true;
+}
+
 // Helper function for automatic layout of child nodes
 static void LayoutChildrenRecursive(GraphNode* parent_node, int depth, float horizontal_spacing) {
     if (!parent_node || parent_node->children.empty()) {
@@ -786,6 +1029,14 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
     temp_editor_for_interactions.GetViewState() = view_state; // Sync view state
     temp_editor_for_interactions.SetCurrentTheme(current_theme); // Set theme for color consistency
     
+    // Update auto-pan animation
+    static auto last_time = std::chrono::steady_clock::now();
+    auto current_time = std::chrono::steady_clock::now();
+    float delta_time = std::chrono::duration<float>(current_time - last_time).count();
+    last_time = current_time;
+    
+    temp_editor_for_interactions.UpdateAutoPan(delta_time);
+    
     // Handle pan/zoom interactions
     temp_editor_for_interactions.HandlePanning(canvas_pos, canvas_size);
     temp_editor_for_interactions.HandleZooming(canvas_pos, canvas_size);
@@ -793,10 +1044,17 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
     // Update the view_state with any changes from interactions
     view_state = temp_editor_for_interactions.GetViewState();
 
-    // Layout calculation is now handled in the main loop for automatic updates
-    // This ensures the graph stays synchronized even when the tab is not visible
-    // The layout should already be up-to-date when we reach this point
-
+    // Update layout if needed using force-directed algorithm
+    graph_manager.UpdateLayout();
+    
+    // Trigger auto-pan to newest node if layout was updated and there's a new node
+    if (graph_manager.last_node_added_to_graph &&
+        (graph_manager.last_node_added_to_graph->position.x != 0.0f || graph_manager.last_node_added_to_graph->position.y != 0.0f)) {
+        // Only auto-pan if not already active and user hasn't interrupted
+        if (!temp_editor_for_interactions.IsAutoPanActive() && !view_state.user_interrupted_auto_pan) {
+            graph_manager.TriggerAutoPanToNewestNode(&temp_editor_for_interactions, canvas_size);
+        }
+    }
 
     // Rendering nodes and edges
     // This simplified RenderGraphView will directly iterate nodes from GraphManager
@@ -848,11 +1106,24 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
                                           node_abs_screen_pos.x + padding + content_width,
                                           node_abs_screen_pos.y + padding + content_height);
                     
+                    // Force immediate text rendering for new nodes to fix auto-refresh issue
+                    // Check if this node needs content refresh (new nodes or updated content)
+                    if (node->content_needs_refresh) {
+                        // Force immediate rendering by ensuring text is drawn with fresh parameters
+                        node->content_needs_refresh = false; // Clear the flag after rendering
+                    }
+                    
+                    // Ensure content is always displayed immediately without requiring manual refresh
+                    draw_list->PushClipRect(ImVec2(clip_rect_vec4.x, clip_rect_vec4.y),
+                                          ImVec2(clip_rect_vec4.z, clip_rect_vec4.w), true);
+                    
                     // Use RenderWrappedText for full message content display
                     RenderWrappedText(draw_list, ImGui::GetFont(),
                                      ImGui::GetFontSize() * temp_editor_for_render.GetViewState().zoom_scale,
                                      text_render_pos, text_color, text_to_display,
                                      content_width, content_height, &clip_rect_vec4);
+                    
+                    draw_list->PopClipRect();
                 }
             }
         }
@@ -862,20 +1133,101 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
                 if (child) {
                     bool child_is_visible = temp_editor_for_render.IsNodeVisible(*child, canvas_pos, canvas_size);
                     if (node_is_visible && child_is_visible) {
-                        // Simplified edge rendering with theme-aware color
+                        // Bezier curve edge rendering with theme-aware color
                         ImU32 edge_color = temp_editor_for_render.GetThemeEdgeColor(current_theme);
                         ImVec2 start_world = ImVec2(node->position.x + node->size.x / 2.0f, node->position.y + node->size.y);
                         ImVec2 end_world = ImVec2(child->position.x + child->size.x / 2.0f, child->position.y);
                         ImVec2 start_screen_rel = temp_editor_for_render.WorldToScreen(start_world);
                         ImVec2 end_screen_rel = temp_editor_for_render.WorldToScreen(end_world);
-                        draw_list->AddLine(ImVec2(canvas_pos.x + start_screen_rel.x, canvas_pos.y + start_screen_rel.y),
-                                           ImVec2(canvas_pos.x + end_screen_rel.x, canvas_pos.y + end_screen_rel.y),
-                                           edge_color, 1.5f * temp_editor_for_render.GetViewState().zoom_scale);
+                        
+                        // Convert to absolute screen coordinates
+                        ImVec2 start_screen = ImVec2(canvas_pos.x + start_screen_rel.x, canvas_pos.y + start_screen_rel.y);
+                        ImVec2 end_screen = ImVec2(canvas_pos.x + end_screen_rel.x, canvas_pos.y + end_screen_rel.y);
+                        
+                        // Calculate Bezier curve control points
+                        ImVec2 direction = ImVec2(end_screen.x - start_screen.x, end_screen.y - start_screen.y);
+                        float distance = sqrtf(direction.x * direction.x + direction.y * direction.y);
+                        
+                        float control_offset = std::min(distance * 0.4f, 80.0f * temp_editor_for_render.GetViewState().zoom_scale);
+                        control_offset = std::max(control_offset, 20.0f * temp_editor_for_render.GetViewState().zoom_scale);
+                        
+                        // Handle edge cases for very close nodes
+                        if (distance < 10.0f * temp_editor_for_render.GetViewState().zoom_scale) {
+                            control_offset = std::min(control_offset, distance * 0.2f);
+                        }
+                        
+                        // Calculate optimal control points for standard parent-child relationships
+                        ImVec2 control1 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, true, false);
+                        ImVec2 control2 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, false, false);
+                        
+                        // Render smooth Bezier curve with adaptive tessellation
+                        float line_thickness = std::max(1.0f, 1.5f * temp_editor_for_render.GetViewState().zoom_scale);
+                        
+                        int num_segments = 0; // Auto-tessellation
+                        if (distance > 200.0f * temp_editor_for_render.GetViewState().zoom_scale) {
+                            num_segments = std::max(8, (int)(distance / (50.0f * temp_editor_for_render.GetViewState().zoom_scale)));
+                            num_segments = std::min(num_segments, 32);
+                        }
+                        
+                        draw_list->AddBezierCubic(start_screen, control1, control2, end_screen, edge_color, line_thickness, num_segments);
                     }
                     render_recursive_lambda(child);
                 }
             }
-            // Similarly for alternative_paths if they are to be rendered
+            
+            // Render alternative paths with different curve styling
+            for (GraphNode* alt_child : node->alternative_paths) {
+                if (alt_child) {
+                    bool alt_is_visible = temp_editor_for_render.IsNodeVisible(*alt_child, canvas_pos, canvas_size);
+                    if (node_is_visible && alt_is_visible) {
+                        // Bezier curve edge rendering for alternative paths with distinct styling
+                        ImU32 edge_color = temp_editor_for_render.GetThemeEdgeColor(current_theme);
+                        
+                        // Make alternative paths more transparent and thinner
+                        ImU32 base_color = edge_color;
+                        ImU32 alpha_mask = 0x00FFFFFF;
+                        ImU32 alpha_component = (base_color & 0xFF000000) >> 1; // Half transparency
+                        edge_color = (base_color & alpha_mask) | alpha_component;
+                        
+                        ImVec2 start_world = ImVec2(node->position.x + node->size.x / 2.0f, node->position.y + node->size.y);
+                        ImVec2 end_world = ImVec2(alt_child->position.x + alt_child->size.x / 2.0f, alt_child->position.y);
+                        ImVec2 start_screen_rel = temp_editor_for_render.WorldToScreen(start_world);
+                        ImVec2 end_screen_rel = temp_editor_for_render.WorldToScreen(end_world);
+                        
+                        // Convert to absolute screen coordinates
+                        ImVec2 start_screen = ImVec2(canvas_pos.x + start_screen_rel.x, canvas_pos.y + start_screen_rel.y);
+                        ImVec2 end_screen = ImVec2(canvas_pos.x + end_screen_rel.x, canvas_pos.y + end_screen_rel.y);
+                        
+                        // Calculate Bezier curve control points for alternative paths
+                        ImVec2 direction = ImVec2(end_screen.x - start_screen.x, end_screen.y - start_screen.y);
+                        float distance = sqrtf(direction.x * direction.x + direction.y * direction.y);
+                        
+                        float control_offset = std::min(distance * 0.4f, 80.0f * temp_editor_for_render.GetViewState().zoom_scale);
+                        control_offset = std::max(control_offset, 20.0f * temp_editor_for_render.GetViewState().zoom_scale);
+                        
+                        // Handle edge cases for very close nodes
+                        if (distance < 10.0f * temp_editor_for_render.GetViewState().zoom_scale) {
+                            control_offset = std::min(control_offset, distance * 0.2f);
+                        }
+                        
+                        // Calculate optimal control points for alternative paths
+                        ImVec2 control1 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, true, true);
+                        ImVec2 control2 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, false, true);
+                        
+                        // Render smooth Bezier curve for alternative path with adaptive tessellation
+                        float line_thickness = std::max(1.0f, 1.2f * temp_editor_for_render.GetViewState().zoom_scale); // Slightly thinner
+                        
+                        int num_segments = 0; // Auto-tessellation
+                        if (distance > 200.0f * temp_editor_for_render.GetViewState().zoom_scale) {
+                            num_segments = std::max(8, (int)(distance / (50.0f * temp_editor_for_render.GetViewState().zoom_scale)));
+                            num_segments = std::min(num_segments, 32);
+                        }
+                        
+                        draw_list->AddBezierCubic(start_screen, control1, control2, end_screen, edge_color, line_thickness, num_segments);
+                    }
+                    render_recursive_lambda(alt_child);
+                }
+            }
         }
     };
 

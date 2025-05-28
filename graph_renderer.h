@@ -31,6 +31,13 @@ public:
     void HandleExpandCollapse(GraphNode& node, const ImVec2& canvas_pos); // Handles button logic for expand/collapse
     void RenderPopups(ImDrawList* draw_list, const ImVec2& canvas_pos); // Renders context menus and modals
 
+    // Camera auto-pan functionality
+    void StartAutoPanToNode(const GraphNode* target_node, const ImVec2& canvas_size);
+    void StartAutoPanToPosition(const ImVec2& target_world_pos, float target_zoom, const ImVec2& canvas_size);
+    void UpdateAutoPan(float delta_time);
+    void CancelAutoPan();
+    bool IsAutoPanActive() const { return view_state_.auto_pan_active; }
+
     ImVec2 WorldToScreen(const ImVec2& world_pos) const;
     ImVec2 ScreenToWorld(const ImVec2& screen_pos, const ImVec2& canvas_screen_pos) const;
 
@@ -68,6 +75,7 @@ private:
 
     void RenderNode(ImDrawList* draw_list, GraphNode& node);
     void RenderEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node);
+    void RenderBezierEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node, bool is_alternative_path = false);
     // Recursive rendering helper for nodes and their children if expanded
     void RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size);
 };

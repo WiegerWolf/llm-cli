@@ -7,6 +7,7 @@
 #include "gui_interface/graph_types.h"
 #include "gui_interface/gui_interface.h" // For HistoryMessage
 #include "database.h" // For PersistenceManager
+#include "graph_layout.h" // For ForceDirectedLayout
 
 // Define MessageId if it's not globally available
 // NodeIdType will be the type for unique graph node IDs.
@@ -25,6 +26,10 @@ public:
     // State Flags
     bool graph_layout_dirty = false; // Flag to indicate if graph layout needs recalculation
     
+    // Layout System
+    ForceDirectedLayout force_layout; // Force-directed layout algorithm
+    bool use_force_layout = true; // Flag to enable/disable force-directed layout
+    
     // ID Generation
     NodeIdType next_graph_node_id_counter;
 
@@ -37,6 +42,17 @@ public:
     
     // Helper to get a node pointer by its unique graph_node_id
     GraphNode* GetNodeById(NodeIdType graph_node_id);
+    
+    // Layout management functions
+    void UpdateLayout(); // Apply force-directed layout if needed
+    void SetLayoutParams(const ForceDirectedLayout::LayoutParams& params);
+    void ToggleForceLayout(bool enable);
+    
+    // Get all nodes as a vector for layout algorithms
+    std::vector<GraphNode*> GetAllNodes();
+    
+    // Auto-pan functionality
+    void TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size);
 
     // Placeholder for graph rendering logic, to be implemented in a later step
     // void RenderGraphView(); // This will likely be a free function or part of a different class

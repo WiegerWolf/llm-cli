@@ -1,4 +1,5 @@
 #include "graph_manager.h"
+#include "graph_renderer.h" // For GraphEditor
 #include "imgui.h" // For ImVec2, ImU32, IM_COL32
 #include <memory> // For std::make_unique, std::move
 #include <algorithm> // For std::find_if
@@ -47,6 +48,8 @@ ImVec2 CalculateNodeSize(const std::string& content) {
 GraphManager::GraphManager()
     : last_node_added_to_graph(nullptr),
       graph_layout_dirty(false),
+      force_layout(ForceDirectedLayout::LayoutParams()),
+      use_force_layout(true),
       next_graph_node_id_counter(0) { // Initialize ID counter
     // graph_view_state is default constructed (selected_node_id = -1)
 }
@@ -89,29 +92,15 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
             current_node_ptr->depth = 0;
         }
 
+        // Calculate node size based on formatted content to ensure proper display
         current_node_ptr->size = CalculateNodeSize(current_node_ptr->label);
         
-        // Calculate position based on depth and previous nodes
-        float x_pos = 50.0f + current_node_ptr->depth * 550.0f; // Increased spacing for wider nodes
-        float y_pos = 50.0f;
+        // Ensure new nodes are visible and expanded by default for immediate content display
+        current_node_ptr->is_expanded = true;
+        current_node_ptr->content_needs_refresh = true; // Mark for immediate content refresh
         
-        // For root nodes, stack them vertically with proper spacing
-        if (current_node_ptr->depth == 0) {
-            float total_height = 0.0f;
-            for (GraphNode* root : root_nodes) {
-                if (root != current_node_ptr) {
-                    total_height += root->size.y + 30.0f; // Increased spacing between nodes
-                }
-            }
-            y_pos = 50.0f + total_height;
-        } else {
-            // For child nodes, position relative to parent
-            if (previous_node_ptr) {
-                y_pos = previous_node_ptr->position.y + previous_node_ptr->size.y + 50.0f; // Increased vertical spacing
-            }
-        }
-        
-        current_node_ptr->position = ImVec2(x_pos, y_pos);
+        // Initialize position to zero - will be set by layout algorithm
+        current_node_ptr->position = ImVec2(0.0f, 0.0f);
 
         // Key for all_nodes is now graph_node_id
         all_nodes[current_node_ptr->graph_node_id] = std::move(new_node_unique_ptr);
@@ -120,6 +109,9 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
         last_node_added_to_graph = current_node_ptr;
     }
     graph_layout_dirty = true;
+    
+    // Reset user interruption flag when populating from history so auto-pan can work
+    graph_view_state.user_interrupted_auto_pan = false;
 }
 
 // Implementation of HandleNewHistoryMessage
@@ -158,41 +150,90 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
         root_nodes.push_back(new_graph_node);
     }
 
+    // Calculate node size based on the formatted content to ensure proper display
+    // Force recalculation to ensure new content is properly sized
     new_graph_node->size = CalculateNodeSize(new_graph_node->label);
     
-    if (parent_node) {
-        // Position child nodes to the right of parent with proper spacing
-        float x_pos = parent_node->position.x + 550.0f; // Increased spacing for wider nodes
-        float y_pos = parent_node->position.y;
-        
-        // If parent already has children, stack this one below them
-        if (!parent_node->children.empty()) {
-            GraphNode* last_child = parent_node->children.back();
-            y_pos = last_child->position.y + last_child->size.y + 30.0f; // Increased spacing
-        }
-        
-        new_graph_node->position = ImVec2(x_pos, y_pos);
-    } else {
-        // For root nodes, stack vertically with proper spacing
-        float y_offset = 50.0f;
-        if (root_nodes.size() > 1) {
-             GraphNode* last_prev_root = nullptr;
-             for(auto it = root_nodes.rbegin(); it != root_nodes.rend(); ++it) {
-                 if (*it != new_graph_node) {
-                    last_prev_root = *it;
-                    break;
-                 }
-             }
-             if(last_prev_root) y_offset = last_prev_root->position.y + last_prev_root->size.y + 30.0f; // Increased spacing
-        }
-        new_graph_node->position = ImVec2(50.0f, y_offset);
-    }
+    // Force immediate content refresh by ensuring the node is marked as needing visual update
+    // This ensures new nodes display their full content immediately without manual refresh
+    new_graph_node->is_expanded = true; // Ensure new nodes are visible by default
+    new_graph_node->content_needs_refresh = true; // Mark for immediate content refresh
+    
+    // Initialize position to zero - will be set by layout algorithm
+    new_graph_node->position = ImVec2(0.0f, 0.0f);
 
     // Key for all_nodes is now graph_node_id
     all_nodes[new_graph_node->graph_node_id] = std::move(new_graph_node_unique_ptr);
 
     last_node_added_to_graph = new_graph_node;
     graph_layout_dirty = true;
+    
+    // Reset user interruption flag when a new node is added so auto-pan can work again
+    graph_view_state.user_interrupted_auto_pan = false;
+    
+    // Note: Auto-pan will be triggered after layout is updated and the node has a valid position
+    // This is handled in the main GUI loop or wherever TriggerAutoPanToNewestNode is called
+}
+
+// Layout management functions
+void GraphManager::UpdateLayout() {
+    if (!graph_layout_dirty || !use_force_layout) {
+        return;
+    }
+    
+    std::vector<GraphNode*> all_nodes_vec = GetAllNodes();
+    if (all_nodes_vec.empty()) {
+        return;
+    }
+    
+    // Calculate canvas center based on current viewport or use default
+    ImVec2 canvas_center(1000.0f, 750.0f); // Default center point
+    
+    // Apply force-directed layout
+    force_layout.ComputeLayout(all_nodes_vec, canvas_center);
+    
+    graph_layout_dirty = false;
+}
+
+void GraphManager::SetLayoutParams(const ForceDirectedLayout::LayoutParams& params) {
+    force_layout.SetParams(params);
+    graph_layout_dirty = true; // Trigger layout recalculation
+}
+
+void GraphManager::ToggleForceLayout(bool enable) {
+    use_force_layout = enable;
+    if (enable) {
+        graph_layout_dirty = true; // Trigger layout recalculation
+    }
+}
+
+std::vector<GraphNode*> GraphManager::GetAllNodes() {
+    std::vector<GraphNode*> nodes;
+    nodes.reserve(all_nodes.size());
+    
+    for (auto& pair : all_nodes) {
+        if (pair.second) {
+            nodes.push_back(pair.second.get());
+        }
+    }
+    
+    return nodes;
+}
+
+// Auto-pan functionality
+void GraphManager::TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size) {
+    if (!graph_editor || !last_node_added_to_graph) {
+        return;
+    }
+    
+    // Only trigger auto-pan if the node has a valid position (layout has been applied)
+    if (last_node_added_to_graph->position.x == 0.0f && last_node_added_to_graph->position.y == 0.0f) {
+        // Position hasn't been set by layout yet, skip auto-pan for now
+        return;
+    }
+    
+    // Trigger auto-pan to the newest node
+    graph_editor->StartAutoPanToNode(last_node_added_to_graph, canvas_size);
 }
 
 // Placeholder for RenderGraphView - to be implemented in graph_renderer.cpp or similar
