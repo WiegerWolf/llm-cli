@@ -510,13 +510,15 @@ int main(int, char**) {
         // Process messages from the worker thread by getting the drained queue
         std::vector<HistoryMessage> new_messages = gui_ui.processDisplayQueue();
         bool new_output_added = !new_messages.empty(); // Check if any messages were actually returned
+        bool graph_needs_update = false;
+        
         if (new_output_added) {
             // Append the new messages to the history using move iterators for efficiency
             output_history.insert(output_history.end(),
                                   std::make_move_iterator(new_messages.begin()),
                                   std::make_move_iterator(new_messages.end()));
            
-           // After adding to output_history, update the graph
+           // After adding to output_history, update the graph automatically
            for (const auto& new_msg_ref : new_messages) { // Iterate over the original new_messages
                // We need to find the just-added message in output_history to pass its const ref,
                // or HandleNewHistoryMessage could take by value if HistoryMessage is cheap to copy.
@@ -526,7 +528,76 @@ int main(int, char**) {
                // The `current_selected_node_id` comes from the graph manager's view state.
                g_graph_manager.HandleNewHistoryMessage(new_msg_ref, g_graph_manager.graph_view_state.selected_node_id);
            }
+           graph_needs_update = true;
        }
+       
+       // --- Automatic Graph Synchronization ---
+       // Check if the graph needs to be synchronized with the current history
+       // This handles cases where messages might be modified or the graph gets out of sync
+       static size_t last_known_history_size = 0;
+       if (output_history.size() != last_known_history_size) {
+           // History size changed, ensure graph is synchronized
+           if (!graph_needs_update && !output_history.empty()) {
+               // Only do a full repopulation if we haven't already updated via HandleNewHistoryMessage
+               // and if the size difference suggests more than just additions
+               if (output_history.size() < last_known_history_size ||
+                   (output_history.size() > last_known_history_size + new_messages.size())) {
+                   // History was modified (messages removed or bulk changes), repopulate graph
+                   g_graph_manager.PopulateGraphFromHistory(output_history);
+                   graph_needs_update = true;
+               }
+           }
+           last_known_history_size = output_history.size();
+       }
+       // --- End Automatic Graph Synchronization ---
+       
+       // --- Ensure Graph Layout Updates (Even When Tab Not Visible) ---
+       // Process graph layout updates immediately when needed, regardless of tab visibility
+       if (graph_needs_update || g_graph_manager.graph_layout_dirty) {
+           // Force layout recalculation if the graph is dirty
+           if (g_graph_manager.graph_layout_dirty && !g_graph_manager.all_nodes.empty()) {
+               // Simple automatic layout algorithm for real-time updates
+               float vertical_spacing = 120.0f;
+               float horizontal_spacing = 250.0f;
+               ImVec2 layout_start_pos(20.0f, 20.0f);
+               float current_y = layout_start_pos.y;
+               
+               // Layout root nodes vertically
+               for (size_t i = 0; i < g_graph_manager.root_nodes.size(); ++i) {
+                   GraphNode* root_node = g_graph_manager.root_nodes[i];
+                   if (root_node) {
+                       root_node->position = ImVec2(layout_start_pos.x, current_y);
+                       current_y += vertical_spacing;
+                       
+                       // Layout children horizontally from each root
+                       std::function<void(GraphNode*, int)> layout_children_recursive =
+                           [&](GraphNode* parent_node, int depth) {
+                               if (!parent_node || parent_node->children.empty()) {
+                                   return;
+                               }
+                               
+                               float child_y_start = parent_node->position.y + parent_node->size.y + 40.0f;
+                               float child_x = parent_node->position.x + horizontal_spacing;
+                               
+                               for (size_t j = 0; j < parent_node->children.size(); ++j) {
+                                   GraphNode* child = parent_node->children[j];
+                                   if (child) {
+                                       child->position = ImVec2(child_x, child_y_start + (j * 100.0f));
+                                       
+                                       // Recursively layout grandchildren
+                                       layout_children_recursive(child, depth + 1);
+                                   }
+                               }
+                           };
+                       
+                       layout_children_recursive(root_node, 1);
+                   }
+               }
+               
+               g_graph_manager.graph_layout_dirty = false;
+           }
+       }
+       // --- End Ensure Graph Layout Updates ---
      // --- End Process Display Updates ---
 
       // --- Retrieve and Apply Scroll Offsets (Comment 1) ---
@@ -900,8 +971,8 @@ int main(int, char**) {
           // --- Graph View Tab ---
           if (s_is_graph_view_visible && ImGui::BeginTabItem("Graph View")) {
               // Populate graph if it's empty and this tab is active
-              // A better check for "first selected" might involve a static bool flag
-              // or checking ImGui::IsItemVisible() if BeginTabItem makes the content immediately visible.
+              // The graph is now automatically synchronized with history in the main loop,
+              // but we still need initial population when the tab is first opened
               if (g_graph_manager.all_nodes.empty() && ImGui::IsItemVisible()) {
                    if (!output_history.empty()) { // Only populate if there's history
                        g_graph_manager.PopulateGraphFromHistory(output_history);
@@ -912,16 +983,14 @@ int main(int, char**) {
                   g_graph_manager.PopulateGraphFromHistory(output_history);
               }
               ImGui::SameLine();
-              ImGui::Text("Nodes: %zu", g_graph_manager.all_nodes.size());
+              ImGui::Text("Nodes: %zu (Auto-updating)", g_graph_manager.all_nodes.size());
 
               // Call the main rendering function for the graph interface
-              // This function (RenderGraphView) will handle drawing nodes, edges, etc.
-              // It needs to be defined, likely in graph_renderer.cpp or similar.
-              // For now, it's declared in graph_manager.h.
-              // We need a child window for the graph rendering area to get a dedicated canvas.
+              // The graph layout is now automatically updated in the main loop,
+              // so this will always render the most current state
               ImGui::BeginChild("GraphCanvas", ImVec2(0, -bottom_elements_height - ImGui::GetFrameHeightWithSpacing()), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-              // Updated signature for RenderGraphView
-              RenderGraphView(g_graph_manager, g_graph_manager.graph_view_state);
+              // Updated signature for RenderGraphView with theme support
+              RenderGraphView(g_graph_manager, g_graph_manager.graph_view_state, currentTheme);
               ImGui::EndChild();
 
               ImGui::EndTabItem();
@@ -970,13 +1039,17 @@ int main(int, char**) {
                 gui_ui.sendInputToWorker(input_buf);
 
                 // Add user input to history (Issue #8 Refactor)
-// Add the user's message to the history for display
+                // Add the user's message to the history for display
                 HistoryMessage user_msg;
                 user_msg.message_id = static_cast<int>(output_history.size()); // Simple ID for now
                 user_msg.type = MessageType::USER_INPUT;
                 user_msg.content = std::string(input_buf);
                 user_msg.model_id = std::nullopt;
                 output_history.push_back(user_msg);
+                
+                // Immediately update the graph with the new user input
+                g_graph_manager.HandleNewHistoryMessage(user_msg, g_graph_manager.graph_view_state.selected_node_id);
+                
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
                 request_input_focus = true; // Set flag to request focus next frame

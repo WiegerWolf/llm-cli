@@ -63,6 +63,129 @@ static void AddTextTruncated(ImDrawList* draw_list, ImFont* font, float font_siz
     }
 }
 
+// Helper function to render wrapped text within a bounded area
+static void RenderWrappedText(ImDrawList* draw_list, ImFont* font, float font_size, const ImVec2& pos, ImU32 col, const char* text, float wrap_width, float max_height, const ImVec4* cpu_fine_clip_rect) {
+    if (!text || font_size <= 0.0f || font == nullptr || wrap_width <= 0.0f)
+        return;
+
+    float scale = font->FontSize > 0 ? font_size / font->FontSize : 1.0f;
+    float line_height = font_size;
+    
+    const char* text_ptr = text;
+    const char* text_end = text + strlen(text);
+    ImVec2 current_pos = pos;
+    
+    while (text_ptr < text_end && (current_pos.y - pos.y + line_height) <= max_height) {
+        // Find the end of the current line that fits within wrap_width
+        const char* line_end = font->CalcWordWrapPositionA(scale, text_ptr, text_end, wrap_width);
+        
+        if (line_end == text_ptr) {
+            // If we can't fit even one character, try to fit at least something
+            line_end = text_ptr + 1;
+            if (line_end > text_end) line_end = text_end;
+        }
+        
+        // Render this line
+        draw_list->AddText(font, font_size, current_pos, col, text_ptr, line_end, 0.0f, cpu_fine_clip_rect);
+        
+        // Move to next line
+        current_pos.y += line_height;
+        text_ptr = line_end;
+        
+        // Skip whitespace at the beginning of the next line
+        while (text_ptr < text_end && (*text_ptr == ' ' || *text_ptr == '\t')) {
+            text_ptr++;
+        }
+        
+        // Handle explicit newlines
+        if (text_ptr < text_end && *text_ptr == '\n') {
+            text_ptr++;
+            // Skip additional whitespace after newline
+            while (text_ptr < text_end && (*text_ptr == ' ' || *text_ptr == '\t')) {
+                text_ptr++;
+            }
+        }
+    }
+}
+
+// Theme-aware color functions
+ImU32 GraphEditor::GetThemeNodeColor(ThemeType theme) const {
+    switch (theme) {
+        case ThemeType::DARK:
+            return IM_COL32(45, 45, 50, 255);  // Dark grey for dark theme
+        case ThemeType::WHITE:
+            return IM_COL32(240, 240, 245, 255); // Light grey for white theme
+        default:
+            return IM_COL32(200, 200, 200, 255); // Fallback
+    }
+}
+
+ImU32 GraphEditor::GetThemeNodeBorderColor(ThemeType theme) const {
+    switch (theme) {
+        case ThemeType::DARK:
+            return IM_COL32(80, 80, 85, 255);   // Lighter grey border for dark theme
+        case ThemeType::WHITE:
+            return IM_COL32(180, 180, 185, 255); // Darker grey border for white theme
+        default:
+            return IM_COL32(100, 100, 100, 255); // Fallback
+    }
+}
+
+ImU32 GraphEditor::GetThemeNodeSelectedBorderColor(ThemeType theme) const {
+    switch (theme) {
+        case ThemeType::DARK:
+            return IM_COL32(255, 255, 0, 255);   // Bright yellow for dark theme
+        case ThemeType::WHITE:
+            return IM_COL32(255, 165, 0, 255);   // Orange for white theme (better contrast)
+        default:
+            return IM_COL32(255, 255, 0, 255);   // Fallback
+    }
+}
+
+ImU32 GraphEditor::GetThemeEdgeColor(ThemeType theme) const {
+    switch (theme) {
+        case ThemeType::DARK:
+            return IM_COL32(120, 120, 125, 255); // Medium grey for dark theme
+        case ThemeType::WHITE:
+            return IM_COL32(100, 100, 105, 255); // Darker grey for white theme
+        default:
+            return IM_COL32(150, 150, 150, 255); // Fallback
+    }
+}
+
+ImU32 GraphEditor::GetThemeBackgroundColor(ThemeType theme) const {
+    switch (theme) {
+        case ThemeType::DARK:
+            return IM_COL32(25, 25, 30, 255);    // Very dark background
+        case ThemeType::WHITE:
+            return IM_COL32(250, 250, 255, 255); // Very light background
+        default:
+            return IM_COL32(30, 30, 40, 255);    // Fallback
+    }
+}
+
+ImU32 GraphEditor::GetThemeTextColor(ThemeType theme) const {
+    switch (theme) {
+        case ThemeType::DARK:
+            return IM_COL32(220, 220, 225, 255); // Light text for dark theme
+        case ThemeType::WHITE:
+            return IM_COL32(30, 30, 35, 255);    // Dark text for white theme
+        default:
+            return IM_COL32(255, 255, 255, 255); // Fallback
+    }
+}
+
+ImU32 GraphEditor::GetThemeExpandCollapseIconColor(ThemeType theme) const {
+    switch (theme) {
+        case ThemeType::DARK:
+            return IM_COL32(180, 180, 185, 255); // Light grey icon for dark theme
+        case ThemeType::WHITE:
+            return IM_COL32(80, 80, 85, 255);    // Dark grey icon for white theme
+        default:
+            return IM_COL32(200, 200, 200, 255); // Fallback
+    }
+}
+
 // Initialize static member
 char GraphEditor::newMessageBuffer_[1024 * 16] = "";
 
@@ -265,21 +388,22 @@ void GraphEditor::HandleExpandCollapse(GraphNode& node, const ImVec2& canvas_scr
     // Integrated into HandleNodeSelection
 }
 
-void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) { 
+void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
     ImVec2 node_pos_screen_relative_to_canvas = WorldToScreen(node.position);
     ImVec2 node_size_screen = ImVec2(node.size.x * view_state_.zoom_scale, node.size.y * view_state_.zoom_scale);
     
-    if (node_size_screen.x < 1.0f || node_size_screen.y < 1.0f) return; 
+    if (node_size_screen.x < 1.0f || node_size_screen.y < 1.0f) return;
 
-    ImVec2 final_draw_pos = node_pos_screen_relative_to_canvas; 
+    ImVec2 final_draw_pos = node_pos_screen_relative_to_canvas;
     ImVec2 node_end_pos = ImVec2(final_draw_pos.x + node_size_screen.x, final_draw_pos.y + node_size_screen.y);
 
-    ImU32 bg_color = node.color; // Use node's color
-    ImU32 border_color = IM_COL32(100, 100, 100, 255);
-    float border_thickness = std::max(1.0f, 1.0f * view_state_.zoom_scale); 
+    // Use theme-aware colors instead of hardcoded values
+    ImU32 bg_color = GetThemeNodeColor(current_theme_);
+    ImU32 border_color = GetThemeNodeBorderColor(current_theme_);
+    float border_thickness = std::max(1.0f, 1.0f * view_state_.zoom_scale);
 
     if (node.is_selected) {
-        border_color = IM_COL32(255, 255, 0, 255);
+        border_color = GetThemeNodeSelectedBorderColor(current_theme_);
         border_thickness = std::max(1.0f, 2.0f * view_state_.zoom_scale);
     }
     float rounding = std::max(0.0f, 4.0f * view_state_.zoom_scale);
@@ -302,25 +426,24 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
     content_area_size.y = std::max(0.0f, content_area_size.y);
     
     if (content_area_size.x > 1.0f && content_area_size.y > 1.0f) {
-        ImVec4 clip_rect_vec4(final_draw_pos.x + padding, final_draw_pos.y + padding, 
-                              final_draw_pos.x + padding + content_area_size.x, 
+        ImVec4 clip_rect_vec4(final_draw_pos.x + padding, final_draw_pos.y + padding,
+                              final_draw_pos.x + padding + content_area_size.x,
                               final_draw_pos.y + padding + content_area_size.y);
         draw_list->PushClipRect(ImVec2(clip_rect_vec4.x, clip_rect_vec4.y), ImVec2(clip_rect_vec4.z, clip_rect_vec4.w), true);
 
-        const char* text_to_display = node.label.empty() ? node.message_data.content.c_str() : node.label.c_str();
-        if (strlen(text_to_display) == 0) { // Check if effective text is empty
-             text_to_display = "[Empty Node]";
-        }
+        // Use the full content from label (which now contains the formatted message)
+        const char* text_to_display = node.label.empty() ? "[Empty Node]" : node.label.c_str();
         
         ImFont* current_font = ImGui::GetFont();
-        float base_font_size = current_font->FontSize; 
+        float base_font_size = current_font->FontSize;
         float scaled_font_size = base_font_size * view_state_.zoom_scale;
-        scaled_font_size = std::max(6.0f, std::min(scaled_font_size, 72.0f)); 
+        scaled_font_size = std::max(6.0f, std::min(scaled_font_size, 72.0f));
         
-        AddTextTruncated(draw_list, current_font, scaled_font_size, text_pos, IM_COL32(255, 255, 255, 255), 
-                         text_to_display, text_to_display + strlen(text_to_display), 
-                         content_area_size.x, 
-                         &clip_rect_vec4);
+        ImU32 text_color = GetThemeTextColor(current_theme_);
+        
+        // Use proper text wrapping instead of truncation for full content display
+        RenderWrappedText(draw_list, current_font, scaled_font_size, text_pos, text_color,
+                         text_to_display, content_area_size.x, content_area_size.y, &clip_rect_vec4);
         draw_list->PopClipRect();
     }
 
@@ -336,20 +459,20 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
             ImVec2 icon_visual_center = ImVec2(icon_visual_top_left.x + icon_size_screen.x * 0.5f,
                                                icon_visual_top_left.y + icon_size_screen.y * 0.5f);
 
-            ImU32 indicator_color = IM_COL32(200, 200, 200, 255);
-            float s = icon_size_screen.x * 0.4f; 
+            ImU32 indicator_color = GetThemeExpandCollapseIconColor(current_theme_);
+            float s = icon_size_screen.x * 0.4f;
 
-            if (node.is_expanded) { 
+            if (node.is_expanded) {
                  draw_list->AddTriangleFilled(
-                    ImVec2(icon_visual_center.x - s, icon_visual_center.y - s * 0.5f), 
-                    ImVec2(icon_visual_center.x + s, icon_visual_center.y - s * 0.5f), 
-                    ImVec2(icon_visual_center.x, icon_visual_center.y + s * 0.5f),     
+                    ImVec2(icon_visual_center.x - s, icon_visual_center.y - s * 0.5f),
+                    ImVec2(icon_visual_center.x + s, icon_visual_center.y - s * 0.5f),
+                    ImVec2(icon_visual_center.x, icon_visual_center.y + s * 0.5f),
                     indicator_color);
-            } else { 
+            } else {
                 draw_list->AddTriangleFilled(
-                    ImVec2(icon_visual_center.x - s * 0.5f, icon_visual_center.y - s), 
-                    ImVec2(icon_visual_center.x - s * 0.5f, icon_visual_center.y + s), 
-                    ImVec2(icon_visual_center.x + s * 0.5f, icon_visual_center.y),     
+                    ImVec2(icon_visual_center.x - s * 0.5f, icon_visual_center.y - s),
+                    ImVec2(icon_visual_center.x - s * 0.5f, icon_visual_center.y + s),
+                    ImVec2(icon_visual_center.x + s * 0.5f, icon_visual_center.y),
                     indicator_color);
             }
         }
@@ -363,22 +486,24 @@ void GraphEditor::RenderEdge(ImDrawList* draw_list, const GraphNode& parent_node
     ImVec2 start_screen = WorldToScreen(start_world);
     ImVec2 end_screen = WorldToScreen(end_world);
 
+    // Use theme-aware edge color
+    ImU32 edge_color = GetThemeEdgeColor(current_theme_);
     float line_thickness = std::max(1.0f, 1.5f * view_state_.zoom_scale);
-    draw_list->AddLine(start_screen, end_screen, IM_COL32(150, 150, 150, 255), line_thickness);
+    draw_list->AddLine(start_screen, end_screen, edge_color, line_thickness);
     
     float arrow_base_size = 8.0f;
     float arrow_size = std::max(2.0f, arrow_base_size * view_state_.zoom_scale);
     ImVec2 dir = ImVec2(end_screen.x - start_screen.x, end_screen.y - start_screen.y);
     float len = sqrtf(dir.x*dir.x + dir.y*dir.y);
 
-    if (len > arrow_size && arrow_size > 1.0f) { 
+    if (len > arrow_size && arrow_size > 1.0f) {
         dir.x /= len;
         dir.y /= len;
-        ImVec2 p1 = ImVec2(end_screen.x - dir.x * arrow_size - dir.y * arrow_size / 2.0f, 
+        ImVec2 p1 = ImVec2(end_screen.x - dir.x * arrow_size - dir.y * arrow_size / 2.0f,
                            end_screen.y - dir.y * arrow_size + dir.x * arrow_size / 2.0f);
-        ImVec2 p2 = ImVec2(end_screen.x - dir.x * arrow_size + dir.y * arrow_size / 2.0f, 
+        ImVec2 p2 = ImVec2(end_screen.x - dir.x * arrow_size + dir.y * arrow_size / 2.0f,
                            end_screen.y - dir.y * arrow_size - dir.x * arrow_size / 2.0f);
-        draw_list->AddTriangleFilled(end_screen, p1, p2, IM_COL32(150, 150, 150, 255));
+        draw_list->AddTriangleFilled(end_screen, p1, p2, edge_color);
     }
 }
 
@@ -560,16 +685,42 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
     }
 }
 
+// Helper function for automatic layout of child nodes
+static void LayoutChildrenRecursive(GraphNode* parent_node, int depth, float horizontal_spacing) {
+    if (!parent_node || parent_node->children.empty()) {
+        return;
+    }
+    
+    float child_y_start = parent_node->position.y + parent_node->size.y + 40.0f;
+    float child_x = parent_node->position.x + horizontal_spacing;
+    
+    for (size_t i = 0; i < parent_node->children.size(); ++i) {
+        GraphNode* child = parent_node->children[i];
+        if (child) {
+            child->position = ImVec2(child_x, child_y_start + (i * 100.0f));
+            
+            // Recursively layout grandchildren
+            LayoutChildrenRecursive(child, depth + 1, horizontal_spacing);
+        }
+    }
+}
+
 // This is a free function, not part of GraphEditor class.
 // It's a placeholder for how the graph view might be rendered using GraphManager.
-void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
+void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, ThemeType current_theme) {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImVec2 canvas_pos = ImGui::GetCursorScreenPos(); // Top-left of the current window's drawable area
     ImVec2 canvas_size = ImGui::GetContentRegionAvail(); // Size of the drawable area
 
-    // Basic background for the canvas
-    draw_list->AddRectFilled(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(30, 30, 40, 255));
-    draw_list->AddRect(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(200, 200, 200, 255));
+    // Create a temporary GraphEditor to get theme-aware colors
+    GraphEditor temp_editor_for_colors;
+    temp_editor_for_colors.SetCurrentTheme(current_theme);
+    
+    // Use theme-aware background and border colors
+    ImU32 bg_color = temp_editor_for_colors.GetThemeBackgroundColor(current_theme);
+    ImU32 border_color = temp_editor_for_colors.GetThemeNodeBorderColor(current_theme);
+    draw_list->AddRectFilled(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), bg_color);
+    draw_list->AddRect(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), border_color);
 
     // Create a GraphEditor instance to manage view state and rendering logic for this canvas
     // This might be a member of a higher-level GUI class, or created per view.
@@ -580,6 +731,7 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
     // Create a temporary GraphEditor to handle interactions
     GraphEditor temp_editor_for_interactions;
     temp_editor_for_interactions.GetViewState() = view_state; // Sync view state
+    temp_editor_for_interactions.SetCurrentTheme(current_theme); // Set theme for color consistency
     
     // Handle pan/zoom interactions
     temp_editor_for_interactions.HandlePanning(canvas_pos, canvas_size);
@@ -588,19 +740,9 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
     // Update the view_state with any changes from interactions
     view_state = temp_editor_for_interactions.GetViewState();
 
-    if (graph_manager.graph_layout_dirty && !graph_manager.all_nodes.empty()) {
-        std::map<int, float> level_x_offset;
-        ImVec2 layout_start_pos(20.0f, 20.0f); // Example starting position for layout
-        // Call layout for each root node
-        for (GraphNode* root_node : graph_manager.root_nodes) {
-            if (root_node) {
-                // CalculateNodePositionsRecursive(root_node, layout_start_pos, 50.0f, 100.0f, 0, level_x_offset, layout_start_pos);
-                // ^ This function is not part of GraphManager or GraphEditor, it's a global/static helper.
-                // It would need to be callable here. For now, assume layout is done.
-            }
-        }
-        graph_manager.graph_layout_dirty = false;
-    }
+    // Layout calculation is now handled in the main loop for automatic updates
+    // This ensures the graph stays synchronized even when the tab is not visible
+    // The layout should already be up-to-date when we reach this point
 
 
     // Rendering nodes and edges
@@ -626,19 +768,24 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
                                            node->size.y * temp_editor_for_render.GetViewState().zoom_scale);
 
             if (node_screen_size.x > 1.0f && node_screen_size.y > 1.0f) {
-                 draw_list->AddRectFilled(node_abs_screen_pos, 
-                                         ImVec2(node_abs_screen_pos.x + node_screen_size.x, node_abs_screen_pos.y + node_screen_size.y), 
-                                         node->color, 4.0f * temp_editor_for_render.GetViewState().zoom_scale);
-                draw_list->AddRect(node_abs_screen_pos, 
-                                   ImVec2(node_abs_screen_pos.x + node_screen_size.x, node_abs_screen_pos.y + node_screen_size.y), 
-                                   IM_COL32(200,200,200,255), 4.0f * temp_editor_for_render.GetViewState().zoom_scale);
+                // Use theme-aware colors for simplified rendering
+                ImU32 node_bg_color = temp_editor_for_render.GetThemeNodeColor(current_theme);
+                ImU32 node_border_color = temp_editor_for_render.GetThemeNodeBorderColor(current_theme);
+                ImU32 text_color = temp_editor_for_render.GetThemeTextColor(current_theme);
+                
+                draw_list->AddRectFilled(node_abs_screen_pos,
+                                        ImVec2(node_abs_screen_pos.x + node_screen_size.x, node_abs_screen_pos.y + node_screen_size.y),
+                                        node_bg_color, 4.0f * temp_editor_for_render.GetViewState().zoom_scale);
+                draw_list->AddRect(node_abs_screen_pos,
+                                   ImVec2(node_abs_screen_pos.x + node_screen_size.x, node_abs_screen_pos.y + node_screen_size.y),
+                                   node_border_color, 4.0f * temp_editor_for_render.GetViewState().zoom_scale);
                 
                 // Simplified text
                 ImVec2 text_render_pos = ImVec2(node_abs_screen_pos.x + 5, node_abs_screen_pos.y + 5);
                  if (node_screen_size.x > 10 && node_screen_size.y > 10) { // Only if node is somewhat visible
-                    AddTextTruncated(draw_list, ImGui::GetFont(), ImGui::GetFontSize() * temp_editor_for_render.GetViewState().zoom_scale, 
-                                     text_render_pos, IM_COL32(255,255,255,255), 
-                                     node->label.c_str(), node->label.c_str() + node->label.length(), 
+                    AddTextTruncated(draw_list, ImGui::GetFont(), ImGui::GetFontSize() * temp_editor_for_render.GetViewState().zoom_scale,
+                                     text_render_pos, text_color,
+                                     node->label.c_str(), node->label.c_str() + node->label.length(),
                                      node_screen_size.x - 10, nullptr);
                  }
             }
@@ -649,14 +796,15 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
                 if (child) {
                     bool child_is_visible = temp_editor_for_render.IsNodeVisible(*child, canvas_pos, canvas_size);
                     if (node_is_visible && child_is_visible) {
-                        // Simplified edge rendering
+                        // Simplified edge rendering with theme-aware color
+                        ImU32 edge_color = temp_editor_for_render.GetThemeEdgeColor(current_theme);
                         ImVec2 start_world = ImVec2(node->position.x + node->size.x / 2.0f, node->position.y + node->size.y);
                         ImVec2 end_world = ImVec2(child->position.x + child->size.x / 2.0f, child->position.y);
                         ImVec2 start_screen_rel = temp_editor_for_render.WorldToScreen(start_world);
                         ImVec2 end_screen_rel = temp_editor_for_render.WorldToScreen(end_world);
-                        draw_list->AddLine(ImVec2(canvas_pos.x + start_screen_rel.x, canvas_pos.y + start_screen_rel.y), 
-                                           ImVec2(canvas_pos.x + end_screen_rel.x, canvas_pos.y + end_screen_rel.y), 
-                                           IM_COL32(150,150,150,255), 1.5f * temp_editor_for_render.GetViewState().zoom_scale);
+                        draw_list->AddLine(ImVec2(canvas_pos.x + start_screen_rel.x, canvas_pos.y + start_screen_rel.y),
+                                           ImVec2(canvas_pos.x + end_screen_rel.x, canvas_pos.y + end_screen_rel.y),
+                                           edge_color, 1.5f * temp_editor_for_render.GetViewState().zoom_scale);
                     }
                     render_recursive_lambda(child);
                 }

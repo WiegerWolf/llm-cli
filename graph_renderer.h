@@ -3,6 +3,7 @@
 
 #include "extern/imgui/imgui.h"
 #include "gui_interface/graph_types.h" // For GraphNode and GraphViewState
+#include "gui_interface/gui_interface.h" // For ThemeType
 #include <vector> // For storing GraphNode pointers or objects
 #include <map>    // For managing nodes by ID
 
@@ -35,14 +36,28 @@ public:
 
     GraphViewState& GetViewState() { return view_state_; } // Getter for view_state
 
+    // Theme management
+    void SetCurrentTheme(ThemeType theme) { current_theme_ = theme; }
+    ThemeType GetCurrentTheme() const { return current_theme_; }
+
     // Culling helper
     bool IsNodeVisible(const GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size) const;
+
+    // Theme-aware color getters
+    ImU32 GetThemeNodeColor(ThemeType theme) const;
+    ImU32 GetThemeNodeBorderColor(ThemeType theme) const;
+    ImU32 GetThemeNodeSelectedBorderColor(ThemeType theme) const;
+    ImU32 GetThemeEdgeColor(ThemeType theme) const;
+    ImU32 GetThemeBackgroundColor(ThemeType theme) const;
+    ImU32 GetThemeTextColor(ThemeType theme) const;
+    ImU32 GetThemeExpandCollapseIconColor(ThemeType theme) const;
 
 private:
     GraphViewState view_state_;
     std::map<int, GraphNode*> nodes_;
     GraphNode* context_node_ = nullptr; // Node for which context menu is triggered
     GraphNode* reply_parent_node_ = nullptr; // Parent node for the new message
+    ThemeType current_theme_ = ThemeType::DARK; // Current theme for color selection
 
     // Buffer for the new message input modal
     static char newMessageBuffer_[1024 * 16];
@@ -58,6 +73,6 @@ private:
 };
 
 // Graph view rendering function that works with GraphManager
-void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state);
+void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, ThemeType current_theme);
 
 #endif // GRAPH_RENDERER_H
