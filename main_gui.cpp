@@ -898,7 +898,7 @@ int main(int, char**) {
           }
 
           // --- Graph View Tab ---
-          if (ImGui::BeginTabItem("Graph View")) {
+          if (s_is_graph_view_visible && ImGui::BeginTabItem("Graph View")) {
               // Populate graph if it's empty and this tab is active
               // A better check for "first selected" might involve a static bool flag
               // or checking ImGui::IsItemVisible() if BeginTabItem makes the content immediately visible.

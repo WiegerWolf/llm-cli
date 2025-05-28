@@ -577,10 +577,16 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
     // Here, we'll just use the graph_manager's internal nodes and view_state.
     // This is a conceptual merge; a real GraphEditor would encapsulate its own nodes_ map.
 
-    // Simulate interaction handling (normally part of GraphEditor or similar)
-    // graph_manager.graph_view_state.HandlePanning(canvas_pos, canvas_size);
-    // graph_manager.graph_view_state.HandleZooming(canvas_pos, canvas_size);
-    // graph_manager.graph_view_state.HandleNodeSelection(draw_list, canvas_pos, canvas_size);
+    // Create a temporary GraphEditor to handle interactions
+    GraphEditor temp_editor_for_interactions;
+    temp_editor_for_interactions.GetViewState() = view_state; // Sync view state
+    
+    // Handle pan/zoom interactions
+    temp_editor_for_interactions.HandlePanning(canvas_pos, canvas_size);
+    temp_editor_for_interactions.HandleZooming(canvas_pos, canvas_size);
+    
+    // Update the view_state with any changes from interactions
+    view_state = temp_editor_for_interactions.GetViewState();
 
     if (graph_manager.graph_layout_dirty && !graph_manager.all_nodes.empty()) {
         std::map<int, float> level_x_offset;
@@ -602,8 +608,8 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
     // and use a temporary GraphEditor-like logic for transformations and culling.
     // A more robust design would have GraphEditor take GraphManager's data.
 
-    GraphEditor temp_editor_for_render; // Temporary, to use its WorldToScreen, IsNodeVisible
-    temp_editor_for_render.GetViewState() = view_state; // Sync view state
+    // Use the same temp_editor_for_interactions for rendering transformations
+    GraphEditor& temp_editor_for_render = temp_editor_for_interactions;
 
     std::function<void(GraphNode*)> render_recursive_lambda;
     render_recursive_lambda = 
