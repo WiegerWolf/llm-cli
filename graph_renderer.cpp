@@ -5,6 +5,7 @@
 #include <limits>     // Required for std::numeric_limits
 #include <cstdio>     // For sprintf
 #include <cmath>      // For sqrtf, FLT_MAX
+#include <chrono>     // For std::chrono::system_clock
 
 // Helper to add text with truncation using ImFont::CalcWordWrapPositionA
 static void AddTextTruncated(ImDrawList* draw_list, ImFont* font, float font_size, const ImVec2& pos, ImU32 col, const char* text_begin, const char* text_end, float wrap_width, const ImVec4* cpu_fine_clip_rect) {
@@ -77,8 +78,33 @@ static void AddTextTruncated(ImDrawList* draw_list, ImFont* font, float font_siz
 }
 
 
+// Initialize static member
+char GraphEditor::newMessageBuffer_[1024 * 16] = "";
+
 GraphEditor::GraphEditor() {
     // view_state_ is already initialized by its default constructor
+    // context_node_ and reply_parent_node_ are initialized to nullptr by default
+}
+
+// Helper to generate unique IDs for new messages/nodes within the graph editor context
+// This is a simplified approach. A more robust system might involve a UUID generator
+// or coordination with a central data store.
+int GetNextUniqueID(const std::map<int, GraphNode*>& nodes) {
+    if (nodes.empty()) {
+        return 1;
+    }
+    // Find the maximum existing ID and add 1.
+    // This is not perfectly robust if nodes can be deleted and IDs reused,
+    // but for append-only or simple cases it works.
+    // A better way would be a dedicated counter if IDs are purely sequential.
+    // For now, let's assume IDs are somewhat dense or we just need a new, unused one.
+    int max_id = 0;
+    for(const auto& pair : nodes) {
+        if (pair.first > max_id) {
+            max_id = pair.first;
+        }
+    }
+    return max_id + 1;
 }
 
 void GraphEditor::AddNode(GraphNode* node) {
@@ -164,6 +190,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
 
 
     bool item_interacted_this_frame = false; // Tracks if any node button (select or expand) was clicked
+    context_node_ = nullptr; // Reset context node each frame before checking
 
     for (auto& pair : nodes_) {
         GraphNode* node_ptr = pair.second;
@@ -217,11 +244,33 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
                 node.is_selected = true;
                 view_state_.selected_node_id = node.message_id;
             }
-            item_interacted_this_frame = true; 
+            item_interacted_this_frame = true;
+        }
+         // After the main interactive element of the node (InvisibleButton for selection)
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) { // Check if the invisible button is hovered
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                context_node_ = node_ptr; // Store which node was right-clicked
+                // No ImGui::OpenPopupOnItemClick here, BeginPopupContextItem handles it if used after item.
+                // If OpenPopupOnItemClick is preferred, it would be:
+                // ImGui::OpenPopupOnItemClick("NodeContextMenu", ImGuiPopupFlags_MouseButtonRight);
+                // For now, we'll use BeginPopup directly in RenderNodeContextMenu, triggered by context_node_
+            }
         }
         if (ImGui::IsItemHovered() || ImGui::IsItemActive()) item_interacted_this_frame = true; // Count hover/active on node body
+        
+        // Alternative: Using BeginPopupContextItem directly after the InvisibleButton
+        // ImGui::SetNextWindowSize(ImVec2(200,0)); // Optional: set size for context menu
+        // if (ImGui::BeginPopupContextItem("NodeContextMenu_Specific")) { // Unique ID per item or a general one
+        //    context_node_ = node_ptr; // Set context node when popup is open for this item
+        //    if (ImGui::MenuItem("Reply from here##ctx")) {
+        //        reply_parent_node_ = context_node_;
+        //        ImGui::OpenPopup("NewMessageModal");
+        //    }
+        //    ImGui::EndPopup();
+        // }
 
-        ImGui::PopID(); 
+
+        ImGui::PopID();
     }
 
     if (clicked_on_background && !item_interacted_this_frame) {
@@ -404,8 +453,9 @@ void GraphEditor::Render(ImDrawList* draw_list, const ImVec2& canvas_screen_pos,
     HandlePanning(canvas_screen_pos, canvas_size); 
     HandleZooming(canvas_screen_pos, canvas_size);
     // HandleNodeSelection also handles expand/collapse button logic internally now.
-    HandleNodeSelection(draw_list, canvas_screen_pos, canvas_size); 
-    
+    HandleNodeSelection(draw_list, canvas_screen_pos, canvas_size);
+    RenderPopups(draw_list, canvas_screen_pos); // Call to render popups
+
     std::vector<GraphNode*> root_nodes;
     if (!nodes_.empty()) {
         for (auto& pair : nodes_) {
@@ -432,5 +482,138 @@ void GraphEditor::Render(ImDrawList* draw_list, const ImVec2& canvas_screen_pos,
         if (root_node_ptr) {
             RenderNodeRecursive(draw_list, *root_node_ptr, canvas_screen_pos);
         }
+    }
+}
+
+void GraphEditor::RenderPopups(ImDrawList* draw_list, const ImVec2& canvas_pos) {
+    // This function is called every frame.
+    // It checks if a context menu or modal should be open and renders it.
+
+    // 1. Node Context Menu
+    // Check if context_node_ was set by HandleNodeSelection (right-click)
+    if (context_node_) {
+        // We use a general popup ID and rely on context_node_ to know which node it's for.
+        // OpenPopupOnItemClick in HandleNodeSelection would typically open this.
+        // Or, if we want to control opening more directly:
+        ImGui::OpenPopup("NodeContextMenu");
+    }
+    RenderNodeContextMenu(); // Will only render if "NodeContextMenu" is open
+
+    // 2. New Message Modal
+    // RenderNewMessageModal will only render if "NewMessageModal" is open.
+    // It's opened by the context menu.
+    RenderNewMessageModal(draw_list, canvas_pos);
+}
+
+void GraphEditor::RenderNodeContextMenu() {
+    if (ImGui::BeginPopup("NodeContextMenu")) {
+        if (!context_node_) { // Should not happen if opened correctly
+            ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+            return;
+        }
+
+        ImGui::Text("Node: %d", context_node_->message_id); // Display info for context
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("Reply from here")) {
+            reply_parent_node_ = context_node_; // Store the parent for the new message
+            // Clear buffer before opening modal
+            memset(newMessageBuffer_, 0, sizeof(newMessageBuffer_));
+            ImGui::OpenPopup("NewMessageModal"); // Open the modal for new message input
+            ImGui::CloseCurrentPopup(); // Close the context menu itself
+        }
+        // Future items:
+        // if (ImGui::MenuItem("Edit Message")) { /* ... */ }
+        // if (ImGui::MenuItem("Delete Node")) { /* ... */ }
+        
+        ImGui::EndPopup();
+    } else {
+        // If popup is not open, ensure context_node_ is cleared if it's not used by modal logic
+        // This might not be strictly necessary if context_node_ is reset each frame in HandleNodeSelection
+    }
+}
+
+void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& canvas_pos) {
+    // Center the modal
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+    if (ImGui::BeginPopupModal("NewMessageModal", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (!reply_parent_node_) { // Should have a parent if this modal is open
+            ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error: No parent node specified for reply.");
+            if (ImGui::Button("Close")) {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+            return;
+        }
+
+        ImGui::Text("Replying to Node ID: %d", reply_parent_node_->message_id);
+        if (reply_parent_node_->message_data.content.length() > 50) {
+            ImGui::TextWrapped("Parent: %.50s...", reply_parent_node_->message_data.content.c_str());
+        } else {
+            ImGui::TextWrapped("Parent: %s", reply_parent_node_->message_data.content.c_str());
+        }
+        ImGui::Separator();
+
+        ImGui::Text("New Message:");
+        ImGui::InputTextMultiline("##NewMessageInput", newMessageBuffer_, sizeof(newMessageBuffer_),
+                                  ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8), ImGuiInputTextFlags_AllowTabInput);
+
+        if (ImGui::Button("Submit", ImVec2(120, 0))) {
+            std::string new_message_content = newMessageBuffer_;
+            if (!new_message_content.empty()) {
+                // 1. Create HistoryMessage (or equivalent)
+                HistoryMessage new_hist_msg;
+                new_hist_msg.message_id = GetNextUniqueID(nodes_); // Generate a new ID
+                new_hist_msg.type = MessageType::USER_REPLY; // As per plan
+                new_hist_msg.content = new_message_content;
+                new_hist_msg.model_id = std::nullopt; // Or inherit, as per full app logic
+                new_hist_msg.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()); // Current time
+                new_hist_msg.parent_id = reply_parent_node_->message_id;
+
+                // (The plan mentions adding this to a global list in main_gui.cpp.
+                //  This step is outside GraphEditor's direct responsibility but noted here.)
+
+                // 2. Create GraphNode
+                GraphNode* new_graph_node = new GraphNode(new_hist_msg.message_id, new_hist_msg);
+                new_graph_node->parent = reply_parent_node_;
+                new_graph_node->depth = reply_parent_node_->depth + 1;
+                
+                // Initial position (simple strategy: below parent)
+                new_graph_node->position = reply_parent_node_->position;
+                new_graph_node->position.y += reply_parent_node_->size.y + 50.0f; // Offset below parent
+                new_graph_node->position.x += 20.0f; // Slight x-offset for visibility if parent has other children
+
+                // Initial size (can be default or calculated later)
+                // For now, let's use a default size, or try to calculate based on text.
+                ImVec2 text_size = ImGui::CalcTextSize(new_hist_msg.content.c_str(), nullptr, false, 200.0f); // Max width 200
+                float padding = 10.0f; // Padding around text
+                new_graph_node->size = ImVec2(std::max(100.0f, text_size.x + 2 * padding), std::max(50.0f, text_size.y + 2 * padding + ImGui::GetTextLineHeightWithSpacing())); // Min size + space for ID/buttons
+
+                new_graph_node->is_expanded = true;
+                new_graph_node->is_selected = false;
+
+                // 3. Update Graph Structure
+                reply_parent_node_->children.push_back(new_graph_node);
+                AddNode(new_graph_node); // Add to global list of nodes in GraphEditor
+
+                // Clear buffer and close
+                memset(newMessageBuffer_, 0, sizeof(newMessageBuffer_));
+                ImGui::CloseCurrentPopup();
+                reply_parent_node_ = nullptr; // Reset for next time
+            } else {
+                // Maybe show a small error message "Message cannot be empty"
+                // For now, just don't submit.
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            memset(newMessageBuffer_, 0, sizeof(newMessageBuffer_));
+            ImGui::CloseCurrentPopup();
+            reply_parent_node_ = nullptr; // Reset for next time
+        }
+        ImGui::EndPopup();
     }
 }

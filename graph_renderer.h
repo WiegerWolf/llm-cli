@@ -25,6 +25,7 @@ public:
     void HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canvas_pos, const ImVec2& canvas_size);
     void DisplaySelectedNodeDetails(); // To be called by main GUI loop
     void HandleExpandCollapse(GraphNode& node, const ImVec2& canvas_pos); // Handles button logic for expand/collapse
+    void RenderPopups(ImDrawList* draw_list, const ImVec2& canvas_pos); // Renders context menus and modals
 
     ImVec2 WorldToScreen(const ImVec2& world_pos) const;
     ImVec2 ScreenToWorld(const ImVec2& screen_pos, const ImVec2& canvas_screen_pos) const;
@@ -34,6 +35,15 @@ public:
 private:
     GraphViewState view_state_;
     std::map<int, GraphNode*> nodes_;
+    GraphNode* context_node_ = nullptr; // Node for which context menu is triggered
+    GraphNode* reply_parent_node_ = nullptr; // Parent node for the new message
+
+    // Buffer for the new message input modal
+    static char newMessageBuffer_[1024 * 16];
+
+    // Methods for context menu and modal
+    void RenderNodeContextMenu();
+    void RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& canvas_pos); // Pass draw_list and canvas_pos if needed for node creation logic
 
     void RenderNode(ImDrawList* draw_list, GraphNode& node);
     void RenderEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node);

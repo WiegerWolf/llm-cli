@@ -23,7 +23,8 @@ enum class MessageType {
     USER_INPUT, // Note: User input is added directly in main_gui.cpp, not via this queue
     LLM_RESPONSE,
     STATUS,
-    ERROR
+    ERROR,
+    USER_REPLY // Added for graph-based replies
 };
 
 struct HistoryMessage {
@@ -31,6 +32,8 @@ struct HistoryMessage {
     MessageType type;
     std::string content;
     std::optional<std::string> model_id; // Changed for backward compatibility
+    long long timestamp;                 // Added for Step 4
+    int parent_id;                       // Added for Step 4, to link to the parent message ID. Use -1 or std::optional if no parent.
 };
 // --- End Message History Structure ---
 
