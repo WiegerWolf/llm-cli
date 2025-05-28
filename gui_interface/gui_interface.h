@@ -27,6 +27,7 @@ enum class MessageType {
 };
 
 struct HistoryMessage {
+    int message_id; // Or a suitable unique ID type like std::string for UUIDs
     MessageType type;
     std::string content;
     std::optional<std::string> model_id; // Changed for backward compatibility
