@@ -32,6 +32,9 @@ public:
 
     GraphViewState& GetViewState() { return view_state_; } // Getter for view_state
 
+    // Culling helper
+    bool IsNodeVisible(const GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size) const;
+
 private:
     GraphViewState view_state_;
     std::map<int, GraphNode*> nodes_;
@@ -48,7 +51,7 @@ private:
     void RenderNode(ImDrawList* draw_list, GraphNode& node);
     void RenderEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node);
     // Recursive rendering helper for nodes and their children if expanded
-    void RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, const ImVec2& canvas_pos);
+    void RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size);
 };
 
 #endif // GRAPH_RENDERER_H

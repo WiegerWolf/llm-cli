@@ -2,7 +2,7 @@
 
 #include <vector>
 #include <string> // Potentially, if HistoryMessage::message_id becomes std::string
-#include "imgui.h" // For ImVec2
+#include "../extern/imgui/imgui.h" // For ImVec2
 #include "gui_interface/gui_interface.h" // For HistoryMessage
 
 // Forward declare GraphNode if parent/children pointers cause issues with direct include

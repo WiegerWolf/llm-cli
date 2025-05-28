@@ -43,4 +43,4 @@ public:
 
 // Placeholder for the graph rendering function, to be defined elsewhere (e.g., graph_renderer.cpp)
 // It needs access to GraphManager, so it might take it as a parameter.
-void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state);
+// void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state); // Commented out to resolve conflict
