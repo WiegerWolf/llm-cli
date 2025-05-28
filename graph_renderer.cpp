@@ -617,3 +617,41 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
         ImGui::EndPopup();
     }
 }
+#include "graph_manager.h" // For GraphManager (if not already included via graph_renderer.h -> graph_types.h -> graph_manager.h path)
+
+// Placeholder for the main graph rendering function that uses GraphManager
+// This function will be called from the "Graph View" tab in main_gui.cpp
+void RenderGraphView(GraphManager&amp; graph_manager) {
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImVec2 canvas_pos = ImGui::GetCursorScreenPos();
+    ImVec2 canvas_size = ImGui::GetContentRegionAvail();
+
+    // Basic background for the canvas
+    draw_list->AddRectFilled(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(40, 40, 50, 255));
+    draw_list->AddRect(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(200, 200, 200, 255));
+
+    if (graph_manager.all_nodes.empty()) {
+        ImGui::TextWrapped("Graph is empty. Populate it from history or click 'Refresh Graph'.");
+    } else {
+        ImGui::Text("Graph View Placeholder. Rendering %zu nodes.", graph_manager.all_nodes.size());
+        // TODO: Implement actual node and edge rendering using graph_manager.all_nodes,
+        // graph_manager.root_node, and potentially a GraphEditor-like view state.
+
+        // Example: Iterate and display some node info (very basic)
+        // This is NOT a proper graph rendering, just a placeholder.
+        float y_offset = 10.0f;
+        for (const auto&amp; node_ptr : graph_manager.all_nodes) {
+            if (node_ptr) {
+                ImVec2 node_draw_pos = ImVec2(canvas_pos.x + 10, canvas_pos.y + y_offset);
+                // Simple text rendering for now
+                // Ensure text is clipped to canvas
+                ImGui::PushClipRect(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), true);
+                draw_list->AddText(node_draw_pos, IM_COL32(255,255,255,255), node_ptr->message_data.content.substr(0, 50).c_str());
+                ImGui::PopClipRect();
+                y_offset += 20.0f;
+                if (y_offset > canvas_size.y - 20.0f) break; // Stop if exceeding canvas height
+            }
+        }
+    }
+    // Interactions (panning, zooming, selection) would also be handled here or by a helper class.
+}

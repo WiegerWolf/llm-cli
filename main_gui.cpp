@@ -23,13 +23,15 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
 #include "graph_renderer.h" // For GraphEditor class
-// Note: graph_types.h is included by graph_renderer.h
-
+#include "graph_manager.h"  // For GraphManager class
+// Note: graph_types.h is included by graph_renderer.h and graph_manager.h
+ 
 // --- Graph Editor Instance & State ---
-static GraphEditor g_graph_editor; // Manages graph state and rendering
-static std::vector<GraphNode> s_graph_nodes; // Owns the actual node data
-static bool s_is_graph_view_visible = true; // To toggle graph view window
-static bool s_graph_data_initialized = false;
+static GraphEditor g_graph_editor; // Manages graph state and rendering (existing)
+static GraphManager g_graph_manager; // Manages graph data (new)
+static std::vector<GraphNode> s_graph_nodes; // Owns the actual node data (placeholder, to be replaced by g_graph_manager)
+static bool s_is_graph_view_visible = true; // To toggle graph view window (existing, might be adapted)
+static bool s_graph_data_initialized = false; // For placeholder data
 // Old static graph state variables (s_view_offset, s_is_panning_graph, etc.) are removed
 // as GraphEditor and its GraphViewState now manage this.
 // --- End Graph Editor Instance & State ---
@@ -755,216 +757,209 @@ int main(int, char**) {
       }
       // --- End Settings Area ---
   
-      // Calculate height for the output area dynamically
+      // Calculate height for the main content area (tabs) dynamically
       float spacing_between_settings_input = ImGui::GetStyle().ItemSpacing.y > 0 ? ImGui::GetStyle().ItemSpacing.y : 8.0f;
       const float bottom_elements_height = input_height + settings_height + spacing_between_settings_input;
   
-      // --- Output Area (Linear History) ---
-      ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
+      // --- Tab Bar for Views ---
+      if (ImGui::BeginTabBar("ViewModeTabBar", ImGuiTabBarFlags_None)) {
+          // --- Linear View Tab ---
+          if (ImGui::BeginTabItem("Linear View")) {
+              ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true); // Output Area (Linear History)
 
-      if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
-          ImGuiIO& io_output = ImGui::GetIO(); // Use a different io variable name if needed
-          ImGui::SetScrollY(ImGui::GetScrollY() - io_output.MouseDelta.y);
-          ImGui::SetScrollX(ImGui::GetScrollX() - io_output.MouseDelta.x);
+              if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+                  ImGuiIO& io_output = ImGui::GetIO();
+                  ImGui::SetScrollY(ImGui::GetScrollY() - io_output.MouseDelta.y);
+                  ImGui::SetScrollX(ImGui::GetScrollX() - io_output.MouseDelta.x);
+              }
+
+              // --- Selection State (Issue #26 / Phase 3 Update) ---
+              static bool is_selecting = false;
+              static int selecting_message_index = -1;
+              static ImVec2 selection_start_pos;
+              static int selection_start_char_index = -1;
+              static int selection_end_char_index = -1;
+
+              for (int i = 0; i < output_history.size(); ++i) {
+                  const auto& message = output_history[i];
+                  std::string display_text;
+                  ImVec4 text_color = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+                  bool use_color = false;
+
+                  if (message.type == MessageType::USER_INPUT) {
+                      text_color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
+                      display_text = "User: " + message.content;
+                      use_color = true;
+                  } else if (message.type == MessageType::STATUS) {
+                      text_color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
+                      display_text = "[STATUS] " + message.content;
+                      use_color = true;
+                  } else if (message.type == MessageType::ERROR) {
+                      display_text = "ERROR: " + message.content;
+                  } else if (message.type == MessageType::LLM_RESPONSE) {
+                      std::string prefix = "Assistant: ";
+                      if (message.model_id.has_value()) {
+                          const std::string& actual_model_id = message.model_id.value();
+                          if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
+                              prefix = "Assistant (Legacy Model): ";
+                          } else {
+                              std::optional<std::string> model_name_opt = db_manager.getModelNameById(actual_model_id);
+                              if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
+                                  prefix = "Assistant (" + model_name_opt.value() + "): ";
+                              } else {
+                                  prefix = "Assistant (" + actual_model_id + "): ";
+                              }
+                          }
+                      }
+                      display_text = prefix + message.content;
+                  } else {
+                      display_text = "[Unknown Type] " + message.content;
+                  }
+
+                  float wrap_width = ImGui::GetContentRegionAvail().x;
+                  ImVec2 text_size = ImGui::CalcTextSize(display_text.c_str(), NULL, false, wrap_width);
+                  float calculated_height = text_size.y;
+                  if (calculated_height < ImGui::GetTextLineHeight()) {
+                      calculated_height = ImGui::GetTextLineHeight();
+                  }
+
+                  std::string selectable_id = "##msg_" + std::to_string(i);
+                  ImVec2 text_pos = ImGui::GetCursorScreenPos();
+
+                  ImGui::Selectable(selectable_id.c_str(),
+                                    is_selecting && selecting_message_index == i,
+                                    ImGuiSelectableFlags_AllowItemOverlap,
+                                    ImVec2(wrap_width, calculated_height));
+
+                  if (ImGui::IsItemHovered()) {
+                      if (ImGui::IsMouseDragging(0) && !is_selecting) {
+                          is_selecting = true;
+                          selecting_message_index = i;
+                          selection_start_pos = ImGui::GetMousePos();
+                          selection_start_char_index = -1;
+                          selection_end_char_index = -1;
+                          ImGui::SetScrollY(ImGui::GetScrollY());
+                      }
+                  }
+
+                  if (!ImGui::IsMouseDown(0) && is_selecting) {
+                      if (selecting_message_index == i &&
+                          selection_start_char_index != -1 &&
+                          selection_end_char_index != -1 &&
+                          selection_start_char_index < selection_end_char_index)
+                      {
+                          std::string selected_substring = display_text.substr(
+                              selection_start_char_index,
+                              selection_end_char_index - selection_start_char_index
+                          );
+                          if (!selected_substring.empty()) {
+                              ImGui::SetClipboardText(selected_substring.c_str());
+                          }
+                      }
+                      is_selecting = false;
+                      selecting_message_index = -1;
+                      selection_start_char_index = -1;
+                      selection_end_char_index = -1;
+                  }
+
+                  if (is_selecting && selecting_message_index == i) {
+                      ImVec2 current_mouse_pos = ImGui::GetMousePos();
+                      ImVec2 selectable_min = ImGui::GetItemRectMin();
+                      ImVec2 selectable_max = ImGui::GetItemRectMax();
+
+                      ImVec2 rect_min = ImVec2(std::min(selection_start_pos.x, current_mouse_pos.x),
+                                               std::min(selection_start_pos.y, current_mouse_pos.y));
+                      ImVec2 rect_max = ImVec2(std::max(selection_start_pos.x, current_mouse_pos.x),
+                                               std::max(selection_start_pos.y, current_mouse_pos.y));
+
+                      rect_min.x = std::max(rect_min.x, selectable_min.x);
+                      rect_min.y = std::max(rect_min.y, selectable_min.y);
+                      rect_max.x = std::min(rect_max.x, selectable_max.x);
+                      rect_max.y = std::min(rect_max.y, selectable_max.y);
+
+                      if (rect_min.x < rect_max.x && rect_min.y < rect_max.y) {
+                          std::vector<ImRect> current_char_rects;
+                          bool indices_found = MapScreenCoordsToTextIndices(
+                              display_text.c_str(),
+                              wrap_width,
+                              selectable_min,
+                              rect_min,
+                              rect_max,
+                              selection_start_char_index,
+                              selection_end_char_index,
+                              current_char_rects);
+
+                          if (indices_found && selection_start_char_index != -1 && selection_end_char_index != -1 && selection_start_char_index < selection_end_char_index) {
+                              ImDrawList* draw_list_fg = ImGui::GetForegroundDrawList();
+                              for (int k = selection_start_char_index; k < selection_end_char_index; ++k) {
+                                  if (k >= 0 && k < current_char_rects.size()) {
+                                       draw_list_fg->AddRectFilled(current_char_rects[k].Min, current_char_rects[k].Max, ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
+                                  }
+                              }
+                          }
+                      } else {
+                           selection_start_char_index = -1;
+                           selection_end_char_index = -1;
+                      }
+                  }
+
+                  ImGui::SetCursorScreenPos(text_pos);
+                  if (use_color) {
+                      ImGui::PushStyleColor(ImGuiCol_Text, text_color);
+                  }
+                  ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrap_width);
+                  ImGui::TextWrapped("%s", display_text.c_str());
+                  ImGui::PopTextWrapPos();
+                  if (use_color) {
+                      ImGui::PopStyleColor();
+                  }
+              }
+              if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) {
+                  ImGui::SetScrollHereY(1.0f);
+                  new_output_added = false;
+              }
+
+              if (scroll_offsets.x != 0.0f || scroll_offsets.y != 0.0f) {
+                   ImGui::SetScrollY(ImGui::GetScrollY() + scroll_offsets.y);
+                   ImGui::SetScrollX(ImGui::GetScrollX() + scroll_offsets.x);
+              }
+
+              ImGui::EndChild(); // End Output Area (Linear View)
+              ImGui::EndTabItem();
+          }
+
+          // --- Graph View Tab ---
+          if (ImGui::BeginTabItem("Graph View")) {
+              // Populate graph if it's empty and this tab is active
+              // A better check for "first selected" might involve a static bool flag
+              // or checking ImGui::IsItemVisible() if BeginTabItem makes the content immediately visible.
+              if (g_graph_manager.all_nodes.empty() && ImGui::IsItemVisible()) {
+                   if (!output_history.empty()) { // Only populate if there's history
+                       g_graph_manager.PopulateGraphFromHistory(output_history);
+                   }
+              }
+
+              if (ImGui::Button("Refresh Graph")) {
+                  g_graph_manager.PopulateGraphFromHistory(output_history);
+              }
+              ImGui::SameLine();
+              ImGui::Text("Nodes: %zu", g_graph_manager.all_nodes.size());
+
+              // Call the main rendering function for the graph interface
+              // This function (RenderGraphView) will handle drawing nodes, edges, etc.
+              // It needs to be defined, likely in graph_renderer.cpp or similar.
+              // For now, it's declared in graph_manager.h.
+              // We need a child window for the graph rendering area to get a dedicated canvas.
+              ImGui::BeginChild("GraphCanvas", ImVec2(0, -bottom_elements_height - ImGui::GetFrameHeightWithSpacing()), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+              RenderGraphView(g_graph_manager); // This function will use ImGui::GetWindowDrawList(), canvas_pos, canvas_size
+              ImGui::EndChild();
+
+              ImGui::EndTabItem();
+          }
+          ImGui::EndTabBar();
       }
-
-      // --- Selection State (Issue #26 / Phase 3 Update) ---
-       static bool is_selecting = false;
-       static int selecting_message_index = -1;
-       static ImVec2 selection_start_pos; // Store where selection drag started
-       static int selection_start_char_index = -1; // Index of the first selected character
-       static int selection_end_char_index = -1;   // Index of the character AFTER the last selected one
-
-       // Iterate over HistoryMessage objects (Issue #8 Refactor / Issue #18 Color Fix / Issue #26 Wrap+Select Fix)
-       for (int i = 0; i < output_history.size(); ++i) {
-           const auto& message = output_history[i];
-           std::string display_text;
-           ImVec4 text_color = ImGui::GetStyleColorVec4(ImGuiCol_Text); // Default color
-           bool use_color = false;
-
-           // Determine text and color based on message type
-           if (message.type == MessageType::USER_INPUT) {
-               text_color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
-               display_text = "User: " + message.content;
-               use_color = true;
-           } else if (message.type == MessageType::STATUS) {
-               text_color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
-               display_text = "[STATUS] " + message.content;
-               use_color = true;
-           } else if (message.type == MessageType::ERROR) {
-                // Keep default text color for errors
-                display_text = "ERROR: " + message.content;
-           } else if (message.type == MessageType::LLM_RESPONSE) {
-                // Keep default text color for responses
-                std::string prefix = "Assistant: "; // Default prefix
-                // Check if model_id exists and fetch name/use ID
-                if (message.model_id.has_value()) {
-                    const std::string& actual_model_id = message.model_id.value();
-                    if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
-                        prefix = "Assistant (Legacy Model): ";
-                    } else {
-                        std::optional<std::string> model_name_opt = db_manager.getModelNameById(actual_model_id);
-                        if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
-                            prefix = "Assistant (" + model_name_opt.value() + "): "; // Use model name
-                        } else {
-                            prefix = "Assistant (" + actual_model_id + "): "; // Fallback to model ID
-                        }
-                    }
-                }
-                display_text = prefix + message.content;
-           } else {
-                // Handle potential unknown message types gracefully
-                display_text = "[Unknown Type] " + message.content;
-           }
-
-           // Calculate selectable height based on wrapped text
-           float wrap_width = ImGui::GetContentRegionAvail().x;
-           ImVec2 text_size = ImGui::CalcTextSize(display_text.c_str(), NULL, false, wrap_width);
-           // Use text_size.y directly, Selectable doesn't need extra FramePadding like InputTextMultiline
-           float calculated_height = text_size.y;
-            // Add a minimum height to prevent zero-height selectables for empty messages
-           if (calculated_height < ImGui::GetTextLineHeight()) {
-               calculated_height = ImGui::GetTextLineHeight();
-           }
-
-
-           // Create a unique ID for the selectable
-           std::string selectable_id = "##msg_" + std::to_string(i);
-
-           // Store cursor position before selectable to position text later
-           ImVec2 text_pos = ImGui::GetCursorScreenPos();
-
-           // Render the selectable area
-           ImGui::Selectable(selectable_id.c_str(),
-                             is_selecting && selecting_message_index == i, // Highlight if it's the one being selected
-                             ImGuiSelectableFlags_AllowItemOverlap,        // Allow text to be drawn over it
-                             ImVec2(wrap_width, calculated_height));
-
-           // --- Input Handling for Selection (Phase 1: Drag Detection) ---
-           if (ImGui::IsItemHovered()) {
-               // Start selection on drag *within* this selectable
-               if (ImGui::IsMouseDragging(0) && !is_selecting) { // Start drag only if not already selecting
-                   is_selecting = true;
-                   selecting_message_index = i;
-                   selection_start_pos = ImGui::GetMousePos(); // Record start position
-                   selection_start_char_index = -1; // Reset indices on new selection start
-                   selection_end_char_index = -1;
-                   // Prevent parent window scroll while dragging *within* the selectable
-                   ImGui::SetScrollY(ImGui::GetScrollY());
-               }
-           }
-
-           // Stop selection on mouse release (anywhere)
-           if (!ImGui::IsMouseDown(0) && is_selecting) {
-               // --- Clipboard Copy Logic (Phase 3) ---
-               if (selecting_message_index == i && // Ensure this is the message that was being selected
-                   selection_start_char_index != -1 &&
-                   selection_end_char_index != -1 &&
-                   selection_start_char_index < selection_end_char_index)
-               {
-                   // Extract the substring
-                   std::string selected_substring = display_text.substr(
-                       selection_start_char_index,
-                       selection_end_char_index - selection_start_char_index
-                   );
-
-                   // Copy to clipboard
-                   if (!selected_substring.empty()) {
-                       ImGui::SetClipboardText(selected_substring.c_str());
-                   }
-               }
-               // --- End Clipboard Copy Logic ---
-
-               // Reset selection state *after* potential clipboard copy
-               is_selecting = false;
-               selecting_message_index = -1;
-               selection_start_char_index = -1;
-               selection_end_char_index = -1;
-           }
-           // --- End Input Handling ---
-
-           // --- Selection Rendering & Coordinate Mapping (Phase 2 & 3 / Phase 5 Update) ---
-           if (is_selecting && selecting_message_index == i) {
-               ImVec2 current_mouse_pos = ImGui::GetMousePos();
-               ImVec2 selectable_min = ImGui::GetItemRectMin(); // Bounds of the *last* item (the Selectable)
-               ImVec2 selectable_max = ImGui::GetItemRectMax();
-
-               // Determine selection rectangle corners, ensuring min is top-left and max is bottom-right
-               ImVec2 rect_min = ImVec2(std::min(selection_start_pos.x, current_mouse_pos.x),
-                                        std::min(selection_start_pos.y, current_mouse_pos.y));
-               ImVec2 rect_max = ImVec2(std::max(selection_start_pos.x, current_mouse_pos.x),
-                                        std::max(selection_start_pos.y, current_mouse_pos.y));
-
-               // Clamp the selection rectangle to the bounds of the current selectable item
-               rect_min.x = std::max(rect_min.x, selectable_min.x);
-               rect_min.y = std::max(rect_min.y, selectable_min.y);
-               rect_max.x = std::min(rect_max.x, selectable_max.x);
-               rect_max.y = std::min(rect_max.y, selectable_max.y);
-
-               // Only draw and map if the clamped rectangle is valid (min < max)
-               if (rect_min.x < rect_max.x && rect_min.y < rect_max.y) {
-                   // Phase 5: Declare vector to store character rects for this message
-                   std::vector<ImRect> current_char_rects;
-
-                   // --- Coordinate Mapping (Phase 3 / Phase 5 Update) ---
-                   // Call the helper function to map screen coords to text indices AND get char rects
-                   bool indices_found = MapScreenCoordsToTextIndices(
-                       display_text.c_str(),
-                       wrap_width,
-                       selectable_min, // Pass the top-left corner of the selectable
-                       rect_min,       // Pass the clamped selection rectangle
-                       rect_max,
-                       selection_start_char_index, // Update state variables
-                       selection_end_char_index,
-                       current_char_rects);        // Phase 5: Get char rects
-                   // --- End Coordinate Mapping ---
-
-                   // --- Selection Rendering (Phase 5: Per-Character Highlighting) ---
-                   if (indices_found && selection_start_char_index != -1 && selection_end_char_index != -1 && selection_start_char_index < selection_end_char_index) {
-                       ImDrawList* draw_list_fg = ImGui::GetForegroundDrawList(); // Draw on top
-                       for (int k = selection_start_char_index; k < selection_end_char_index; ++k) {
-                           // Ensure index is valid before accessing (safety check)
-                           if (k >= 0 && k < current_char_rects.size()) {
-                                draw_list_fg->AddRectFilled(current_char_rects[k].Min, current_char_rects[k].Max, ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
-                           }
-                       }
-                   }
-                   // --- End Selection Rendering ---
-
-               } else {
-                    // If the rectangle becomes invalid (e.g., mouse moved outside), reset indices
-                    selection_start_char_index = -1;
-                    selection_end_char_index = -1;
-               }
-           }
-           // --- End Selection Rendering & Coordinate Mapping ---
-
-           // Render the text *over* the selectable area
-           ImGui::SetCursorScreenPos(text_pos); // Reset cursor to where it was before the Selectable
-           if (use_color) {
-               ImGui::PushStyleColor(ImGuiCol_Text, text_color);
-           }
-           ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrap_width); // Ensure TextWrapped respects the width
-           ImGui::TextWrapped("%s", display_text.c_str());
-           ImGui::PopTextWrapPos();
-           if (use_color) {
-               ImGui::PopStyleColor();
-           }
-       }
-       // Auto-scroll based on the flag set by processDisplayQueue
-       if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) { // Only auto-scroll if near the bottom
-           ImGui::SetScrollHereY(1.0f); // Scroll to bottom if new content added
-           new_output_added = false; // Reset flag
-       }
-
-       // Apply accumulated scroll offsets (Comment 1)
-       if (scroll_offsets.x != 0.0f || scroll_offsets.y != 0.0f) {
-            ImGui::SetScrollY(ImGui::GetScrollY() + scroll_offsets.y);
-            ImGui::SetScrollX(ImGui::GetScrollX() + scroll_offsets.x);
-       }
-
-       ImGui::EndChild(); // End Output Area
-
+      // --- End Tab Bar ---
+  
         // --- Input Area ---
         bool enter_pressed = false;
         bool send_pressed = false;

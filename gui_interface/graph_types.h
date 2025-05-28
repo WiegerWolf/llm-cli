@@ -25,6 +25,7 @@ struct GraphNode {
     GraphNode* parent;                       // Pointer to the parent node in the primary branch
     std::vector<GraphNode*> children;          // Pointers to direct children in the primary branch
     std::vector<GraphNode*> alternative_paths; // Pointers to nodes representing alternative paths/branches from this message
+    ImU32 color;                    // Node color
 
     // Layout Helper
     int depth;                       // Depth in the graph, useful for layout algorithms
@@ -34,7 +35,7 @@ struct GraphNode {
         : message_id(id), message_data(msg_data),
           position(ImVec2(0,0)), size(ImVec2(0,0)), // Default visual properties
           is_expanded(true), is_selected(false),   // Default states
-          parent(nullptr), depth(0) {}             // Default relational/layout properties
+          parent(nullptr), depth(0), color(IM_COL32(200, 200, 200, 255)) {} // Default relational/layout properties and color
 };
 
 struct GraphViewState {
