@@ -1,0 +1,84 @@
+# Step 7: Layout (Initial) & Basic Performance Plan
+
+## 1. Initial Layout Algorithm (Simple Top-Down Tree)
+- [ ] **Algorithm Overview:** Implement a recursive top-down layout. Parents are positioned above their children; siblings are arranged horizontally from left to right.
+- [ ] **Layout Function Definition:**
+    - [ ] Define a function, for example: `void CalculateNodePositionsRecursive(GraphNode* node, ImVec2 current_pos, float x_spacing, float y_spacing, int depth, std::map<int, float>& level_x_offset, const ImVec2& canvas_start_pos)`
+        - `node`: The current node to process.
+        - `current_pos`: Base position for the current node (primarily for the first node at each level, or can be the parent's position).
+        - `x_spacing`: Horizontal space between sibling nodes.
+        - `y_spacing`: Vertical space between parent and child levels.
+        - `depth`: Current depth of the node in the tree.
+        - `level_x_offset`: A map where `level_x_offset[depth]` stores the next available x-coordinate for placing a node at that `depth`.
+        - `canvas_start_pos`: The top-left starting point for the entire graph layout on the canvas.
+- [ ] **Layout Function Logic:**
+    - [ ] The function will:
+        - [ ] Set `node->position.x = canvas_start_pos.x + level_x_offset[depth]`.
+        - [ ] Set `node->position.y = canvas_start_pos.y + depth * y_spacing`.
+        - [ ] Update the x-offset for the current level to position the next sibling: `level_x_offset[depth] += node->size.x + x_spacing`.
+        - [ ] For each child of `node` (if `node->is_expanded`):
+            - [ ] Recursively call `CalculateNodePositionsRecursive` for the child.
+            - [ ] The child's `depth` will be `depth + 1`.
+            - [ ] The `current_pos` for the child's recursive call can be `node->position` or `canvas_start_pos` depending on how `level_x_offset` is managed for absolute vs relative positioning. The key is that `level_x_offset` at `depth + 1` correctly places the child.
+- [ ] **Alternative/Refined Sibling Placement (Centering children under parent - more complex):**
+    - [ ] (Consider for future, or if initial simpler version is insufficient) To center children under a parent, a two-pass approach or pre-calculation of subtree widths would be needed.
+    - [ ] Pass 1: Calculate required width for each subtree.
+    - [ ] Pass 2: Position nodes, using calculated widths to center children.
+    - [ ] For initial simplicity, the direct left-to-right placement using `level_x_offset` is preferred.
+- [ ] **Root Node(s) Placement:**
+    - [ ] Initialize `level_x_offset` map (likely all zeros).
+    - [ ] For each root node in the graph:
+        - [ ] Call `CalculateNodePositionsRecursive(root_node, canvas_start_pos, x_spacing, y_spacing, 0, level_x_offset, canvas_start_pos)`.
+        - `canvas_start_pos` could be e.g., `ImVec2(20, 20)`.
+- [ ] **Node Size (`GraphNode::size`):**
+    - [ ] Assume `GraphNode::size` (width and height) is predetermined or calculated before the layout algorithm runs (e.g., fixed size, or sized based on content like text length).
+    - [ ] The layout algorithm uses `node->size.x` for horizontal spacing and potentially `node->size.y` if vertical spacing is non-uniform (though `y_spacing` is typically uniform per level).
+- [ ] **Triggering Layout Calculation:**
+    - [ ] Call the layout algorithm:
+        - [ ] After the initial graph data is populated.
+        - [ ] After a node is added to the graph.
+        - [ ] After a node is removed from the graph.
+        - [ ] After a node's `is_expanded` state changes (expanding/collapsing children), as this affects the layout of subsequent nodes and subtrees.
+- [ ] **File Structure for Layout Logic:**
+    - [ ] Plan for layout functions to reside in dedicated files (e.g., `graph_layout.h` and `graph_layout.cpp`).
+    - [ ] Alternatively, integrate within an existing graph management class if the layout logic is tightly coupled.
+
+## 2. Basic Rendering Performance Considerations
+- [ ] **View Culling (Frustum Culling):**
+    - [ ] **Objective:** Avoid rendering nodes and edges that are not currently visible within the graph canvas viewport.
+    - [ ] **Process (in the main graph rendering loop, before calling `RenderGraphNode` for each node):**
+        - [ ] **Get Visible Canvas Rectangle:**
+            - [ ] Obtain the screen-space coordinates of the visible area of the graph canvas. This can be done using ImGui functions like `ImGui::GetWindowPos()` and `ImGui::GetWindowSize()` if the graph is in its own child window, or `ImGui::GetClipRectMin()` and `ImGui::GetClipRectMax()` if using `ImGui::PushClipRect` for a specific drawing region.
+        - [ ] **Transform Node Bounding Box:**
+            - [ ] For each node, take its world-space `node->position` (as calculated by the layout algorithm) and `node->size`.
+            - [ ] Apply the current graph `pan_offset` (translation) and `zoom_scale` to transform these world coordinates into screen-space coordinates.
+            - [ ] Node screen-space top-left: `(node->position.x * zoom_scale) + pan_offset.x`
+            - [ ] Node screen-space top-left: `(node->position.y * zoom_scale) + pan_offset.y`
+            - [ ] Node screen-space size: `node->size * zoom_scale`
+        - [ ] **Intersection Test:**
+            - [ ] Check if the node's transformed screen-space bounding box (defined by its screen-space top-left and screen-space size) intersects with the visible canvas rectangle.
+        - [ ] **Conditional Rendering:**
+            - [ ] If the node's bounding box does not intersect the visible canvas rectangle, skip calling `RenderGraphNode(node)` for this node.
+            - [ ] Also, skip rendering edges connected to this culled node (see Edge Culling).
+- [ ] **Edge Culling:**
+    - [ ] **Parent Culled:** If a parent node is culled (not visible), then edges connecting it to its children should also not be rendered.
+    - [ ] **Child Culled:** If a child node is culled but its parent is visible, the edge connecting them might still be partially visible if it extends from the visible parent into the off-screen area where the child is.
+        - [ ] **Initial Simplification:** For the initial implementation, if either the source node or the target node of an edge is culled, the edge itself can be culled (i.e., not rendered).
+        - [ ] **More Accurate (Future):** Clip edges against the viewport boundaries if one connected node is visible and the other is not.
+- [ ] **Limit Detailed Rendering at High Zoom-Out Levels (Level of Detail - LOD):**
+    - [ ] **Concept:** When the graph is zoomed out very far, rendering full details for each node (e.g., text, complex shapes) can be slow and visually cluttered.
+    - [ ] **Plan (Future Consideration - Note it down for now):**
+        - [ ] Inside `RenderGraphNode`, check the current `zoom_scale`.
+        - [ ] If `zoom_scale` is below a certain threshold (e.g., nodes appear very small), switch to a simplified rendering mode for nodes (e.g., draw only a solid colored rectangle, omit text and icons).
+        - [ ] For the initial implementation, rendering full detail at all zoom levels is acceptable.
+
+## 3. Data Iteration and Storage
+- [ ] **Node Storage and Iteration:**
+    - [ ] For the initial implementation, storing graph nodes in a standard container like `std::vector<GraphNode*>` (or `std::vector<std::unique_ptr<GraphNode>>`) and iterating through it for layout and rendering is acceptable.
+- [ ] **Future Performance Note (for very large graphs):**
+    - [ ] Acknowledge that if the number of nodes becomes extremely large (e.g., thousands or tens of thousands), iterating over a flat list for culling and rendering can become a bottleneck.
+    - [ ] In such scenarios, spatial data structures (e.g., quadtrees, k-d trees) could be considered to accelerate finding visible nodes or nodes within a certain region. This is out of scope for the initial implementation but worth noting as a potential future optimization path.
+- [ ] **ImDrawList Efficiency:**
+    - [ ] `ImGui::GetWindowDrawList()` provides an `ImDrawList` which is generally very efficient for batching draw calls.
+    - [ ] For now, with simple node rendering (rectangles, text), this should perform well.
+    - [ ] Note that extremely complex individual node rendering (many draw calls per node) could become a bottleneck later, but this is not anticipated with the current planned node design.
