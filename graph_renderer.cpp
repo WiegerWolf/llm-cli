@@ -486,22 +486,23 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
     ImVec2 final_draw_pos = node_pos_screen_relative_to_canvas;
     ImVec2 node_end_pos = ImVec2(final_draw_pos.x + node_size_screen.x, final_draw_pos.y + node_size_screen.y);
 
-    // Use theme-aware colors instead of hardcoded values
-    ImU32 bg_color = GetThemeNodeColor(current_theme_);
-    ImU32 border_color = GetThemeNodeBorderColor(current_theme_);
-    float border_thickness = std::max(1.0f, 1.0f * view_state_.zoom_scale);
+    // Remove bubble/box drawing - comment out AddRectFilled and AddRect calls
+    // ImU32 bg_color = GetThemeNodeColor(current_theme_);
+    // ImU32 border_color = GetThemeNodeBorderColor(current_theme_);
+    // float border_thickness = std::max(1.0f, 1.0f * view_state_.zoom_scale);
 
-    if (node.is_selected) {
-        border_color = GetThemeNodeSelectedBorderColor(current_theme_);
-        border_thickness = std::max(1.0f, 2.0f * view_state_.zoom_scale);
-    }
-    float rounding = std::max(0.0f, 4.0f * view_state_.zoom_scale);
-    draw_list->AddRectFilled(final_draw_pos, node_end_pos, bg_color, rounding); 
-    draw_list->AddRect(final_draw_pos, node_end_pos, border_color, rounding, 0, border_thickness);
+    // if (node.is_selected) {
+    //     border_color = GetThemeNodeSelectedBorderColor(current_theme_);
+    //     border_thickness = std::max(1.0f, 2.0f * view_state_.zoom_scale);
+    // }
+    // float rounding = std::max(0.0f, 4.0f * view_state_.zoom_scale);
+    // draw_list->AddRectFilled(final_draw_pos, node_end_pos, bg_color, rounding);
+    // draw_list->AddRect(final_draw_pos, node_end_pos, border_color, rounding, 0, border_thickness);
 
-    float padding = std::max(15.0f, 20.0f * view_state_.zoom_scale); // Match the padding used in size calculation
-    ImVec2 text_pos = ImVec2(final_draw_pos.x + padding, final_draw_pos.y + padding);
-    ImVec2 content_area_size = ImVec2(node_size_screen.x - 2 * padding, node_size_screen.y - 2 * padding);
+    // Use minimal padding for text-only nodes (5-10px instead of 20px)
+    float padding = std::max(5.0f, 8.0f * view_state_.zoom_scale);
+    ImVec2 text_pos = ImVec2(final_draw_pos.x, final_draw_pos.y); // Position text at node origin
+    ImVec2 content_area_size = ImVec2(node_size_screen.x, node_size_screen.y); // Use full node size for text
     
     bool has_children_or_alternatives = !node.children.empty() || !node.alternative_paths.empty();
     float icon_area_width = 0.0f;
@@ -515,9 +516,10 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
     content_area_size.y = std::max(0.0f, content_area_size.y);
     
     if (content_area_size.x > 1.0f && content_area_size.y > 1.0f) {
-        ImVec4 clip_rect_vec4(final_draw_pos.x + padding, final_draw_pos.y + padding,
-                              final_draw_pos.x + padding + content_area_size.x,
-                              final_draw_pos.y + padding + content_area_size.y);
+        // Update clipping rectangle to match new smaller text bounds
+        ImVec4 clip_rect_vec4(final_draw_pos.x, final_draw_pos.y,
+                              final_draw_pos.x + content_area_size.x,
+                              final_draw_pos.y + content_area_size.y);
         draw_list->PushClipRect(ImVec2(clip_rect_vec4.x, clip_rect_vec4.y), ImVec2(clip_rect_vec4.z, clip_rect_vec4.w), true);
 
         // Use the full content from label (which now contains the formatted message)
@@ -528,7 +530,12 @@ void GraphEditor::RenderNode(ImDrawList* draw_list, GraphNode& node) {
         float scaled_font_size = base_font_size * view_state_.zoom_scale;
         scaled_font_size = std::max(6.0f, std::min(scaled_font_size, 72.0f));
         
+        // Add selection visual feedback for text-only nodes
         ImU32 text_color = GetThemeTextColor(current_theme_);
+        if (node.is_selected) {
+            // Use selection border color for text when node is selected
+            text_color = GetThemeNodeSelectedBorderColor(current_theme_);
+        }
         
         // Use proper text wrapping instead of truncation for full content display
         // Ensure minimum content area size for proper text rendering
@@ -610,6 +617,8 @@ static ImVec2 CalculateOptimalControlPoint(const ImVec2& start, const ImVec2& en
 }
 
 void GraphEditor::RenderBezierEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node, bool is_alternative_path) {
+    // Update edge connection points to connect to text bounds rather than large rectangles
+    // For text-only nodes, connect from bottom center of parent to top center of child
     ImVec2 start_world = ImVec2(parent_node.position.x + parent_node.size.x / 2.0f, parent_node.position.y + parent_node.size.y);
     ImVec2 end_world = ImVec2(child_node.position.x + child_node.size.x / 2.0f, child_node.position.y);
 

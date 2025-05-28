@@ -61,6 +61,9 @@ public:
     // void RenderGraphView(); // This will likely be a free function or part of a different class
 };
 
+// Helper function to calculate dynamic node size based on content
+ImVec2 CalculateNodeSize(const std::string& content);
+
 // Placeholder for the graph rendering function, to be defined elsewhere (e.g., graph_renderer.cpp)
 // It needs access to GraphManager, so it might take it as a parameter.
 // void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state); // Commented out to resolve conflict

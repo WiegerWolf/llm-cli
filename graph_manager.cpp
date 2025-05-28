@@ -11,35 +11,29 @@ extern std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceM
 // Helper function to calculate dynamic node size based on content
 ImVec2 CalculateNodeSize(const std::string& content) {
     if (content.empty()) {
-        return ImVec2(300.0f, 100.0f); // Larger minimum size for empty content
+        return ImVec2(80.0f, 20.0f); // Minimal size for empty content (text-only)
     }
     
-    // Calculate text size with wrapping
-    float max_width = 500.0f; // Increased maximum node width
-    float min_width = 300.0f; // Increased minimum width for better readability
-    float min_height = 100.0f; // Increased minimum node height
-    float padding = 20.0f; // Increased internal padding
+    // Calculate text size with minimal padding for text-only nodes
+    float max_width = 400.0f; // Reasonable maximum width for text
+    float min_width = 50.0f; // Minimal width - just enough for text
+    float min_height = 20.0f; // Minimal height - just enough for text
+    float padding = 10.0f; // Minimal padding (5-10px as specified)
     
     // Calculate the optimal width first
     ImVec2 single_line_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, FLT_MAX);
-    float node_width = std::max(min_width, std::min(max_width, single_line_size.x + 2 * padding));
+    float node_width = std::max(min_width, std::min(max_width, single_line_size.x + padding));
     
     // Now calculate height with the determined width
-    float effective_width = node_width - 2 * padding;
+    float effective_width = node_width - padding;
     ImVec2 wrapped_text_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, effective_width);
-    float node_height = std::max(min_height, wrapped_text_size.y + 2 * padding);
+    float node_height = std::max(min_height, wrapped_text_size.y + padding);
     
-    // Add extra height for expand/collapse icons and better spacing
-    node_height += 30.0f;
+    // Remove extra +30px height for expand/collapse icons - size tightly around text
+    // No additional height needed for text-only nodes
     
-    // Ensure reasonable aspect ratio - don't make nodes too tall and narrow
-    if (node_height > node_width * 1.5f) {
-        node_width = std::min(max_width, node_height / 1.5f);
-        // Recalculate height with new width
-        effective_width = node_width - 2 * padding;
-        wrapped_text_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, effective_width);
-        node_height = std::max(min_height, wrapped_text_size.y + 2 * padding + 30.0f);
-    }
+    // Remove aspect ratio constraints - let text determine natural size
+    // Text-only nodes should be sized exactly to their content
     
     return ImVec2(node_width, node_height);
 }
