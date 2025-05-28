@@ -22,7 +22,18 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
- 
+#include "graph_renderer.h" // For graph rendering functions
+// Note: graph_types.h is included by graph_renderer.h
+// --- Graph View State (Step 2 Rendering) ---
+static std::vector<GraphNode> s_graph_nodes;
+static ImVec2 s_view_offset = ImVec2(0.0f, 0.0f);
+static bool s_is_graph_view_visible = true; // To toggle graph view window
+static bool s_is_panning_graph = false;
+static ImVec2 s_pan_start_mouse_pos_graph;
+static ImVec2 s_pan_start_view_offset_graph;
+static bool s_graph_data_initialized = false;
+// --- End Graph View State ---
+
 // --- Theme State (Issue #18) ---
 static ThemeType currentTheme = ThemeType::DARK; // Default theme
  
@@ -434,6 +445,44 @@ int main(int, char**) {
     client.setActiveModel(current_gui_selected_model_id);
     // --- End Model Selection GUI State ---
 
+    // --- Initialize Placeholder Graph Data (Step 2 Rendering) ---
+    if (!s_graph_data_initialized) {
+        HistoryMessage msg1_data; msg1_data.message_id = 1; msg1_data.content = "Node 1: Root";
+        GraphNode node1(1, msg1_data);
+        node1.position = ImVec2(100, 50); node1.size = ImVec2(150, 60);
+
+        HistoryMessage msg2_data; msg2_data.message_id = 2; msg2_data.content = "Node 2: Child of 1. This text is a bit longer to test truncation.";
+        GraphNode node2(2, msg2_data);
+        node2.position = ImVec2(50, 150); node2.size = ImVec2(180, 80);
+
+        HistoryMessage msg3_data; msg3_data.message_id = 3; msg3_data.content = "Node 3: Another Child of 1";
+        GraphNode node3(3, msg3_data);
+        node3.position = ImVec2(250, 150); node3.size = ImVec2(160, 70);
+        node3.is_expanded = false; // Test expansion indicator
+
+        HistoryMessage msg4_data; msg4_data.message_id = 4; msg4_data.content = "Node 4: Child of 3";
+        GraphNode node4(4, msg4_data);
+        node4.position = ImVec2(230, 250); node4.size = ImVec2(150,60);
+
+        s_graph_nodes.push_back(node1); // idx 0
+        s_graph_nodes.push_back(node2); // idx 1
+        s_graph_nodes.push_back(node3); // idx 2
+        s_graph_nodes.push_back(node4); // idx 3
+
+        // Establish connections (manually for placeholder)
+        // Node 1 is parent of Node 2 and Node 3
+        s_graph_nodes[0].children.push_back(&s_graph_nodes[1]);
+        s_graph_nodes[1].parent = &s_graph_nodes[0];
+        s_graph_nodes[0].children.push_back(&s_graph_nodes[2]);
+        s_graph_nodes[2].parent = &s_graph_nodes[0];
+
+        // Node 3 is parent of Node 4
+        s_graph_nodes[2].children.push_back(&s_graph_nodes[3]);
+        s_graph_nodes[3].parent = &s_graph_nodes[2];
+        
+        s_graph_data_initialized = true;
+    }
+    // --- End Initialize Placeholder Graph Data ---
 
     GLFWwindow* window = gui_ui.getWindow(); // Get the window handle
     // Apply initial theme (Issue #18)
@@ -445,7 +494,7 @@ int main(int, char**) {
     std::vector<HistoryMessage> output_history; // Updated for Issue #8
     static bool initial_focus_set = false; // Added for Issue #5
     static bool request_input_focus = false;
-
+ 
     // --- Main Render Loop ---
     while (!glfwWindowShouldClose(window)) {
         // Poll and handle events (inputs, window resize, etc.)
@@ -949,7 +998,12 @@ int main(int, char**) {
 
                 // Add user input to history (Issue #8 Refactor)
 // Add the user's message to the history for display
-                output_history.push_back({MessageType::USER_INPUT, std::string(input_buf)});
+                HistoryMessage user_msg;
+                user_msg.message_id = static_cast<int>(output_history.size()); // Simple ID for now
+                user_msg.type = MessageType::USER_INPUT;
+                user_msg.content = std::string(input_buf);
+                user_msg.model_id = std::nullopt;
+                output_history.push_back(user_msg);
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
                 request_input_focus = true; // Set flag to request focus next frame
@@ -959,6 +1013,77 @@ int main(int, char**) {
         ImGui::End(); // End Main Window
         // --- End Main UI Layout ---
 
+        // --- Graph View Window (Step 2 Rendering) ---
+        if (s_is_graph_view_visible) {
+            ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("Graph View", &s_is_graph_view_visible)) {
+                ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();      // Top-left of the drawable region
+                ImVec2 canvas_sz = ImGui::GetContentRegionAvail();   // Size of the drawable region
+                if (canvas_sz.x < 50.0f) canvas_sz.x = 50.0f;
+                if (canvas_sz.y < 50.0f) canvas_sz.y = 50.0f;
+                ImVec2 canvas_p1 = ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y);
+
+                // Draw canvas background
+                draw_list->AddRectFilled(canvas_p0, canvas_p1, IM_COL32(30, 30, 30, 200));
+                draw_list->AddRect(canvas_p0, canvas_p1, IM_COL32(200, 200, 200, 255)); // Border
+
+                // Panning
+                bool is_window_hovered = ImGui::IsWindowHovered(); // Hovered over "Graph View" window
+                bool is_mouse_dragging_left = ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+
+                if (is_window_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                    s_is_panning_graph = true;
+                    s_pan_start_mouse_pos_graph = ImGui::GetMousePos();
+                    s_pan_start_view_offset_graph = s_view_offset;
+                }
+                if (s_is_panning_graph) {
+                    if (is_mouse_dragging_left) {
+                        ImVec2 mouse_delta = ImVec2(ImGui::GetMousePos().x - s_pan_start_mouse_pos_graph.x,
+                                                    ImGui::GetMousePos().y - s_pan_start_mouse_pos_graph.y);
+                        s_view_offset = ImVec2(s_pan_start_view_offset_graph.x + mouse_delta.x,
+                                               s_pan_start_view_offset_graph.y + mouse_delta.y);
+                    } else {
+                        s_is_panning_graph = false;
+                    }
+                }
+                
+                // Clip drawing to the canvas
+                draw_list->PushClipRect(canvas_p0, canvas_p1, true);
+
+                // Render Edges
+                for (const auto& parent_node : s_graph_nodes) {
+                    for (const GraphNode* child_node_ptr : parent_node.children) {
+                        if (child_node_ptr) { // Ensure child pointer is valid
+                            // Find the actual child node in s_graph_nodes to pass by const reference
+                            // This is a bit inefficient for placeholder; real data would manage this better.
+                            bool child_found = false;
+                            for(const auto& potential_child : s_graph_nodes){
+                                if(potential_child.message_id == child_node_ptr->message_id){
+                                     RenderEdge(draw_list, parent_node, potential_child, s_view_offset);
+                                     child_found = true;
+                                     break;
+                                }
+                            }
+                            // If direct pointer was to an object not in s_graph_nodes (should not happen with current setup)
+                            // or if we want to be super safe:
+                            // RenderEdge(draw_list, parent_node, *child_node_ptr, s_view_offset);
+                        }
+                    }
+                }
+
+                // Render Nodes
+                for (const auto& node : s_graph_nodes) {
+                    // For selection highlight, we'd need to manage selected node state
+                    // For now, passing node.is_selected which is part of GraphNode struct
+                    RenderGraphNode(draw_list, node, s_view_offset, node.is_selected);
+                }
+
+                draw_list->PopClipRect();
+            }
+            ImGui::End(); // End Graph View window
+        }
+        // --- End Graph View Window ---
 
         // Rendering
         ImGui::Render(); // End the ImGui frame and prepare draw data
