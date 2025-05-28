@@ -22,17 +22,17 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
-#include "graph_renderer.h" // For graph rendering functions
+#include "graph_renderer.h" // For GraphEditor class
 // Note: graph_types.h is included by graph_renderer.h
-// --- Graph View State (Step 2 Rendering) ---
-static std::vector<GraphNode> s_graph_nodes;
-static ImVec2 s_view_offset = ImVec2(0.0f, 0.0f);
+
+// --- Graph Editor Instance & State ---
+static GraphEditor g_graph_editor; // Manages graph state and rendering
+static std::vector<GraphNode> s_graph_nodes; // Owns the actual node data
 static bool s_is_graph_view_visible = true; // To toggle graph view window
-static bool s_is_panning_graph = false;
-static ImVec2 s_pan_start_mouse_pos_graph;
-static ImVec2 s_pan_start_view_offset_graph;
 static bool s_graph_data_initialized = false;
-// --- End Graph View State ---
+// Old static graph state variables (s_view_offset, s_is_panning_graph, etc.) are removed
+// as GraphEditor and its GraphViewState now manage this.
+// --- End Graph Editor Instance & State ---
 
 // --- Theme State (Issue #18) ---
 static ThemeType currentTheme = ThemeType::DARK; // Default theme
@@ -479,6 +479,12 @@ int main(int, char**) {
         // Node 3 is parent of Node 4
         s_graph_nodes[2].children.push_back(&s_graph_nodes[3]);
         s_graph_nodes[3].parent = &s_graph_nodes[2];
+
+        // Add nodes to the GraphEditor
+        g_graph_editor.ClearNodes(); // Clear any previous nodes if re-initializing
+        for (GraphNode& node_ref : s_graph_nodes) { // Iterate by reference
+            g_graph_editor.AddNode(&node_ref);
+        }
         
         s_graph_data_initialized = true;
     }
@@ -497,22 +503,23 @@ int main(int, char**) {
  
     // --- Main Render Loop ---
     while (!glfwWindowShouldClose(window)) {
-        // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
-        // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         glfwPollEvents();
 
-        // --- Process Deferred Font Rebuild (Issue #19 Fix) ---
-        // Font rebuilding is now handled internally by GuiInterface when font size changes.
-        // The explicit call to processFontRebuildRequest() is no longer needed here.
-        // --- End Process Deferred Font Rebuild ---
- 
-        // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        // --- Graph View Toggle (Example, can be moved to a menu) ---
+        // if (ImGui::BeginMainMenuBar()) {
+        //     if (ImGui::BeginMenu("View")) {
+        //         ImGui::MenuItem("Graph View", NULL, &s_is_graph_view_visible);
+        //         ImGui::EndMenu();
+        //     }
+        //     ImGui::EndMainMenuBar();
+        // }
+        // For now, let's add a simple checkbox in settings or always show if s_is_graph_view_visible is true.
+        // We'll place the actual graph window rendering later.
+
 // --- Font Size Control Handling (Issue #19) ---
         ImGuiIO& io = ImGui::GetIO();
 
@@ -734,6 +741,13 @@ int main(int, char**) {
           }
           ImGui::Unindent();
           // --- End Model Selection Combo Box ---
+
+          // --- Graph View Toggle Checkbox ---
+          ImGui::Indent();
+          ImGui::Checkbox("Show Graph View", &s_is_graph_view_visible);
+          ImGui::Unindent();
+          settings_height += ImGui::GetItemRectSize().y; // Add height of checkbox line
+          // --- End Graph View Toggle Checkbox ---
   
           settings_height += ImGui::GetStyle().ItemSpacing.y; // Add spacing
       } else {
@@ -742,25 +756,19 @@ int main(int, char**) {
       // --- End Settings Area ---
   
       // Calculate height for the output area dynamically
-      // Add spacing between settings and input, ensure it's positive
       float spacing_between_settings_input = ImGui::GetStyle().ItemSpacing.y > 0 ? ImGui::GetStyle().ItemSpacing.y : 8.0f;
       const float bottom_elements_height = input_height + settings_height + spacing_between_settings_input;
   
-  
-      // --- Output Area ---
-      // Use negative height to automatically fill space minus the bottom elements
+      // --- Output Area (Linear History) ---
       ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
 
-       // Implement touch scrolling by dragging within the child window
-       // Check if the left mouse button is held down and the mouse is being dragged
-       if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-           ImGuiIO& io = ImGui::GetIO();
-           // Adjust scroll position based on mouse delta
-           ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
-           ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
-       }
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+          ImGuiIO& io_output = ImGui::GetIO(); // Use a different io variable name if needed
+          ImGui::SetScrollY(ImGui::GetScrollY() - io_output.MouseDelta.y);
+          ImGui::SetScrollX(ImGui::GetScrollX() - io_output.MouseDelta.x);
+      }
 
-       // --- Selection State (Issue #26 / Phase 3 Update) ---
+      // --- Selection State (Issue #26 / Phase 3 Update) ---
        static bool is_selecting = false;
        static int selecting_message_index = -1;
        static ImVec2 selection_start_pos; // Store where selection drag started
@@ -913,11 +921,11 @@ int main(int, char**) {
 
                    // --- Selection Rendering (Phase 5: Per-Character Highlighting) ---
                    if (indices_found && selection_start_char_index != -1 && selection_end_char_index != -1 && selection_start_char_index < selection_end_char_index) {
-                       ImDrawList* draw_list = ImGui::GetForegroundDrawList(); // Draw on top
+                       ImDrawList* draw_list_fg = ImGui::GetForegroundDrawList(); // Draw on top
                        for (int k = selection_start_char_index; k < selection_end_char_index; ++k) {
                            // Ensure index is valid before accessing (safety check)
                            if (k >= 0 && k < current_char_rects.size()) {
-                                draw_list->AddRectFilled(current_char_rects[k].Min, current_char_rects[k].Max, ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
+                                draw_list_fg->AddRectFilled(current_char_rects[k].Min, current_char_rects[k].Max, ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
                            }
                        }
                    }
@@ -1013,77 +1021,36 @@ int main(int, char**) {
         ImGui::End(); // End Main Window
         // --- End Main UI Layout ---
 
-        // --- Graph View Window (Step 2 Rendering) ---
+        // --- Graph View Window (Using GraphEditor) ---
         if (s_is_graph_view_visible) {
             ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Graph View", &s_is_graph_view_visible)) {
                 ImDrawList* draw_list = ImGui::GetWindowDrawList();
-                ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();      // Top-left of the drawable region
-                ImVec2 canvas_sz = ImGui::GetContentRegionAvail();   // Size of the drawable region
-                if (canvas_sz.x < 50.0f) canvas_sz.x = 50.0f;
-                if (canvas_sz.y < 50.0f) canvas_sz.y = 50.0f;
-                ImVec2 canvas_p1 = ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y);
-
-                // Draw canvas background
-                draw_list->AddRectFilled(canvas_p0, canvas_p1, IM_COL32(30, 30, 30, 200));
-                draw_list->AddRect(canvas_p0, canvas_p1, IM_COL32(200, 200, 200, 255)); // Border
-
-                // Panning
-                bool is_window_hovered = ImGui::IsWindowHovered(); // Hovered over "Graph View" window
-                bool is_mouse_dragging_left = ImGui::IsMouseDragging(ImGuiMouseButton_Left);
-
-                if (is_window_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                    s_is_panning_graph = true;
-                    s_pan_start_mouse_pos_graph = ImGui::GetMousePos();
-                    s_pan_start_view_offset_graph = s_view_offset;
-                }
-                if (s_is_panning_graph) {
-                    if (is_mouse_dragging_left) {
-                        ImVec2 mouse_delta = ImVec2(ImGui::GetMousePos().x - s_pan_start_mouse_pos_graph.x,
-                                                    ImGui::GetMousePos().y - s_pan_start_mouse_pos_graph.y);
-                        s_view_offset = ImVec2(s_pan_start_view_offset_graph.x + mouse_delta.x,
-                                               s_pan_start_view_offset_graph.y + mouse_delta.y);
-                    } else {
-                        s_is_panning_graph = false;
-                    }
-                }
                 
-                // Clip drawing to the canvas
-                draw_list->PushClipRect(canvas_p0, canvas_p1, true);
+                ImVec2 canvas_pos = ImGui::GetCursorScreenPos(); // Changed to use GetCursorScreenPos
+                ImVec2 canvas_size = ImGui::GetContentRegionAvail();
+                if (canvas_size.x < 50.0f) canvas_size.x = 50.0f;
+                if (canvas_size.y < 50.0f) canvas_size.y = 50.0f;
 
-                // Render Edges
-                for (const auto& parent_node : s_graph_nodes) {
-                    for (const GraphNode* child_node_ptr : parent_node.children) {
-                        if (child_node_ptr) { // Ensure child pointer is valid
-                            // Find the actual child node in s_graph_nodes to pass by const reference
-                            // This is a bit inefficient for placeholder; real data would manage this better.
-                            bool child_found = false;
-                            for(const auto& potential_child : s_graph_nodes){
-                                if(potential_child.message_id == child_node_ptr->message_id){
-                                     RenderEdge(draw_list, parent_node, potential_child, s_view_offset);
-                                     child_found = true;
-                                     break;
-                                }
-                            }
-                            // If direct pointer was to an object not in s_graph_nodes (should not happen with current setup)
-                            // or if we want to be super safe:
-                            // RenderEdge(draw_list, parent_node, *child_node_ptr, s_view_offset);
-                        }
-                    }
-                }
-
-                // Render Nodes
-                for (const auto& node : s_graph_nodes) {
-                    // For selection highlight, we'd need to manage selected node state
-                    // For now, passing node.is_selected which is part of GraphNode struct
-                    RenderGraphNode(draw_list, node, s_view_offset, node.is_selected);
-                }
-
-                draw_list->PopClipRect();
+                // Optional: Draw canvas background if GraphEditor doesn't draw its own.
+                // draw_list->AddRectFilled(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(30, 30, 30, 200));
+                // draw_list->AddRect(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(200, 200, 200, 255));
+                
+                // The GraphEditor's Render function will handle drawing nodes and edges
+                // relative to the canvas_pos (top-left of its drawing area).
+                // It will also handle interactions based on mouse input relative to this canvas.
+                g_graph_editor.Render(draw_list, canvas_pos, canvas_size);
+                
             }
             ImGui::End(); // End Graph View window
         }
         // --- End Graph View Window ---
+
+        // --- Display Selected Node Details (after all other windows) ---
+        if (s_is_graph_view_visible) { // Only show details if graph view itself is visible
+             g_graph_editor.DisplaySelectedNodeDetails();
+        }
+        // --- End Display Selected Node Details ---
 
         // Rendering
         ImGui::Render(); // End the ImGui frame and prepare draw data
@@ -1134,10 +1101,9 @@ int main(int, char**) {
     try {
         gui_ui.shutdown(); // Cleanup ImGui, GLFW
     } catch (const std::exception& e) {
-        std::cerr << "GUI Shutdown failed: " << e.what() << std::endl;
-        // Continue execution to ensure main returns, but report error.
+        std::cerr << "Error during GUI shutdown: " << e.what() << std::endl;
     }
-    std::cout << "Main function finished." << std::endl;
 
-    return 0; // Success
+    std::cout << "Exiting." << std::endl;
+    return 0;
 }

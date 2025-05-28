@@ -36,3 +36,11 @@ struct GraphNode {
           is_expanded(true), is_selected(false),   // Default states
           parent(nullptr), depth(0) {}             // Default relational/layout properties
 };
+
+struct GraphViewState {
+    ImVec2 pan_offset;
+    float zoom_scale;
+    int selected_node_id;
+
+    GraphViewState() : pan_offset(0.0f, 0.0f), zoom_scale(1.0f), selected_node_id(-1) {}
+};
