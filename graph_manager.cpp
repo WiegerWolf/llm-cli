@@ -184,8 +184,16 @@ void GraphManager::UpdateLayout() {
         return;
     }
     
-    // Calculate canvas center based on current viewport or use default
-    ImVec2 canvas_center(1000.0f, 750.0f); // Default center point
+    // Calculate canvas center dynamically based on the current ImGui viewport.
+    // Falls back to a sensible default (1000×750) when no ImGui context
+    // is active (e.g., during unit tests or headless builds).
+    ImVec2 canvas_center(1000.0f, 750.0f);
+    if (ImGui::GetCurrentContext() != nullptr) {
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        if (viewport != nullptr) {
+            canvas_center = ImVec2(viewport->Size.x * 0.5f, viewport->Size.y * 0.5f);
+        }
+    }
     
     // If layout is dirty, initialize the simulation
     if (graph_layout_dirty) {
