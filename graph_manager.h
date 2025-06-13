@@ -51,7 +51,7 @@ public:
     void RestartLayoutAnimation(); // Restart the layout animation from the beginning
     void SetAnimationSpeed(float speed_multiplier); // Set animation speed multiplier
     
-    // Get all nodes as a vector for layout algorithms
+    // Get all nodes as raw pointers for layout algorithms
     std::vector<GraphNode*> GetAllNodes();
     
     // Auto-pan functionality

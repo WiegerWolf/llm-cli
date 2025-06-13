@@ -1,5 +1,5 @@
 #pragma once
-
+ 
 #include <vector>
 #include <string> // Potentially, if HistoryMessage::message_id becomes std::string
 #include "../extern/imgui/imgui.h" // For ImVec2
@@ -26,7 +26,7 @@ struct GraphNode {
 
     // Relational Pointers for Graph Structure
     GraphNode* parent;                       // Pointer to the parent node in the primary branch
-    std::vector<GraphNode*> children;          // Pointers to direct children in the primary branch
+    std::vector<GraphNode*> children;        // Pointers to direct children in the primary branch
     std::vector<GraphNode*> alternative_paths; // Pointers to nodes representing alternative paths/branches from this message
     ImU32 color;                    // Node color
 
