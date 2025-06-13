@@ -1,5 +1,6 @@
 #include "graph_renderer.h"
 #include "extern/imgui/imgui_internal.h" // For ImGui::CalcTextSize, ImGui::PushClipRect, ImTextCharToUtf8
+#include "id_types.h"                    // NodeIdType definition
 #include <string>     // For std::string, std::to_string
 #include <algorithm>  // For std::min, std::max
 #include <limits>     // Required for std::numeric_limits
@@ -458,7 +459,7 @@ void GraphEditor::DisplaySelectedNodeDetails() {
         GraphNode* selected_node_ptr = GetNode(view_state_.selected_node_id);
         if (selected_node_ptr) {
             ImGui::Text("Graph Node ID: %ld", selected_node_ptr->graph_node_id);
-            ImGui::Text("Message ID: %d", selected_node_ptr->message_id);
+            ImGui::Text("Message ID: %ld", selected_node_ptr->message_id);
             ImGui::TextWrapped("Content: %s", selected_node_ptr->message_data.content.c_str());
             ImGui::Text("Type: %d", static_cast<int>(selected_node_ptr->message_data.type));
             if (selected_node_ptr->message_data.model_id.has_value()) {
@@ -843,11 +844,12 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
             std::string new_message_content = newMessageBuffer_;
             if (!new_message_content.empty()) {
                 HistoryMessage new_hist_msg;
-                new_hist_msg.message_id = -1; // This should be set by the system adding the message
+                new_hist_msg.message_id = static_cast<NodeIdType>(-1); // Placeholder until assigned
                 new_hist_msg.type = MessageType::USER_REPLY;
                 new_hist_msg.content = new_message_content;
-                new_hist_msg.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-                new_hist_msg.parent_id = reply_parent_node_->message_id; // Original message_id of parent
+                new_hist_msg.timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(
+                                              std::chrono::system_clock::now());
+                new_hist_msg.parent_id = reply_parent_node_->message_id; // Original parent message id
 
                 // The GraphManager should handle creating the GraphNode and assigning a unique graph_node_id
                 // For now, let's simulate some parts if GraphManager isn't fully integrated here.

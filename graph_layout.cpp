@@ -1,4 +1,6 @@
 #include "graph_layout.h"
+#include <chrono>
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -222,7 +224,8 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
                 
                 // Enhance spring force for chronologically adjacent nodes
                 if (params_.use_chronological_init) {
-                    long long time_diff = std::abs(child->message_data.timestamp - node->message_data.timestamp);
+                    auto diff_duration = child->message_data.timestamp - node->message_data.timestamp;
+                    long long time_diff = std::llabs(std::chrono::duration_cast<std::chrono::milliseconds>(diff_duration).count());
                     // If messages are close in time (within 5 minutes), strengthen the connection
                     if (time_diff < 300000) { // 5 minutes in milliseconds
                         force_magnitude *= 1.5f; // Stronger attraction for temporally close messages
@@ -257,7 +260,8 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
                     
                     // Enhance spring force for chronologically adjacent nodes
                     if (params_.use_chronological_init) {
-                        long long time_diff = std::abs(node->parent->message_data.timestamp - node->message_data.timestamp);
+                        auto diff_duration = node->parent->message_data.timestamp - node->message_data.timestamp;
+                        long long time_diff = std::llabs(std::chrono::duration_cast<std::chrono::milliseconds>(diff_duration).count());
                         if (time_diff < 300000) { // 5 minutes in milliseconds
                             force_magnitude *= 1.5f;
                         }

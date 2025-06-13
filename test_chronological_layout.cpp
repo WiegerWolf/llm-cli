@@ -1,5 +1,8 @@
 #include <iostream>
 #include <vector>
+#include "id_types.h" // NodeIdType
+#include <chrono>     // std::chrono utilities
+#include <cstdlib>    // std::llabs
 #include <chrono>
 #include <random>
 #include <cassert>
@@ -47,18 +50,19 @@ public:
     // Create a test message with specified timestamp and content
     HistoryMessage CreateTestMessage(int id, long long timestamp, const std::string& content, int parent_id = -1) {
         HistoryMessage msg;
-        msg.message_id = id;
+        msg.message_id = static_cast<NodeIdType>(id);
         msg.type = MessageType::USER_INPUT;
         msg.content = content;
-        msg.timestamp = timestamp;
-        msg.parent_id = parent_id;
+        msg.timestamp = std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds>(
+                            std::chrono::milliseconds(timestamp));
+        msg.parent_id = static_cast<NodeIdType>(parent_id);
         return msg;
     }
     
     // Create a test node with specified parameters
     GraphNode* CreateTestNode(int id, long long timestamp, const std::string& content, int depth = 0, int parent_id = -1) {
         HistoryMessage msg = CreateTestMessage(id, timestamp, content, parent_id);
-        GraphNode* node = new GraphNode(id, msg);
+        GraphNode* node = new GraphNode(static_cast<NodeIdType>(id), msg);
         node->depth = depth;
         node->size = ImVec2(200.0f, 80.0f); // Standard node size
         node->label = "Node " + std::to_string(id);
@@ -515,11 +519,13 @@ private:
         
         // Check that larger time gaps correspond to larger Y spacing
         for (size_t i = 0; i < sorted_nodes.size() - 1; ++i) {
-            long long time_gap1 = sorted_nodes[i + 1]->message_data.timestamp - sorted_nodes[i]->message_data.timestamp;
+            auto gap1_duration = sorted_nodes[i + 1]->message_data.timestamp - sorted_nodes[i]->message_data.timestamp;
+            long long time_gap1 = std::chrono::duration_cast<std::chrono::milliseconds>(gap1_duration).count();
             float y_gap1 = sorted_nodes[i + 1]->position.y - sorted_nodes[i]->position.y;
             
             if (i < sorted_nodes.size() - 2) {
-                long long time_gap2 = sorted_nodes[i + 2]->message_data.timestamp - sorted_nodes[i + 1]->message_data.timestamp;
+                auto gap2_duration = sorted_nodes[i + 2]->message_data.timestamp - sorted_nodes[i + 1]->message_data.timestamp;
+                long long time_gap2 = std::chrono::duration_cast<std::chrono::milliseconds>(gap2_duration).count();
                 float y_gap2 = sorted_nodes[i + 2]->position.y - sorted_nodes[i + 1]->position.y;
                 
                 // If time gap is significantly larger, Y gap should also be larger (with tolerance)

@@ -1,4 +1,5 @@
 #include "gui_interface/gui_interface.h"
+#include "id_types.h" // NodeIdType definition
 #include <stdexcept>
 #include <cmath>
 #include <iostream>
@@ -1114,7 +1115,7 @@ int main(int, char**) {
                 // Add user input to history (Issue #8 Refactor)
                 // Add the user's message to the history for display
                 HistoryMessage user_msg;
-                user_msg.message_id = static_cast<int>(output_history.size()); // Simple ID for now
+                user_msg.message_id = static_cast<NodeIdType>(output_history.size()); // Simple ID for now
                 user_msg.type = MessageType::USER_INPUT;
                 user_msg.content = std::string(input_buf);
                 user_msg.model_id = std::nullopt;

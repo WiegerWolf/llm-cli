@@ -12,7 +12,7 @@
 struct GraphNode {
     // Core Data
     NodeIdType graph_node_id;       // Unique ID for this graph node (64-bit to avoid overflow)
-    int message_id;                 // Original ID from HistoryMessage (can be non-unique in graph context if messages are reused)
+    NodeIdType message_id;          // Original ID from HistoryMessage (64-bit, matches HistoryMessage::message_id)
     HistoryMessage message_data;    // A copy of the message content and metadata
     std::string label;              // Node label, e.g., a summary or type of message
 

@@ -13,6 +13,8 @@
 #include <atomic>  // Added for Stage 4
 #include <imgui.h> // Required for ImVec2, ImFont
 #include <map>     // Required for ModelEntry if it uses map, or for getAllModels return type transformation
+#include "id_types.h" // NodeIdType definition
+#include <chrono>      // std::chrono::time_point
  
 // Forward declaration for ImFont
 struct ImFont;
@@ -28,12 +30,12 @@ enum class MessageType {
 };
 
 struct HistoryMessage {
-    int message_id; // Or a suitable unique ID type like std::string for UUIDs
+    NodeIdType message_id; // Unique identifier for the message (64-bit)
     MessageType type;
     std::string content;
     std::optional<std::string> model_id; // Changed for backward compatibility
-    long long timestamp;                 // Added for Step 4
-    int parent_id;                       // Added for Step 4, to link to the parent message ID. Use -1 or std::optional if no parent.
+    std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> timestamp; // High-resolution timestamp
+    NodeIdType parent_id; // Parent message identifier or kInvalidNodeId if none
 };
 // --- End Message History Structure ---
 
