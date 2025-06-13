@@ -4,9 +4,22 @@
 #include <memory> // For std::make_unique, std::move
 #include <algorithm> // For std::find_if
 #include <cmath> // For std::max, std::min
+#include <cfloat> // For FLT_MAX
 
 // Forward declaration of helper function from main_gui.cpp
 extern std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager& db_manager);
+
+// Thread-safe helper that safely computes text size even when no ImGui context is active.
+static inline ImVec2 SafeCalcTextSize(const std::string& text, float wrap_width = FLT_MAX)
+{
+   if (ImGui::GetCurrentContext() != nullptr && ImGui::GetFont() != nullptr)
+   {
+       return ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap_width);
+   }
+   constexpr float kFallbackCharW = 8.0f;
+   constexpr float kFallbackCharH = 16.0f;
+   return ImVec2(static_cast<float>(text.length()) * kFallbackCharW, kFallbackCharH);
+}
 
 // Helper function to calculate dynamic node size based on content
 ImVec2 CalculateNodeSize(const std::string& content) {
@@ -21,12 +34,12 @@ ImVec2 CalculateNodeSize(const std::string& content) {
     float padding = 10.0f; // Minimal padding (5-10px as specified)
     
     // Calculate the optimal width first
-    ImVec2 single_line_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, FLT_MAX);
+    ImVec2 single_line_size = SafeCalcTextSize(content, FLT_MAX);
     float node_width = std::max(min_width, std::min(max_width, single_line_size.x + padding));
     
     // Now calculate height with the determined width
     float effective_width = node_width - padding;
-    ImVec2 wrapped_text_size = ImGui::CalcTextSize(content.c_str(), nullptr, false, effective_width);
+    ImVec2 wrapped_text_size = SafeCalcTextSize(content, effective_width);
     float node_height = std::max(min_height, wrapped_text_size.y + padding);
     
     // Remove extra +30px height for expand/collapse icons - size tightly around text
