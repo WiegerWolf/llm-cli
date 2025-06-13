@@ -720,17 +720,19 @@ void GraphEditor::RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, co
     }
 
     if (node.is_expanded) {
-        for (GraphNode* child_ptr : node.children) {
-            if (child_ptr) {
+        for (const auto& weak_child : node.children) {
+            if (auto shared_child = weak_child.lock()) {
+                GraphNode* child_ptr = shared_child.get();
                 bool child_is_currently_visible = IsNodeVisible(*child_ptr, canvas_screen_pos, canvas_size);
                 if (node_is_currently_visible && child_is_currently_visible) {
-                    RenderEdge(draw_list, node, *child_ptr); 
+                    RenderEdge(draw_list, node, *child_ptr);
                 }
-                RenderNodeRecursive(draw_list, *child_ptr, canvas_screen_pos, canvas_size); 
+                RenderNodeRecursive(draw_list, *child_ptr, canvas_screen_pos, canvas_size);
             }
         }
-        for (GraphNode* alt_ptr : node.alternative_paths) {
-            if (alt_ptr) {
+        for (const auto& weak_alt : node.alternative_paths) {
+            if (auto shared_alt = weak_alt.lock()) {
+                GraphNode* alt_ptr = shared_alt.get();
                 bool alt_is_currently_visible = IsNodeVisible(*alt_ptr, canvas_screen_pos, canvas_size);
                 if (node_is_currently_visible && alt_is_currently_visible) {
                     RenderBezierEdge(draw_list, node, *alt_ptr, true); // Use alternative path styling
@@ -1234,7 +1236,7 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
                         
                         draw_list->AddBezierCubic(start_screen, control1, control2, end_screen, edge_color, line_thickness, num_segments);
                     }
-                    render_recursive_lambda(alt_child);
+                    render_recursive_lambda(alt_child.get());
                 }
             }
         }
