@@ -4,14 +4,13 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include "id_types.h"                   // Centralized definition of NodeIdType (int64_t) and sentinel
 #include "gui_interface/graph_types.h"
 #include "gui_interface/gui_interface.h" // For HistoryMessage
 #include "database.h" // For PersistenceManager
 #include "graph_layout.h" // For ForceDirectedLayout
 
-// Define MessageId if it's not globally available
-// NodeIdType will be the type for unique graph node IDs.
-using NodeIdType = int;
+// NodeIdType is now defined in id_types.h as std::int64_t to prevent overflow.
 
 class GraphManager {
 public:

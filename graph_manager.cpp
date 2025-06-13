@@ -1,6 +1,7 @@
 #include "graph_manager.h"
 #include "graph_renderer.h" // For GraphEditor
 #include "imgui.h" // For ImVec2, ImU32, IM_COL32
+#include "id_types.h" // Defines NodeIdType and kInvalidNodeId sentinel
 #include <memory> // For std::make_unique, std::move
 #include <algorithm> // For std::find_if
 #include <cmath> // For std::max, std::min
@@ -63,7 +64,7 @@ GraphManager::GraphManager()
 
 // Helper to get a node by its unique graph_node_id
 GraphNode* GraphManager::GetNodeById(NodeIdType graph_node_id) {
-    if (graph_node_id == -1) return nullptr;
+    if (graph_node_id == kInvalidNodeId) return nullptr;
     auto it = all_nodes.find(graph_node_id);
     if (it != all_nodes.end()) {
         return it->second.get();
@@ -76,7 +77,7 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
     all_nodes.clear();
     root_nodes.clear();
     last_node_added_to_graph = nullptr;
-    graph_view_state.selected_node_id = -1;
+    graph_view_state.selected_node_id = kInvalidNodeId;
     next_graph_node_id_counter = 0; // Reset ID counter
 
     GraphNode* previous_node_ptr = nullptr;
@@ -129,7 +130,7 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     GraphNode* parent_node = nullptr;
 
     // 1. Determine Parent Node
-    if (current_selected_graph_node_id != -1) {
+    if (current_selected_graph_node_id != kInvalidNodeId) {
         parent_node = GetNodeById(current_selected_graph_node_id);
     }
 
