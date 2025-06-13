@@ -456,14 +456,12 @@ void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<Gra
     if (sorted_nodes.empty()) return;
     
     
-    // FIX: Calculate starting position - start at BOTTOM for oldest messages
-    // Since the visual coordinate system appears to have newer messages higher up,
-    // we need to position older messages at higher Y values (bottom of canvas)
-    float canvas_height = params_.canvas_bounds.y;
-    float start_y = canvas_height - 100.0f; // Start near the bottom of the canvas for oldest
+    // Start near the TOP of the canvas for the oldest (earliest) messages so that
+    // chronologically earlier messages appear higher (smaller Y value) and newer ones lower.
+    float start_y = 100.0f;              // Top margin
     float current_y = start_y;
     
-    // Position nodes chronologically from bottom to top (oldest to newest)
+    // Position nodes chronologically from top to bottom (oldest to newest)
     for (size_t i = 0; i < sorted_nodes.size(); ++i) {
         GraphNode* node = sorted_nodes[i];
         if (!node) continue;
@@ -478,18 +476,17 @@ void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<Gra
         node->position.x = canvas_center.x + x_offset + x_jitter(rng);
         node->position.y = current_y;
         
-        
-        // Decrement Y position for next node (moving up for newer messages)
-        current_y -= params_.chronological_spacing;
+        // Increment Y position for next node (moving down for newer messages)
+        current_y += params_.chronological_spacing;
     }
 }
 
 std::vector<GraphNode*> ForceDirectedLayout::SortNodesByTimestamp(const std::vector<GraphNode*>& nodes) {
     std::vector<GraphNode*> sorted_nodes = nodes;
     
-    // Sort by timestamp (chronological order - oldest first, newest last)
-    // This ensures older messages (smaller timestamps) come first in the array
-    // and will be positioned at the bottom of the screen (higher Y coordinates)
+    // Sort by timestamp (chronological order — oldest first, newest last)
+    // Older messages (smaller timestamps) come first in the array and will be
+    // positioned nearer the TOP of the screen (smaller Y); newer ones lower.
     std::sort(sorted_nodes.begin(), sorted_nodes.end(),
         [](const GraphNode* a, const GraphNode* b) {
             if (!a || !b) return false;
@@ -528,20 +525,19 @@ void ForceDirectedLayout::CalculateTemporalForces(const std::vector<GraphNode*>&
         auto later_it = node_physics_.find(later_node);
         if (earlier_it == node_physics_.end() || later_it == node_physics_.end()) continue;
         
-        // Calculate vertical bias force to maintain chronological order
-        // FIX: In the corrected coordinate system:
-        // earlier_node should have LARGER Y (lower on screen), later_node should have SMALLER Y (higher on screen)
-        float vertical_delta = earlier_node->position.y - later_node->position.y;
+        // Calculate vertical bias force to maintain chronological order.
+        // Correct convention: earlier_node should have SMALLER Y (higher on screen),
+        // later_node should have LARGER Y (lower on screen).
+        float vertical_delta = later_node->position.y - earlier_node->position.y;  // Positive if later is below earlier
         
-        
-        // If earlier message is above later message (vertical_delta < 0), apply corrective force
+        // If later message is not sufficiently lower (or is above) the earlier one,
+        // apply corrective force to pull earlier up and push later down.
         if (vertical_delta < params_.chronological_spacing * 0.5f) {
             float correction_force = params_.temporal_strength * 100.0f;
             
-            
-            // Push earlier node down (increase Y), later node up (decrease Y)
-            earlier_it->second.force.y += correction_force * params_.vertical_bias;
-            later_it->second.force.y -= correction_force * params_.vertical_bias;
+            // Pull earlier node UP (decrease Y), push later node DOWN (increase Y)
+            earlier_it->second.force.y -= correction_force * params_.vertical_bias;
+            later_it->second.force.y   += correction_force * params_.vertical_bias;
         }
         
         // Apply weak attractive force between chronologically adjacent messages
