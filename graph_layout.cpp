@@ -3,6 +3,11 @@
 #include <cmath>
 #include <random>
 #include <iostream>
+// RNG engine shared across layout operations to avoid expensive per-node construction.
+// Using static thread_local for deterministic replay and thread safety.
+namespace {
+    static thread_local std::mt19937 rng{123}; // fixed seed for reproducible layouts
+}
 
 // Legacy recursive layout function (kept for compatibility)
 void CalculateNodePositionsRecursive(
@@ -83,13 +88,12 @@ void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const
             
             // If node doesn't have a position yet, place it randomly
             if (node->position.x == 0.0f && node->position.y == 0.0f) {
-                std::random_device rd;
-                std::mt19937 gen(rd());
-                std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
-                std::uniform_real_distribution<float> radius_dist(400.0f, 1000.0f);
-                
-                float angle = angle_dist(gen);
-                float radius = radius_dist(gen);
+            // Use shared RNG to avoid per-node engine construction
+            std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
+            std::uniform_real_distribution<float> radius_dist(400.0f, 1000.0f);
+            
+            float angle = angle_dist(rng);
+            float radius = radius_dist(rng);
                 
                 node->position.x = canvas_center.x + radius * std::cos(angle);
                 node->position.y = canvas_center.y + radius * std::sin(angle);
@@ -442,12 +446,10 @@ void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<Gra
         // Use depth for horizontal offset to maintain conversation structure
         float x_offset = static_cast<float>(node->depth) * 200.0f;
         
-        // Add some randomness to avoid perfect alignment
-        std::random_device rd;
-        std::mt19937 gen(rd());
+        // Add some randomness to avoid perfect alignment using shared RNG
         std::uniform_real_distribution<float> x_jitter(-50.0f, 50.0f);
         
-        node->position.x = canvas_center.x + x_offset + x_jitter(gen);
+        node->position.x = canvas_center.x + x_offset + x_jitter(rng);
         node->position.y = current_y;
         
         
