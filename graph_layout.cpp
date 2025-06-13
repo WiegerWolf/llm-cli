@@ -82,19 +82,30 @@ void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const
     if (params_.use_chronological_init) {
         InitializeChronologicalPositions(nodes, canvas_center);
     } else {
-        // Fallback to random positioning for nodes without positions
+        // Fallback to random positioning **only** for nodes that still lack
+        // a meaningful position. Nodes that already carry valid coordinates
+        // (e.g., after a previous layout run) are left untouched to avoid
+        // visible "jumping" when the layout is restarted (Issue #4).
+        //
+        // A position is considered "unset" when both coordinates are very
+        // close to the origin within a small epsilon threshold.
+        const float kUnsetEpsilon = 1e-3f;
+
         for (GraphNode* node : nodes) {
             if (!node) continue;
-            
-            // If node doesn't have a position yet, place it randomly
-            if (node->position.x == 0.0f && node->position.y == 0.0f) {
-            // Use shared RNG to avoid per-node engine construction
-            std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
-            std::uniform_real_distribution<float> radius_dist(400.0f, 1000.0f);
-            
-            float angle = angle_dist(rng);
-            float radius = radius_dist(rng);
-                
+
+            // Detect uninitialized coordinates with an epsilon tolerance
+            bool position_unset = std::abs(node->position.x) < kUnsetEpsilon &&
+                                  std::abs(node->position.y) < kUnsetEpsilon;
+
+            if (position_unset) {
+                // Use shared RNG to avoid per-node engine construction
+                std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159f);
+                std::uniform_real_distribution<float> radius_dist(400.0f, 1000.0f);
+
+                float angle = angle_dist(rng);
+                float radius = radius_dist(rng);
+
                 node->position.x = canvas_center.x + radius * std::cos(angle);
                 node->position.y = canvas_center.y + radius * std::sin(angle);
             }
