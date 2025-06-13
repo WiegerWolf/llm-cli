@@ -246,7 +246,7 @@ target_link_libraries(force_convergence_test PRIVATE
     Threads::Threads
 )
 target_include_directories(force_convergence_test PRIVATE
-    \${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
     extern/imgui
 )
 target_compile_options(force_convergence_test PRIVATE $<$<CONFIG:Release>:-O3>)
