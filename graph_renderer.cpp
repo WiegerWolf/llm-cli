@@ -405,7 +405,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
                 
                 ImGui::SetCursorScreenPos(absolute_icon_button_pos);
                 char exp_btn_id[32];
-                sprintf(exp_btn_id, "expcol##%d_btn", node.graph_node_id);
+                sprintf(exp_btn_id, "expcol##%ld_btn", node.graph_node_id);
                 if (ImGui::Button(exp_btn_id, icon_size_screen)) {
                     node.is_expanded = !node.is_expanded;
                     item_interacted_this_frame = true;
@@ -417,7 +417,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
 
         ImGui::SetCursorScreenPos(absolute_node_button_pos);
         char select_btn_id[32];
-        sprintf(select_btn_id, "select##%d_btn", node.graph_node_id);
+        sprintf(select_btn_id, "select##%ld_btn", node.graph_node_id);
         if (ImGui::InvisibleButton(select_btn_id, node_size_screen)) {
             if (view_state_.selected_node_id != node.graph_node_id) {
                 if (view_state_.selected_node_id != -1) {
@@ -457,7 +457,7 @@ void GraphEditor::DisplaySelectedNodeDetails() {
     if (view_state_.selected_node_id != -1) {
         GraphNode* selected_node_ptr = GetNode(view_state_.selected_node_id);
         if (selected_node_ptr) {
-            ImGui::Text("Graph Node ID: %d", selected_node_ptr->graph_node_id);
+            ImGui::Text("Graph Node ID: %ld", selected_node_ptr->graph_node_id);
             ImGui::Text("Message ID: %d", selected_node_ptr->message_id);
             ImGui::TextWrapped("Content: %s", selected_node_ptr->message_data.content.c_str());
             ImGui::Text("Type: %d", static_cast<int>(selected_node_ptr->message_data.type));
@@ -465,7 +465,7 @@ void GraphEditor::DisplaySelectedNodeDetails() {
                 ImGui::Text("Model ID: %s", selected_node_ptr->message_data.model_id.value().c_str());
             }
         } else {
-            ImGui::TextWrapped("Error: Selected node data not found (ID: %d).", view_state_.selected_node_id);
+            ImGui::TextWrapped("Error: Selected node data not found (ID: %ld).", view_state_.selected_node_id);
         }
     } else {
         ImGui::TextWrapped("Select a node to view its details.");
@@ -799,7 +799,7 @@ void GraphEditor::RenderNodeContextMenu() {
             return;
         }
 
-        ImGui::Text("Node ID: %d", context_node_->graph_node_id);
+        ImGui::Text("Node ID: %ld", context_node_->graph_node_id);
         ImGui::Separator();
 
         if (ImGui::MenuItem("Reply from here")) {
@@ -827,7 +827,7 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
             return;
         }
 
-        ImGui::Text("Replying to Node ID: %d", reply_parent_node_->graph_node_id);
+        ImGui::Text("Replying to Node ID: %ld", reply_parent_node_->graph_node_id);
         if (reply_parent_node_->message_data.content.length() > 50) {
             ImGui::TextWrapped("Parent: %.50s...", reply_parent_node_->message_data.content.c_str());
         } else {
