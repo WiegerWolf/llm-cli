@@ -12,20 +12,20 @@
 int main() {
     // Trivial message objects (timestamp/content unused for this test).
     HistoryMessage dummy{};
-    GraphNode* n1 = new GraphNode(1, dummy);
-    GraphNode* n2 = new GraphNode(2, dummy);
-    GraphNode* n3 = new GraphNode(3, dummy);
+    auto n1 = std::make_shared<GraphNode>(1, dummy);
+    auto n2 = std::make_shared<GraphNode>(2, dummy);
+    auto n3 = std::make_shared<GraphNode>(3, dummy);
 
     // Establish simple parent/child chain
-    n1->children = {n2};
+    n1->add_child(n2);
     n2->parent = n1;
-    n2->children = {n3};
+    n2->add_child(n3);
     n3->parent = n2;
 
     // Assign nominal sizes so forces are non-zero
     n1->size = n2->size = n3->size = ImVec2(200.0f, 80.0f);
 
-    std::vector<GraphNode*> nodes = {n1, n2, n3};
+    std::vector<GraphNode*> nodes = {n1.get(), n2.get(), n3.get()};
 
     ForceDirectedLayout layout;
     ImVec2 canvas_center(500.0f, 400.0f);
@@ -45,9 +45,6 @@ int main() {
     assert(steps < 50 && "Solver should converge in fewer than kMaxIterations");
 
     // Clean-up
-    delete n1;
-    delete n2;
-    delete n3;
 
     std::cout << "force_convergence_test PASSED" << std::endl;
     return 0;

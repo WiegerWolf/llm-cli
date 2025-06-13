@@ -2,14 +2,19 @@
  
 #include <vector>
 #include <string>
+#include <memory>
 #include "../extern/imgui/imgui.h"          // For ImVec2
 #include "id_types.h"                       // Defines NodeIdType (std::int64_t) and kInvalidNodeId
 #include "gui_interface/gui_interface.h"    // For HistoryMessage
 
+struct GraphNode; // Forward declaration
+// Helper to safely obtain a raw pointer from a weak_ptr (nullptr if expired)
+inline GraphNode* Raw(const std::weak_ptr<GraphNode>& wp);
+
 // Forward declare GraphNode if parent/children pointers cause issues with direct include
 // struct GraphNode; // Likely not needed if definition is self-contained here
 
-struct GraphNode {
+struct GraphNode : public std::enable_shared_from_this<GraphNode> {
     // Core Data
     NodeIdType graph_node_id;       // Unique ID for this graph node (64-bit to avoid overflow)
     NodeIdType message_id;          // Original ID from HistoryMessage (64-bit, matches HistoryMessage::message_id)
@@ -26,9 +31,10 @@ struct GraphNode {
     bool content_needs_refresh;     // Flag to force content re-rendering (fixes auto-refresh issue)
 
     // Relational Pointers for Graph Structure
-    GraphNode* parent;                       // Pointer to the parent node in the primary branch
-    std::vector<GraphNode*> children;        // Pointers to direct children in the primary branch
-    std::vector<GraphNode*> alternative_paths; // Pointers to nodes representing alternative paths/branches from this message
+    // Relational references (non-owning)
+    std::weak_ptr<GraphNode> parent;                       // Weak reference to parent node
+    std::vector<std::weak_ptr<GraphNode>> children;        // Weak references to direct children
+    std::vector<std::weak_ptr<GraphNode>> alternative_paths; // Weak references for alternative paths
     ImU32 color;                    // Node color
 
     // Layout Helper
@@ -39,8 +45,36 @@ struct GraphNode {
         : graph_node_id(g_node_id), message_id(msg_data.message_id), message_data(msg_data),
           position(ImVec2(0,0)), size(ImVec2(0,0)), // Default visual properties
           is_expanded(true), is_selected(false), content_needs_refresh(true), // Default states - new nodes need refresh
-          parent(nullptr), depth(0), color(IM_COL32(200, 200, 200, 255)), label("") {} // Default relational/layout properties, color, and label
- };
+          parent(), depth(0), color(IM_COL32(200, 200, 200, 255)), label("") {} // Weak parent default-constructed
+ 
+    // Helper accessors for safe, convenient access to related nodes
+    GraphNode* parent_raw() const {
+        if (auto sp = parent.lock()) {
+            return sp.get();
+        }
+        return nullptr;
+    }
+ 
+    void add_child(const std::shared_ptr<GraphNode>& child_node) {
+        children.emplace_back(child_node);
+    }
+ 
+    template<typename Func>
+    void for_each_child(Func&& func) const {
+        for (const auto& weak_child : children) {
+            if (auto shared_child = weak_child.lock()) {
+                func(shared_child.get());
+            }
+        }
+    }
+};
+
+inline GraphNode* Raw(const std::weak_ptr<GraphNode>& wp) {
+    if (auto sp = wp.lock()) {
+        return sp.get();
+    }
+    return nullptr;
+}
 
 struct GraphViewState {
     ImVec2 pan_offset;

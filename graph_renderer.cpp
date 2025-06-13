@@ -394,7 +394,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
 
         ImGui::PushID(node.graph_node_id); // Use unique graph_node_id
 
-        if (!node.children.empty() || !node.alternative_paths.empty()) {
+        if (node.children.size() > 0 || node.alternative_paths.size() > 0) {
             float icon_world_size = 10.0f; 
             ImVec2 icon_size_screen = ImVec2(icon_world_size * view_state_.zoom_scale, icon_world_size * view_state_.zoom_scale);
             if (icon_size_screen.x >= 1.0f && icon_size_screen.y >= 1.0f) {
@@ -771,7 +771,7 @@ void GraphEditor::Render(ImDrawList* draw_list, const ImVec2& canvas_screen_pos,
     std::vector<GraphNode*> root_nodes_to_render;
     if (!nodes_.empty()) {
         for (auto& pair : nodes_) {
-            if (pair.second && pair.second->parent == nullptr) { 
+            if (pair.second && !pair.second->parent.lock()) {
                 root_nodes_to_render.push_back(pair.second);
             }
         }
@@ -858,12 +858,12 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
                 // Example: Manually create and add if not using GraphManager directly here
                 int new_graph_node_id = GetNextUniqueID(nodes_); // Generate a new graph node ID
                 GraphNode* new_graph_node = new GraphNode(new_graph_node_id, new_hist_msg);
-                new_graph_node->parent = reply_parent_node_;
+                new_graph_node->parent = reply_parent_node_->weak_from_this();
                 new_graph_node->depth = reply_parent_node_->depth + 1;
                 // Position and size would be set by layout algorithm
                 new_graph_node->size = ImVec2(150, 80); // Default size
                 
-                reply_parent_node_->children.push_back(new_graph_node);
+                reply_parent_node_->add_child(std::shared_ptr<GraphNode>(new_graph_node));
                 nodes_[new_graph_node_id] = new_graph_node; // Add to editor's map
                 // graph_layout_dirty = true; // Mark layout as dirty - This should be handled by GraphManager
 
@@ -1002,12 +1002,12 @@ static void LayoutChildrenRecursive(GraphNode* parent_node, int depth, float hor
     float child_x = parent_node->position.x + horizontal_spacing;
     
     for (size_t i = 0; i < parent_node->children.size(); ++i) {
-        GraphNode* child = parent_node->children[i];
+        auto child = parent_node->children[i].lock();
         if (child) {
             child->position = ImVec2(child_x, child_y_start + (i * 100.0f));
             
             // Recursively layout grandchildren
-            LayoutChildrenRecursive(child, depth + 1, horizontal_spacing);
+            LayoutChildrenRecursive(child.get(), depth + 1, horizontal_spacing);
         }
     }
 }
@@ -1140,55 +1140,53 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
         }
 
         if (node->is_expanded) {
-            for (GraphNode* child : node->children) {
-                if (child) {
-                    bool child_is_visible = temp_editor_for_render.IsNodeVisible(*child, canvas_pos, canvas_size);
-                    if (node_is_visible && child_is_visible) {
-                        // Bezier curve edge rendering with theme-aware color
-                        ImU32 edge_color = temp_editor_for_render.GetThemeEdgeColor(current_theme);
-                        ImVec2 start_world = ImVec2(node->position.x + node->size.x / 2.0f, node->position.y + node->size.y);
-                        ImVec2 end_world = ImVec2(child->position.x + child->size.x / 2.0f, child->position.y);
-                        ImVec2 start_screen_rel = temp_editor_for_render.WorldToScreen(start_world);
-                        ImVec2 end_screen_rel = temp_editor_for_render.WorldToScreen(end_world);
-                        
-                        // Convert to absolute screen coordinates
-                        ImVec2 start_screen = ImVec2(canvas_pos.x + start_screen_rel.x, canvas_pos.y + start_screen_rel.y);
-                        ImVec2 end_screen = ImVec2(canvas_pos.x + end_screen_rel.x, canvas_pos.y + end_screen_rel.y);
-                        
-                        // Calculate Bezier curve control points
-                        ImVec2 direction = ImVec2(end_screen.x - start_screen.x, end_screen.y - start_screen.y);
-                        float distance = sqrtf(direction.x * direction.x + direction.y * direction.y);
-                        
-                        float control_offset = std::min(distance * 0.4f, 80.0f * temp_editor_for_render.GetViewState().zoom_scale);
-                        control_offset = std::max(control_offset, 20.0f * temp_editor_for_render.GetViewState().zoom_scale);
-                        
-                        // Handle edge cases for very close nodes
-                        if (distance < 10.0f * temp_editor_for_render.GetViewState().zoom_scale) {
-                            control_offset = std::min(control_offset, distance * 0.2f);
-                        }
-                        
-                        // Calculate optimal control points for standard parent-child relationships
-                        ImVec2 control1 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, true, false);
-                        ImVec2 control2 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, false, false);
-                        
-                        // Render smooth Bezier curve with adaptive tessellation
-                        float line_thickness = std::max(1.0f, 1.5f * temp_editor_for_render.GetViewState().zoom_scale);
-                        
-                        int num_segments = 0; // Auto-tessellation
-                        if (distance > 200.0f * temp_editor_for_render.GetViewState().zoom_scale) {
-                            num_segments = std::max(8, (int)(distance / (50.0f * temp_editor_for_render.GetViewState().zoom_scale)));
-                            num_segments = std::min(num_segments, 32);
-                        }
-                        
-                        draw_list->AddBezierCubic(start_screen, control1, control2, end_screen, edge_color, line_thickness, num_segments);
+            node->for_each_child([&](GraphNode* child) {
+                bool child_is_visible = temp_editor_for_render.IsNodeVisible(*child, canvas_pos, canvas_size);
+                if (node_is_visible && child_is_visible) {
+                    // Bezier curve edge rendering with theme-aware color
+                    ImU32 edge_color = temp_editor_for_render.GetThemeEdgeColor(current_theme);
+                    ImVec2 start_world = ImVec2(node->position.x + node->size.x / 2.0f, node->position.y + node->size.y);
+                    ImVec2 end_world = ImVec2(child->position.x + child->size.x / 2.0f, child->position.y);
+                    ImVec2 start_screen_rel = temp_editor_for_render.WorldToScreen(start_world);
+                    ImVec2 end_screen_rel = temp_editor_for_render.WorldToScreen(end_world);
+
+                    // Convert to absolute screen coordinates
+                    ImVec2 start_screen = ImVec2(canvas_pos.x + start_screen_rel.x, canvas_pos.y + start_screen_rel.y);
+                    ImVec2 end_screen = ImVec2(canvas_pos.x + end_screen_rel.x, canvas_pos.y + end_screen_rel.y);
+
+                    // Calculate Bezier curve control points
+                    ImVec2 direction = ImVec2(end_screen.x - start_screen.x, end_screen.y - start_screen.y);
+                    float distance = sqrtf(direction.x * direction.x + direction.y * direction.y);
+
+                    float control_offset = std::min(distance * 0.4f, 80.0f * temp_editor_for_render.GetViewState().zoom_scale);
+                    control_offset = std::max(control_offset, 20.0f * temp_editor_for_render.GetViewState().zoom_scale);
+
+                    // Handle edge cases for very close nodes
+                    if (distance < 10.0f * temp_editor_for_render.GetViewState().zoom_scale) {
+                        control_offset = std::min(control_offset, distance * 0.2f);
                     }
-                    render_recursive_lambda(child);
+
+                    // Calculate optimal control points for standard parent-child relationships
+                    ImVec2 control1 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, true, false);
+                    ImVec2 control2 = CalculateOptimalControlPoint(start_screen, end_screen, control_offset, false, false);
+
+                    // Render smooth Bezier curve with adaptive tessellation
+                    float line_thickness = std::max(1.0f, 1.5f * temp_editor_for_render.GetViewState().zoom_scale);
+
+                    int num_segments = 0; // Auto-tessellation
+                    if (distance > 200.0f * temp_editor_for_render.GetViewState().zoom_scale) {
+                        num_segments = std::max(8, (int)(distance / (50.0f * temp_editor_for_render.GetViewState().zoom_scale)));
+                        num_segments = std::min(num_segments, 32);
+                    }
+
+                    draw_list->AddBezierCubic(start_screen, control1, control2, end_screen, edge_color, line_thickness, num_segments);
                 }
-            }
-            
+                render_recursive_lambda(child);
+            });
+
             // Render alternative paths with different curve styling
-            for (GraphNode* alt_child : node->alternative_paths) {
-                if (alt_child) {
+            for (const auto& weak_alt : node->alternative_paths) {
+                if (auto alt_child = weak_alt.lock()) {
                     bool alt_is_visible = temp_editor_for_render.IsNodeVisible(*alt_child, canvas_pos, canvas_size);
                     if (node_is_visible && alt_is_visible) {
                         // Bezier curve edge rendering for alternative paths with distinct styling

@@ -39,20 +39,18 @@ void CalculateNodePositionsRecursive(
     level_x_offset[depth] += node_width + x_spacing;
 
     // Recursively call for children if the node is expanded and has children
-    if (node->is_expanded && !node->children.empty()) {
-        for (GraphNode* child : node->children) {
-            if (child) {
-                CalculateNodePositionsRecursive(
-                    child, 
-                    canvas_start_pos,
-                    x_spacing, 
-                    y_spacing, 
-                    depth + 1, 
-                    level_x_offset, 
-                    canvas_start_pos
-                );
-            }
-        }
+    if (node->is_expanded) {
+        node->for_each_child([&](GraphNode* child) {
+            CalculateNodePositionsRecursive(
+                child,
+                canvas_start_pos,
+                x_spacing,
+                y_spacing,
+                depth + 1,
+                level_x_offset,
+                canvas_start_pos
+            );
+        });
     }
 }
 
@@ -208,20 +206,18 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
         if (node_it == node_physics_.end()) continue;
         
         // Apply spring forces to connected nodes (parent-child relationships)
-        for (GraphNode* child : node->children) {
-            if (!child) continue;
-            
+        node->for_each_child([&](GraphNode* child) {
             auto child_it = node_physics_.find(child);
-            if (child_it == node_physics_.end()) continue;
-            
+            if (child_it == node_physics_.end()) return;
+
             ImVec2 delta = ImVec2(child->position.x - node->position.x,
                                  child->position.y - node->position.y);
             float distance = Distance(node->position, child->position);
-            
+
             if (distance > 0.1f) { // Avoid division by zero
                 // Spring force: F = k * (distance - ideal_length) * direction
                 float force_magnitude = params_.spring_strength * (distance - params_.ideal_edge_length);
-                
+
                 // Enhance spring force for chronologically adjacent nodes
                 if (params_.use_chronological_init) {
                     auto diff_duration = child->message_data.timestamp - node->message_data.timestamp;
@@ -231,48 +227,48 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
                         force_magnitude *= 1.5f; // Stronger attraction for temporally close messages
                     }
                 }
-                
+
                 // Cap spring force to prevent instability
                 force_magnitude = std::max(-500.0f, std::min(500.0f, force_magnitude));
-                
+
                 ImVec2 force_direction = Normalize(delta);
                 ImVec2 spring_force = ImVec2(force_direction.x * force_magnitude,
                                            force_direction.y * force_magnitude);
-                
+
                 // Apply equal and opposite forces
                 node_it->second.force.x += spring_force.x;
                 node_it->second.force.y += spring_force.y;
                 child_it->second.force.x -= spring_force.x;
                 child_it->second.force.y -= spring_force.y;
             }
-        }
+        });
         
         // Also apply spring forces to parent (bidirectional)
-        if (node->parent) {
-            auto parent_it = node_physics_.find(node->parent);
+        if (auto parent_ptr = node->parent_raw()) {
+            auto parent_it = node_physics_.find(parent_ptr);
             if (parent_it != node_physics_.end()) {
-                ImVec2 delta = ImVec2(node->parent->position.x - node->position.x,
-                                     node->parent->position.y - node->position.y);
-                float distance = Distance(node->position, node->parent->position);
-                
+                ImVec2 delta = ImVec2(parent_ptr->position.x - node->position.x,
+                                      parent_ptr->position.y - node->position.y);
+                float distance = Distance(node->position, parent_ptr->position);
+
                 if (distance > 0.1f) {
                     float force_magnitude = params_.spring_strength * (distance - params_.ideal_edge_length);
-                    
+
                     // Enhance spring force for chronologically adjacent nodes
                     if (params_.use_chronological_init) {
-                        auto diff_duration = node->parent->message_data.timestamp - node->message_data.timestamp;
+                        auto diff_duration = parent_ptr->message_data.timestamp - node->message_data.timestamp;
                         long long time_diff = std::llabs(std::chrono::duration_cast<std::chrono::milliseconds>(diff_duration).count());
                         if (time_diff < 300000) { // 5 minutes in milliseconds
                             force_magnitude *= 1.5f;
                         }
                     }
-                    
+
                     force_magnitude = std::max(-500.0f, std::min(500.0f, force_magnitude));
-                    
+
                     ImVec2 force_direction = Normalize(delta);
                     ImVec2 spring_force = ImVec2(force_direction.x * force_magnitude,
                                                force_direction.y * force_magnitude);
-                    
+
                     // Apply forces (weaker for parent to maintain hierarchy)
                     node_it->second.force.x += spring_force.x * 0.5f;
                     node_it->second.force.y += spring_force.y * 0.5f;

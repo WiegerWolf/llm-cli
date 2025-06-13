@@ -15,7 +15,7 @@
 // Test utility functions
 class ChronologicalLayoutTester {
 private:
-    std::vector<GraphNode*> test_nodes_;
+    std::vector<std::shared_ptr<GraphNode>> test_nodes_;
     ForceDirectedLayout layout_;
     
 public:
@@ -23,9 +23,6 @@ public:
     
     ~ChronologicalLayoutTester() {
         // Clean up test nodes
-        for (GraphNode* node : test_nodes_) {
-            delete node;
-        }
     }
     
     // Create test layout parameters optimized for testing
@@ -60,9 +57,9 @@ public:
     }
     
     // Create a test node with specified parameters
-    GraphNode* CreateTestNode(int id, long long timestamp, const std::string& content, int depth = 0, int parent_id = -1) {
+    std::shared_ptr<GraphNode> CreateTestNode(int id, long long timestamp, const std::string& content, int depth = 0, int parent_id = -1) {
         HistoryMessage msg = CreateTestMessage(id, timestamp, content, parent_id);
-        GraphNode* node = new GraphNode(static_cast<NodeIdType>(id), msg);
+        auto node = std::make_shared<GraphNode>(static_cast<NodeIdType>(id), msg);
         node->depth = depth;
         node->size = ImVec2(200.0f, 80.0f); // Standard node size
         node->label = "Node " + std::to_string(id);
@@ -81,26 +78,27 @@ public:
         auto base_time = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
         
-        GraphNode* node1 = CreateTestNode(1, base_time, "Hello, how are you?", 0);
-        GraphNode* node2 = CreateTestNode(2, base_time + 60000, "I'm doing well, thanks!", 1);
-        GraphNode* node3 = CreateTestNode(3, base_time + 120000, "What are you working on?", 0);
-        GraphNode* node4 = CreateTestNode(4, base_time + 180000, "I'm testing a layout algorithm", 1);
-        GraphNode* node5 = CreateTestNode(5, base_time + 240000, "That sounds interesting!", 0);
+        auto node1 = CreateTestNode(1, base_time, "Hello, how are you?", 0);
+        auto node2 = CreateTestNode(2, base_time + 60000, "I'm doing well, thanks!", 1);
+        auto node3 = CreateTestNode(3, base_time + 120000, "What are you working on?", 0);
+        auto node4 = CreateTestNode(4, base_time + 180000, "I'm testing a layout algorithm", 1);
+        auto node5 = CreateTestNode(5, base_time + 240000, "That sounds interesting!", 0);
         
         // Set up parent-child relationships
         node2->parent = node1;
-        node1->children.push_back(node2);
-        
+        node1->add_child(node2);
+
         node3->parent = node2;
-        node2->children.push_back(node3);
-        
+        node2->add_child(node3);
+
         node4->parent = node3;
-        node3->children.push_back(node4);
-        
+        node3->add_child(node4);
+
         node5->parent = node4;
-        node4->children.push_back(node5);
+        node4->add_child(node5);
         
-        std::vector<GraphNode*> nodes = {node1, node2, node3, node4, node5};
+        std::vector<GraphNode*> nodes;
+        for(const auto& n : test_nodes_) nodes.push_back(n.get());
         
         // Test chronological initialization
         std::cout << "Testing chronological initialization..." << std::endl;
@@ -147,26 +145,29 @@ public:
             std::chrono::system_clock::now().time_since_epoch()).count();
         
         // Create a branched conversation
-        GraphNode* root = CreateTestNode(1, base_time, "What's your favorite programming language?", 0);
-        GraphNode* reply1 = CreateTestNode(2, base_time + 30000, "I like Python for its simplicity", 1);
-        GraphNode* reply2 = CreateTestNode(3, base_time + 45000, "C++ is powerful for performance", 1);
-        GraphNode* reply3 = CreateTestNode(4, base_time + 60000, "JavaScript is versatile", 1);
-        GraphNode* follow_up1 = CreateTestNode(5, base_time + 90000, "Python is great for data science", 2);
-        GraphNode* follow_up2 = CreateTestNode(6, base_time + 120000, "C++ requires more careful memory management", 2);
+        auto root = CreateTestNode(1, base_time, "What's your favorite programming language?", 0);
+        auto reply1 = CreateTestNode(2, base_time + 30000, "I like Python for its simplicity", 1);
+        auto reply2 = CreateTestNode(3, base_time + 45000, "C++ is powerful for performance", 1);
+        auto reply3 = CreateTestNode(4, base_time + 60000, "JavaScript is versatile", 1);
+        auto follow_up1 = CreateTestNode(5, base_time + 90000, "Python is great for data science", 2);
+        auto follow_up2 = CreateTestNode(6, base_time + 120000, "C++ requires more careful memory management", 2);
         
         // Set up branched structure
         reply1->parent = root;
         reply2->parent = root;
         reply3->parent = root;
-        root->children = {reply1, reply2, reply3};
-        
+        root->add_child(reply1);
+        root->add_child(reply2);
+        root->add_child(reply3);
+
         follow_up1->parent = reply1;
-        reply1->children.push_back(follow_up1);
-        
+        reply1->add_child(follow_up1);
+
         follow_up2->parent = reply2;
-        reply2->children.push_back(follow_up2);
+        reply2->add_child(follow_up2);
         
-        std::vector<GraphNode*> nodes = {root, reply1, reply2, reply3, follow_up1, follow_up2};
+        std::vector<GraphNode*> nodes;
+        for(const auto& n : test_nodes_) nodes.push_back(n.get());
         
         std::cout << "Testing branched conversation layout..." << std::endl;
         PrintInitialPositions(nodes);
@@ -206,27 +207,28 @@ public:
             std::chrono::system_clock::now().time_since_epoch()).count();
         
         // Create nodes with deliberately mixed timestamps
-        GraphNode* node3 = CreateTestNode(3, base_time + 120000, "Third message", 0);
-        GraphNode* node1 = CreateTestNode(1, base_time, "First message", 0);
-        GraphNode* node5 = CreateTestNode(5, base_time + 240000, "Fifth message", 0);
-        GraphNode* node2 = CreateTestNode(2, base_time + 60000, "Second message", 0);
-        GraphNode* node4 = CreateTestNode(4, base_time + 180000, "Fourth message", 0);
+        auto node3 = CreateTestNode(3, base_time + 120000, "Third message", 0);
+        auto node1 = CreateTestNode(1, base_time, "First message", 0);
+        auto node5 = CreateTestNode(5, base_time + 240000, "Fifth message", 0);
+        auto node2 = CreateTestNode(2, base_time + 60000, "Second message", 0);
+        auto node4 = CreateTestNode(4, base_time + 180000, "Fourth message", 0);
         
         // Set up linear chain (but nodes created out of order)
         node2->parent = node1;
-        node1->children.push_back(node2);
-        
+        node1->add_child(node2);
+
         node3->parent = node2;
-        node2->children.push_back(node3);
-        
+        node2->add_child(node3);
+
         node4->parent = node3;
-        node3->children.push_back(node4);
-        
+        node3->add_child(node4);
+
         node5->parent = node4;
-        node4->children.push_back(node5);
+        node4->add_child(node5);
         
         // Input nodes in mixed order to test sorting
-        std::vector<GraphNode*> nodes = {node3, node1, node5, node2, node4};
+        std::vector<GraphNode*> nodes;
+        for(const auto& n : test_nodes_) nodes.push_back(n.get());
         
         std::cout << "Input nodes in mixed chronological order:" << std::endl;
         for (size_t i = 0; i < nodes.size(); ++i) {
@@ -263,26 +265,27 @@ public:
             std::chrono::system_clock::now().time_since_epoch()).count();
         
         // Create messages with varying time gaps
-        GraphNode* node1 = CreateTestNode(1, base_time, "Message 1", 0);
-        GraphNode* node2 = CreateTestNode(2, base_time + 30000, "Message 2 (30s later)", 1);  // 30 seconds
-        GraphNode* node3 = CreateTestNode(3, base_time + 60000, "Message 3 (30s later)", 0);  // 30 seconds
-        GraphNode* node4 = CreateTestNode(4, base_time + 3660000, "Message 4 (1h later)", 1); // 1 hour gap
-        GraphNode* node5 = CreateTestNode(5, base_time + 3720000, "Message 5 (1m later)", 0); // 1 minute
+        auto node1 = CreateTestNode(1, base_time, "Message 1", 0);
+        auto node2 = CreateTestNode(2, base_time + 30000, "Message 2 (30s later)", 1);  // 30 seconds
+        auto node3 = CreateTestNode(3, base_time + 60000, "Message 3 (30s later)", 0);  // 30 seconds
+        auto node4 = CreateTestNode(4, base_time + 3660000, "Message 4 (1h later)", 1); // 1 hour gap
+        auto node5 = CreateTestNode(5, base_time + 3720000, "Message 5 (1m later)", 0); // 1 minute
         
         // Set up relationships
         node2->parent = node1;
-        node1->children.push_back(node2);
-        
+        node1->add_child(node2);
+
         node3->parent = node2;
-        node2->children.push_back(node3);
-        
+        node2->add_child(node3);
+
         node4->parent = node3;
-        node3->children.push_back(node4);
-        
+        node3->add_child(node4);
+
         node5->parent = node4;
-        node4->children.push_back(node5);
+        node4->add_child(node5);
         
-        std::vector<GraphNode*> nodes = {node1, node2, node3, node4, node5};
+        std::vector<GraphNode*> nodes;
+        for(const auto& n : test_nodes_) nodes.push_back(n.get());
         
         std::cout << "Testing messages with varying time gaps:" << std::endl;
         for (GraphNode* node : nodes) {
@@ -332,16 +335,17 @@ public:
         auto base_time = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
         
-        GraphNode* node1 = CreateTestNode(1, base_time, "Test 1", 0);
-        GraphNode* node2 = CreateTestNode(2, base_time + 60000, "Test 2", 1);
-        GraphNode* node3 = CreateTestNode(3, base_time + 120000, "Test 3", 0);
+        auto node1 = CreateTestNode(1, base_time, "Test 1", 0);
+        auto node2 = CreateTestNode(2, base_time + 60000, "Test 2", 1);
+        auto node3 = CreateTestNode(3, base_time + 120000, "Test 3", 0);
         
         node2->parent = node1;
-        node1->children.push_back(node2);
+        node1->add_child(node2);
         node3->parent = node2;
-        node2->children.push_back(node3);
+        node2->add_child(node3);
         
-        std::vector<GraphNode*> nodes = {node1, node2, node3};
+        std::vector<GraphNode*> nodes;
+        for(const auto& n : test_nodes_) nodes.push_back(n.get());
         
         // Test each parameter set
         std::vector<ForceDirectedLayout::LayoutParams> param_sets = {params1, params2, params3};
@@ -364,13 +368,13 @@ public:
         auto base_time = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
         
-        std::vector<GraphNode*> nodes;
+        std::vector<std::shared_ptr<GraphNode>> nodes;
         const int num_nodes = 20;
         
         // Create nodes
         for (int i = 0; i < num_nodes; ++i) {
-            GraphNode* node = CreateTestNode(i + 1, base_time + i * 30000, 
-                                           "Performance test message " + std::to_string(i + 1), 
+            auto node = CreateTestNode(i + 1, base_time + i * 30000,
+                                           "Performance test message " + std::to_string(i + 1),
                                            i % 3); // Vary depth
             nodes.push_back(node);
         }
@@ -379,14 +383,16 @@ public:
         for (int i = 1; i < num_nodes; ++i) {
             if (i % 3 != 0) { // Not every node has a parent
                 nodes[i]->parent = nodes[i - 1];
-                nodes[i - 1]->children.push_back(nodes[i]);
+                nodes[i - 1]->add_child(nodes[i]);
             }
         }
         
         std::cout << "Performance test with " << num_nodes << " nodes..." << std::endl;
         
         auto start_time = std::chrono::high_resolution_clock::now();
-        layout_.ComputeLayout(nodes, ImVec2(750.0f, 600.0f));
+        std::vector<GraphNode*> raw_nodes;
+        for(const auto& n : nodes) raw_nodes.push_back(n.get());
+        layout_.ComputeLayout(raw_nodes, ImVec2(750.0f, 600.0f));
         auto end_time = std::chrono::high_resolution_clock::now();
         
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -394,7 +400,7 @@ public:
         std::cout << "Layout computation completed in " << duration.count() << "ms" << std::endl;
         std::cout << "Average time per node: " << (duration.count() / static_cast<double>(num_nodes)) << "ms" << std::endl;
         
-        bool chronological_order = VerifyChronologicalOrder(nodes);
+        bool chronological_order = VerifyChronologicalOrder(raw_nodes);
         std::cout << "Chronological order maintained: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
         
         // Performance benchmark
@@ -422,9 +428,6 @@ public:
 
 private:
     void ClearTestData() {
-        for (GraphNode* node : test_nodes_) {
-            delete node;
-        }
         test_nodes_.clear();
         layout_.ResetPhysicsState();
     }
@@ -472,16 +475,16 @@ private:
     bool VerifyConversationStructure(const std::vector<GraphNode*>& nodes) {
         for (GraphNode* node : nodes) {
             // Check parent-child relationships are reasonable
-            if (node->parent) {
+            if (auto parent = node->parent_raw()) {
                 float distance = std::sqrt(
-                    (node->position.x - node->parent->position.x) * (node->position.x - node->parent->position.x) +
-                    (node->position.y - node->parent->position.y) * (node->position.y - node->parent->position.y)
+                    (node->position.x - parent->position.x) * (node->position.x - parent->position.x) +
+                    (node->position.y - parent->position.y) * (node->position.y - parent->position.y)
                 );
-                
+
                 // Parent and child should be reasonably close
                 if (distance > 800.0f) {
-                    std::cout << "    Structure violation: Node " << node->graph_node_id 
-                              << " too far from parent " << node->parent->graph_node_id 
+                    std::cout << "    Structure violation: Node " << node->graph_node_id
+                              << " too far from parent " << parent->graph_node_id
                               << " (distance: " << distance << ")" << std::endl;
                     return false;
                 }

@@ -16,7 +16,7 @@
 class GraphManager {
 public:
     // Graph Data
-    std::unordered_map<NodeIdType, std::unique_ptr<GraphNode>> all_nodes; // Main storage for all nodes, keyed by GraphNode::graph_node_id
+    std::unordered_map<NodeIdType, std::shared_ptr<GraphNode>> all_nodes; // Main storage now uses shared_ptr for safe shared ownership
     std::vector<GraphNode*> root_nodes; // Pointers to root nodes
     GraphNode* last_node_added_to_graph = nullptr; // Pointer to the most recently added node
 

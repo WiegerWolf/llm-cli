@@ -83,20 +83,20 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
     graph_view_state.selected_node_id = kInvalidNodeId;
     next_graph_node_id_counter = 0; // Reset ID counter
 
-    GraphNode* previous_node_ptr = nullptr;
+    std::shared_ptr<GraphNode> previous_node_ptr = nullptr;
 
     for (const auto& msg : history_messages) {
         NodeIdType current_g_node_id = next_graph_node_id_counter++;
         // Constructor now takes (graph_node_id, HistoryMessage)
-        auto new_node_unique_ptr = std::make_unique<GraphNode>(current_g_node_id, msg);
-        GraphNode* current_node_ptr = new_node_unique_ptr.get();
+        auto new_node_shared_ptr = std::make_shared<GraphNode>(current_g_node_id, msg);
+        GraphNode* current_node_ptr = new_node_shared_ptr.get();
 
         // Use the helper function to format message content consistently with linear view
         current_node_ptr->label = FormatMessageForGraph(msg, db_manager);
 
         current_node_ptr->parent = previous_node_ptr;
-        if (previous_node_ptr != nullptr) {
-            previous_node_ptr->children.push_back(current_node_ptr);
+        if (previous_node_ptr) {
+            previous_node_ptr->add_child(new_node_shared_ptr);
             current_node_ptr->depth = previous_node_ptr->depth + 1;
         } else {
             root_nodes.push_back(current_node_ptr);
@@ -114,9 +114,9 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
         current_node_ptr->position = ImVec2(0.0f, 0.0f);
 
         // Key for all_nodes is now graph_node_id
-        all_nodes[current_node_ptr->graph_node_id] = std::move(new_node_unique_ptr);
+        all_nodes[current_node_ptr->graph_node_id] = new_node_shared_ptr;
         
-        previous_node_ptr = current_node_ptr;
+        previous_node_ptr = new_node_shared_ptr;
         last_node_added_to_graph = current_node_ptr;
     }
     // Reset physics state when populating from history to ensure fresh animation
@@ -131,16 +131,22 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
 // current_selected_graph_node_id is GraphNode::graph_node_id or -1
 void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager) {
     std::unique_lock<std::shared_mutex> lock(m_mutex);
-    GraphNode* parent_node = nullptr;
+    std::shared_ptr<GraphNode> parent_node = nullptr;
 
     // 1. Determine Parent Node
     if (current_selected_graph_node_id != kInvalidNodeId) {
-        parent_node = GetNodeById(current_selected_graph_node_id);
+        auto it = all_nodes.find(current_selected_graph_node_id);
+        if (it != all_nodes.end()) {
+            parent_node = it->second;
+        }
     }
 
     if (!parent_node && last_node_added_to_graph) {
         if (all_nodes.count(last_node_added_to_graph->graph_node_id)) { // Check using graph_node_id
-            parent_node = last_node_added_to_graph;
+            auto it = all_nodes.find(last_node_added_to_graph->graph_node_id);
+            if (it != all_nodes.end()) {
+                parent_node = it->second;
+            }
         } else {
             last_node_added_to_graph = nullptr;
         }
@@ -149,15 +155,15 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     // 2. Create and Link New GraphNode
     NodeIdType new_g_node_id = next_graph_node_id_counter++;
     // Constructor now takes (graph_node_id, HistoryMessage)
-    auto new_graph_node_unique_ptr = std::make_unique<GraphNode>(new_g_node_id, new_msg);
-    GraphNode* new_graph_node = new_graph_node_unique_ptr.get();
+    auto new_graph_node_shared_ptr = std::make_shared<GraphNode>(new_g_node_id, new_msg);
+    GraphNode* new_graph_node = new_graph_node_shared_ptr.get();
 
     // Use the helper function to format message content consistently with linear view
     new_graph_node->label = FormatMessageForGraph(new_msg, db_manager);
 
     new_graph_node->parent = parent_node;
     if (parent_node) {
-        parent_node->children.push_back(new_graph_node);
+        parent_node->add_child(new_graph_node_shared_ptr);
         new_graph_node->depth = parent_node->depth + 1;
     } else {
         new_graph_node->depth = 0;
@@ -177,7 +183,7 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     new_graph_node->position = ImVec2(0.0f, 0.0f);
 
     // Key for all_nodes is now graph_node_id
-    all_nodes[new_graph_node->graph_node_id] = std::move(new_graph_node_unique_ptr);
+    all_nodes[new_graph_node->graph_node_id] = new_graph_node_shared_ptr;
 
     last_node_added_to_graph = new_graph_node;
     // Reset physics state when adding new nodes to ensure animation restarts
