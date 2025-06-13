@@ -3,6 +3,8 @@
 
 #include <vector>
 #include <map>
+#include <unordered_map> // for spatial buckets
+#include <cstdint>       // for fixed-width integer hashing
 #include <string>
 #include "extern/imgui/imgui.h"
 #include "gui_interface/graph_types.h"
@@ -80,6 +82,12 @@ private:
     std::map<GraphNode*, NodePhysics> node_physics_;
     bool is_running_ = false;
     int current_iteration_ = 0;
+// Helper: pack 2D grid cell coordinates into 64-bit key for unordered_map buckets
+    static constexpr uint64_t PackCell(int32_t x, int32_t y)
+    {
+        return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 32) |
+               static_cast<uint32_t>(y);
+    }
 
 public:
     ForceDirectedLayout(const LayoutParams& params = LayoutParams());

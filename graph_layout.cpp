@@ -251,49 +251,73 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
 }
 
 void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<GraphNode*>& nodes) {
+    // Uniform-grid spatial hashing to reduce O(N²) pair checks to ~O(N)
+    if (nodes.empty()) return;
+
+    const float cell_size = params_.min_distance; // grid cell dimension
+    std::unordered_map<uint64_t, std::vector<int>> buckets;
+    buckets.reserve(nodes.size() * 2);
+
+    // First pass – bucket each node by cell
+    for (size_t idx = 0; idx < nodes.size(); ++idx) {
+        GraphNode* n = nodes[idx];
+        if (!n) continue;
+        int32_t cx = static_cast<int32_t>(std::floor(n->position.x / cell_size));
+        int32_t cy = static_cast<int32_t>(std::floor(n->position.y / cell_size));
+        buckets[PackCell(cx, cy)].push_back(static_cast<int>(idx));
+    }
+
+    // Second pass – for each node, only compare with nodes in its cell & 8 neighbors
     for (size_t i = 0; i < nodes.size(); ++i) {
         GraphNode* node1 = nodes[i];
         if (!node1) continue;
-        
+
         auto node1_it = node_physics_.find(node1);
         if (node1_it == node_physics_.end()) continue;
-        
-        for (size_t j = i + 1; j < nodes.size(); ++j) {
-            GraphNode* node2 = nodes[j];
-            if (!node2) continue;
-            
-            auto node2_it = node_physics_.find(node2);
-            if (node2_it == node_physics_.end()) continue;
-            
-            ImVec2 delta = ImVec2(node2->position.x - node1->position.x,
-                                 node2->position.y - node1->position.y);
-            float distance = Distance(node1->position, node2->position);
-            
-            // Consider node sizes for better spacing
-            float combined_size = (node1->size.x + node1->size.y + node2->size.x + node2->size.y) * 0.25f;
-            float effective_min_distance = std::max(params_.min_distance, combined_size + 50.0f);
-            
-            if (distance > 0.1f && distance < 800.0f) { // Limit repulsion range
-                // Coulomb repulsion: F = k / distance^2
-                float force_magnitude = params_.repulsion_strength / (distance * distance);
-                
-                // Stronger repulsion when too close
-                if (distance < effective_min_distance) {
-                    force_magnitude *= 3.0f;
+
+        int32_t cx = static_cast<int32_t>(std::floor(node1->position.x / cell_size));
+        int32_t cy = static_cast<int32_t>(std::floor(node1->position.y / cell_size));
+
+        for (int dx = -1; dx <= 1; ++dx) {
+            for (int dy = -1; dy <= 1; ++dy) {
+                uint64_t key = PackCell(cx + dx, cy + dy);
+                auto bucket_it = buckets.find(key);
+                if (bucket_it == buckets.end()) continue;
+
+                const std::vector<int>& indices = bucket_it->second;
+                for (int j_index : indices) {
+                    if (j_index <= static_cast<int>(i)) continue; // avoid double-counting
+                    GraphNode* node2 = nodes[j_index];
+                    if (!node2) continue;
+
+                    auto node2_it = node_physics_.find(node2);
+                    if (node2_it == node_physics_.end()) continue;
+
+                    ImVec2 delta = ImVec2(node2->position.x - node1->position.x,
+                                          node2->position.y - node1->position.y);
+                    float distance = Distance(node1->position, node2->position);
+
+                    // Adaptive spacing based on node sizes
+                    float combined_size = (node1->size.x + node1->size.y + node2->size.x + node2->size.y) * 0.25f;
+                    float effective_min_distance = std::max(params_.min_distance, combined_size + 50.0f);
+
+                    if (distance > 0.1f && distance < 800.0f) {
+                        float force_magnitude = params_.repulsion_strength / (distance * distance);
+                        if (distance < effective_min_distance) {
+                            force_magnitude *= 3.0f;
+                        }
+                        force_magnitude = std::min(force_magnitude, 5000.0f);
+
+                        ImVec2 force_direction = Normalize(delta);
+                        ImVec2 repulsive_force = ImVec2(force_direction.x * force_magnitude,
+                                                        force_direction.y * force_magnitude);
+
+                        node1_it->second.force.x -= repulsive_force.x;
+                        node1_it->second.force.y -= repulsive_force.y;
+                        node2_it->second.force.x += repulsive_force.x;
+                        node2_it->second.force.y += repulsive_force.y;
+                    }
                 }
-                
-                // Cap maximum force to prevent instability
-                force_magnitude = std::min(force_magnitude, 5000.0f);
-                
-                ImVec2 force_direction = Normalize(delta);
-                ImVec2 repulsive_force = ImVec2(force_direction.x * force_magnitude,
-                                              force_direction.y * force_magnitude);
-                
-                // Apply repulsive forces (push apart)
-                node1_it->second.force.x -= repulsive_force.x;
-                node1_it->second.force.y -= repulsive_force.y;
-                node2_it->second.force.x += repulsive_force.x;
-                node2_it->second.force.y += repulsive_force.y;
             }
         }
     }
