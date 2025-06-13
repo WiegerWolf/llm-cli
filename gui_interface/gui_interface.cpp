@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdio> // For fprintf
 #include "gui_interface.h"
+#include <atomic>  // For std::atomic message id counter
 #include <chrono> // Timestamp utilities
 #include <stdexcept>
 #include <iostream> // For error reporting during init/shutdown
@@ -14,8 +15,23 @@
 #include <backends/imgui_impl_opengl3.h>
 #include "../resources/noto_sans_font.h" // Include the generated font header
 
-// Forward declaration
+ // Forward declaration
 class GuiInterface;
+
+namespace {
+/* Thread-safe monotonic message id counter */
+std::atomic<NodeIdType> g_message_id_counter{0};
+
+inline NodeIdType getNextMessageId() {
+    return g_message_id_counter.fetch_add(1, std::memory_order_relaxed);
+}
+
+/* Timestamp helper (milliseconds since epoch, matching HistoryMessage::timestamp type) */
+inline std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> getCurrentTimestamp() {
+    return std::chrono::time_point_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now());
+}
+} // anonymous namespace
 
 // Custom GLFW scroll callback
 static void custom_glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
@@ -40,7 +56,6 @@ static void glfw_error_callback(int error, const char* description) {
 
 // Flag to track if ImGui backends were successfully initialized
 static bool imgui_init_done = false;
-std::atomic<NodeIdType> GuiInterface::s_next_message_id{0};
 
 GuiInterface::GuiInterface(PersistenceManager& db_manager) : db_manager_ref(db_manager) {
     // Initialize the input buffer
@@ -250,9 +265,8 @@ void GuiInterface::displayStatus(const std::string& status) {
 void GuiInterface::enqueueDisplayMessage(MessageType type,
                                          const std::string& content,
                                          const std::optional<std::string>& model_id) {
-    NodeIdType id = s_next_message_id.fetch_add(1, std::memory_order_relaxed);
-    auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(
-                   std::chrono::system_clock::now());
+    NodeIdType id = getNextMessageId();
+    auto now = getCurrentTimestamp();
     std::lock_guard<std::mutex> lock(display_mutex);
     display_queue.push({id,
                         type,

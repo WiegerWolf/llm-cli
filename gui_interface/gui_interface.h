@@ -140,8 +140,7 @@ public: // Changed from private to allow access from static callback // This pub
     std::condition_variable input_cv; // To signal when input is available
     std::atomic<bool> shutdown_requested{false}; // Updated for Stage 4
 private:
-    // Static counter + helper for DRY message enqueueing
-    static std::atomic<NodeIdType> s_next_message_id;
+    // Helper for DRY message enqueueing
     void enqueueDisplayMessage(MessageType type,
                                const std::string& content,
                                const std::optional<std::string>& model_id = std::nullopt);
