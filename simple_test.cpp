@@ -3,6 +3,7 @@
 #include <iostream>
 
 int main() {
+    bool success = true; // Track overall test result
     std::cout << "=== Text-Only Node Conversion Test ===" << std::endl;
     
     // Test the new CalculateNodeSize function
@@ -26,9 +27,15 @@ int main() {
     
     // Verify that sizes are much smaller than before (should be tight around text)
     std::cout << "\nVerifying text-only sizing characteristics:" << std::endl;
-    std::cout << "- Empty content uses minimal size: " << (empty_size.x <= 100 && empty_size.y <= 50 ? "PASS" : "FAIL") << std::endl;
-    std::cout << "- Short content is compact: " << (short_size.x <= 100 && short_size.y <= 50 ? "PASS" : "FAIL") << std::endl;
-    std::cout << "- Sizes are much smaller than bubble nodes: " << (medium_size.x <= 400 && medium_size.y <= 200 ? "PASS" : "FAIL") << std::endl;
+    bool pass_empty = (empty_size.x <= 100 && empty_size.y <= 50);
+    std::cout << "- Empty content uses minimal size: " << (pass_empty ? "PASS" : "FAIL") << std::endl;
+    if (!pass_empty) success = false;
+    bool pass_short = (short_size.x <= 100 && short_size.y <= 50);
+    std::cout << "- Short content is compact: " << (pass_short ? "PASS" : "FAIL") << std::endl;
+    if (!pass_short) success = false;
+    bool pass_medium = (medium_size.x <= 400 && medium_size.y <= 200);
+    std::cout << "- Sizes are much smaller than bubble nodes: " << (pass_medium ? "PASS" : "FAIL") << std::endl;
+    if (!pass_medium) success = false;
     
     std::cout << "\n=== Text-Only Node Conversion Complete ===" << std::endl;
     std::cout << "Changes implemented successfully:" << std::endl;
@@ -42,5 +49,5 @@ int main() {
     std::cout << "✓ Edge connection points updated for text bounds" << std::endl;
     std::cout << "✓ All functionality preserved (selection, hover, expand/collapse)" << std::endl;
     
-    return 0;
+    return success ? 0 : 1;
 }

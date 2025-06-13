@@ -252,6 +252,22 @@ target_include_directories(force_convergence_test PRIVATE
 target_compile_options(force_convergence_test PRIVATE $<$<CONFIG:Release>:-O3>)
 add_test(NAME ForceConvergenceTest COMMAND force_convergence_test)
 
+# --- Simple Test ---
+add_executable(simple_test
+    simple_test.cpp
+    stub_node_size.cpp
+)
+target_link_libraries(simple_test PRIVATE
+    llm_core
+    Threads::Threads
+)
+target_include_directories(simple_test PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    extern/imgui
+)
+target_compile_options(simple_test PRIVATE $<$<CONFIG:Release>:-O3>)
+add_test(NAME SimpleTest COMMAND simple_test)
+
 # Optional: Add tests
 enable_testing()
 
