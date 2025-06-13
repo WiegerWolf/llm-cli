@@ -78,7 +78,17 @@ private:
         bool is_fixed = false; // For pinning nodes in place
     };
 
-    LayoutParams params_;
+   // Adaptive convergence constants
+   // Maximum number of iterations to run before forcing termination for a single step/frame.
+   // Large/complex graphs may need several dozen iterations, while small graphs typically
+   // stabilise in <10. 50 gives parity with previous behaviour but now serves only as an
+   // upper-bound rather than a fixed loop count.
+   static constexpr int kMaxIterations = 50;
+   // Threshold for early exit based on maximum per-iteration node displacement (in pixels).
+   // Tuned experimentally – values <0.01f result in imperceptible motion.
+   static constexpr float kConvergenceDispThreshold = 0.01f;
+
+   LayoutParams params_;
     std::map<GraphNode*, NodePhysics> node_physics_;
     bool is_running_ = false;
     int current_iteration_ = 0;

@@ -36,4 +36,5 @@ Each entry references the source location and briefly explains impact.
 ---
 
 _End of backlog._
+**[FIXED]** 2025-06-13 – Issue 9 resolved: adaptive convergence replaces hard-coded 50-iteration loop in [`graph_layout.cpp`](graph_layout.cpp:116)
 **[FIXED]** 2025-06-13 – Issue 2 resolved: uniform-grid spatial hashing replaces O(N²) repulsion loop in [`graph_layout.cpp`](graph_layout.cpp:253)

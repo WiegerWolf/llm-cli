@@ -233,6 +233,24 @@ target_include_directories(test_chronological_layout PRIVATE
     extern/imgui          # For ImGui headers (ImVec2)
 )
 target_compile_options(test_chronological_layout PRIVATE $<$<CONFIG:Release>:-O3>)
+# --- Force Convergence Test ---
+add_executable(force_convergence_test
+    tests/force_convergence_test.cpp
+    graph_layout.cpp
+    graph_layout.h
+    gui_interface/graph_types.h
+    gui_interface/gui_interface.h
+)
+target_link_libraries(force_convergence_test PRIVATE
+    llm_core
+    Threads::Threads
+)
+target_include_directories(force_convergence_test PRIVATE
+    \${PROJECT_SOURCE_DIR}
+    extern/imgui
+)
+target_compile_options(force_convergence_test PRIVATE $<$<CONFIG:Release>:-O3>)
+add_test(NAME ForceConvergenceTest COMMAND force_convergence_test)
 
 # Optional: Add tests
 enable_testing()

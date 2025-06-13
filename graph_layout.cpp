@@ -114,7 +114,8 @@ void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const
 }
 
 bool ForceDirectedLayout::UpdateLayout(const std::vector<GraphNode*>& nodes) {
-    if (!is_running_ || current_iteration_ >= params_.max_iterations) {
+    // Terminate if we already reached the per-frame iteration cap
+    if (!is_running_ || current_iteration_ >= kMaxIterations) {
         is_running_ = false;
         return false;
     }
@@ -136,13 +137,27 @@ bool ForceDirectedLayout::UpdateLayout(const std::vector<GraphNode*>& nodes) {
     // Apply forces and update positions
     ApplyForces(nodes);
     
-    // Check for convergence - only after a minimum number of iterations
-    if (current_iteration_ > 50) { // Ensure at least 50 iterations for proper separation
-        float total_energy = CalculateTotalEnergy(nodes);
-        if (total_energy < params_.convergence_threshold) {
-            is_running_ = false;
-            return false;
-        }
+    // ------------------------------------------------------------------
+    // Adaptive convergence detection
+    // ------------------------------------------------------------------
+    // Measure the greatest per-node displacement (approximated via velocity
+    // magnitude times Δt).  When that value falls below an empirically
+    // determined threshold we assume visual stabilisation and stop iterating
+    // early, saving CPU/GPU time on small graphs.
+    float max_disp = 0.0f;
+    for (GraphNode* node : nodes) {
+        if (!node) continue;
+        auto it = node_physics_.find(node);
+        if (it == node_physics_.end()) continue;
+        const NodePhysics& phys = it->second;
+        float disp = std::sqrt(phys.velocity.x * phys.velocity.x +
+                               phys.velocity.y * phys.velocity.y) * params_.time_step;
+        max_disp = std::max(max_disp, disp);
+    }
+    
+    if (max_disp < kConvergenceDispThreshold) {
+        is_running_ = false;
+        return false;
     }
     
     current_iteration_++;
