@@ -6,6 +6,7 @@
 #include <algorithm> // For std::find_if
 #include <cmath> // For std::max, std::min
 #include <cfloat> // For FLT_MAX
+#include <shared_mutex>
 
 // Forward declaration of helper function from main_gui.cpp
 extern std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager& db_manager);
@@ -64,6 +65,7 @@ GraphManager::GraphManager()
 
 // Helper to get a node by its unique graph_node_id
 GraphNode* GraphManager::GetNodeById(NodeIdType graph_node_id) {
+    std::shared_lock lock(m_mutex);
     if (graph_node_id == kInvalidNodeId) return nullptr;
     auto it = all_nodes.find(graph_node_id);
     if (it != all_nodes.end()) {
@@ -74,6 +76,7 @@ GraphNode* GraphManager::GetNodeById(NodeIdType graph_node_id) {
 
 // Implementation of PopulateGraphFromHistory
 void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, PersistenceManager& db_manager) {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
     all_nodes.clear();
     root_nodes.clear();
     last_node_added_to_graph = nullptr;
@@ -127,6 +130,7 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
 // Implementation of HandleNewHistoryMessage
 // current_selected_graph_node_id is GraphNode::graph_node_id or -1
 void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager) {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
     GraphNode* parent_node = nullptr;
 
     // 1. Determine Parent Node
@@ -228,11 +232,13 @@ void GraphManager::UpdateLayout() {
 }
 
 void GraphManager::SetLayoutParams(const ForceDirectedLayout::LayoutParams& params) {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
     force_layout.SetParams(params);
     graph_layout_dirty = true; // Trigger layout recalculation
 }
 
 void GraphManager::ToggleForceLayout(bool enable) {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
     use_force_layout = enable;
     if (enable) {
         graph_layout_dirty = true; // Trigger layout recalculation
@@ -244,6 +250,7 @@ bool GraphManager::IsLayoutRunning() const {
 }
 
 void GraphManager::RestartLayoutAnimation() {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
     // Reset all node positions to trigger a fresh layout
     for (auto& pair : all_nodes) {
         if (pair.second) {
@@ -260,6 +267,7 @@ void GraphManager::SetAnimationSpeed(float speed_multiplier) {
 }
 
 std::vector<GraphNode*> GraphManager::GetAllNodes() {
+    std::shared_lock<std::shared_mutex> lock(m_mutex);
     std::vector<GraphNode*> nodes;
     nodes.reserve(all_nodes.size());
     

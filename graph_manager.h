@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <shared_mutex>
 #include "id_types.h"                   // Centralized definition of NodeIdType (int64_t) and sentinel
 #include "gui_interface/graph_types.h"
 #include "gui_interface/gui_interface.h" // For HistoryMessage
@@ -31,6 +32,9 @@ public:
     
     // ID Generation
     NodeIdType next_graph_node_id_counter;
+
+    // Thread-safety mutex guards graph data and flags
+    mutable std::shared_mutex m_mutex;
 
 
     GraphManager(); // Constructor to initialize members
