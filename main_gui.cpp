@@ -563,21 +563,21 @@ int main(int, char**) {
         bool graph_needs_update = false;
         
         if (new_output_added) {
+            // Before moving, record the end of the existing history.
+            auto const old_size = output_history.size();
+            
             // Append the new messages to the history using move iterators for efficiency
             output_history.insert(output_history.end(),
                                   std::make_move_iterator(new_messages.begin()),
                                   std::make_move_iterator(new_messages.end()));
            
-           // After adding to output_history, update the graph automatically
-           for (const auto& new_msg_ref : new_messages) { // Iterate over the original new_messages
-               // We need to find the just-added message in output_history to pass its const ref,
-               // or HandleNewHistoryMessage could take by value if HistoryMessage is cheap to copy.
-               // Assuming new_messages contains copies of what's now in output_history.
-               // The plan is "Immediately after a new HistoryMessage is successfully added to this vector..."
-               // So, we iterate `new_messages` which were just processed.
-               // The `current_selected_node_id` comes from the graph manager's view state.
-               g_graph_manager.HandleNewHistoryMessage(new_msg_ref, g_graph_manager.graph_view_state.selected_node_id, db_manager);
-           }
+            // After moving the new messages into `output_history`, iterate over the new sub-range.
+            // This is crucial because `new_messages` is now in a moved-from (empty) state.
+            auto first_new_message = std::next(output_history.begin(), old_size);
+            for (auto it = first_new_message; it != output_history.end(); ++it) {
+                const auto& new_msg_ref = *it;
+                g_graph_manager.HandleNewHistoryMessage(new_msg_ref, g_graph_manager.graph_view_state.selected_node_id, db_manager);
+            }
            graph_needs_update = true;
            
            // Force immediate layout update for new messages to fix auto-refresh issue
