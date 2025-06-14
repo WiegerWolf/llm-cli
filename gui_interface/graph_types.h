@@ -91,11 +91,12 @@ struct GraphViewState {
     float auto_pan_duration;
     float auto_pan_timer;
     bool user_interrupted_auto_pan;
+    double last_time = 0.0;
 
     GraphViewState() : pan_offset(0.0f, 0.0f), zoom_scale(1.0f), selected_node_id(kInvalidNodeId),
                        auto_pan_active(false), auto_pan_start_offset(0.0f, 0.0f),
                        auto_pan_target_offset(0.0f, 0.0f), auto_pan_start_zoom(1.0f),
                        auto_pan_target_zoom(1.0f), auto_pan_progress(0.0f),
                        auto_pan_duration(1.5f), auto_pan_timer(0.0f),
-                       user_interrupted_auto_pan(false) {}
+                       user_interrupted_auto_pan(false), last_time(0.0) {}
 };

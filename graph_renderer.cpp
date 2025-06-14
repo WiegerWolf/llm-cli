@@ -746,10 +746,9 @@ void GraphEditor::RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, co
 
 void GraphEditor::Render(ImDrawList* draw_list, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size) {
     // Update auto-pan animation
-    static auto last_time = std::chrono::steady_clock::now();
-    auto current_time = std::chrono::steady_clock::now();
-    float delta_time = std::chrono::duration<float>(current_time - last_time).count();
-    last_time = current_time;
+    double current_time = ImGui::GetTime();
+    float delta_time = (view_state_.last_time > 0.0) ? (float)(current_time - view_state_.last_time) : (1.0f / 60.0f);
+    view_state_.last_time = current_time;
     
     UpdateAutoPan(delta_time);
     
@@ -1044,10 +1043,9 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
     temp_editor_for_interactions.SetCurrentTheme(current_theme); // Set theme for color consistency
     
     // Update auto-pan animation
-    static auto last_time = std::chrono::steady_clock::now();
-    auto current_time = std::chrono::steady_clock::now();
-    float delta_time = std::chrono::duration<float>(current_time - last_time).count();
-    last_time = current_time;
+    double current_time = ImGui::GetTime();
+    float delta_time = (view_state.last_time > 0.0) ? (float)(current_time - view_state.last_time) : (1.0f / 60.0f);
+    view_state.last_time = current_time;
     
     temp_editor_for_interactions.UpdateAutoPan(delta_time);
     
