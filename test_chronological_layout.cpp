@@ -443,10 +443,10 @@ private:
     
     void PrintNodePositions(const std::vector<GraphNode*>& nodes) {
         for (GraphNode* node : nodes) {
-            std::cout << "  Node " << node->graph_node_id 
-                      << " (timestamp: " << node->message_data.timestamp << "): ("
-                      << std::fixed << std::setprecision(1) 
-                      << node->position.x << ", " << node->position.y 
+            std::cout << "  Node " << node->graph_node_id
+                      << " (timestamp: " << node->message_data.timestamp.time_since_epoch().count() << "): ("
+                      << std::fixed << std::setprecision(1)
+                      << node->position.x << ", " << node->position.y
                       << ") depth=" << node->depth << std::endl;
         }
     }
