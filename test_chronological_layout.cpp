@@ -295,6 +295,7 @@ public:
         std::vector<ForceDirectedLayout::LayoutParams> param_sets = {params1, params2, params3};
         for (size_t i = 0; i < param_sets.size(); ++i) {
             ForceDirectedLayout test_layout(param_sets[i]);
+            test_layout.Initialize(nodes, ImVec2(375.0f, 300.0f));
             test_layout.ComputeLayout(nodes, ImVec2(750.0f, 600.0f));
             
             bool chronological_order = VerifyChronologicalOrder(nodes);
