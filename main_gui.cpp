@@ -869,21 +869,7 @@ int main(int, char**) {
                   } else if (message.type == MessageType::ERROR) {
                       display_text = "ERROR: " + message.content;
                   } else if (message.type == MessageType::LLM_RESPONSE) {
-                      std::string prefix = "Assistant: ";
-                      if (message.model_id.has_value()) {
-                          const std::string& actual_model_id = message.model_id.value();
-                          if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
-                              prefix = "Assistant (Legacy Model): ";
-                          } else {
-                              std::string model_name = g_graph_manager->getModelName(actual_model_id);
-                              if (!model_name.empty()) {
-                                  prefix = "Assistant (" + model_name + "): ";
-                              } else {
-                                  prefix = "Assistant (" + actual_model_id + "): ";
-                              }
-                          }
-                      }
-                      display_text = prefix + message.content;
+                      display_text = FormatMessageForGraph(message, *g_graph_manager);
                   } else {
                       display_text = "[Unknown Type] " + message.content;
                   }
