@@ -134,9 +134,13 @@ public:
     const LayoutParams& GetParams() const { return params_; }
     
     /**
-     * @brief Update layout parameters
+     * @brief Update layout parameters and restart the physics simulation.
+     *
+     * This function immediately applies the new parameters by resetting the physics
+     * state and restarting the simulation, allowing for dynamic updates without
+     * requiring a manual restart.
      */
-    void SetParams(const LayoutParams& params) { params_ = params; }
+    void SetParams(const LayoutParams& params);
     
     /**
      * @brief Set animation speed multiplier (affects time step)

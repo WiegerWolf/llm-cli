@@ -182,6 +182,11 @@ void ForceDirectedLayout::PinNode(GraphNode* node, bool pinned) {
     }
 }
 
+void ForceDirectedLayout::SetParams(const LayoutParams& params) {
+    params_ = params;
+    ResetPhysicsState();
+    is_running_ = true; // Immediately restart with new params
+}
 void ForceDirectedLayout::SetAnimationSpeed(float speed_multiplier) {
     // Clamp speed multiplier to reasonable bounds
     speed_multiplier = std::max(0.1f, std::min(3.0f, speed_multiplier));
