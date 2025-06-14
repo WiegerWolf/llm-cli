@@ -21,8 +21,8 @@ public:
     void saveAssistantMessage(const std::string& content, const std::string& model_id);
     void saveToolMessage(const std::string& content);
     void cleanupOrphanedToolMessages();
-    std::vector<Message> getContextHistory(size_t max_pairs = 10);
-    std::vector<Message> getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit = 50);
+    std::vector<app::db::Message> getContextHistory(size_t max_pairs = 10);
+    std::vector<app::db::Message> getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit = 50);
 
     // Model-related operations
     void clearModelsTable();

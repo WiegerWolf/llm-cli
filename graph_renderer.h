@@ -5,6 +5,8 @@
 #include "gui_interface/graph_types.h" // For GraphNode and GraphViewState
 #include "gui_interface/gui_interface.h" // For ThemeType
 #include "id_types.h"
+#include "graph_manager.h"
+#include "graph_layout.h"
 #include <map>    // For managing nodes by ID
 #include <memory> // For std::shared_ptr
 #include <vector> // For storing GraphNode pointers or objects
@@ -13,8 +15,9 @@
 // or include the necessary header if it's simple.
 // Assuming GraphNode is defined in "gui_interface/graph_types.h"
 
-// Forward declaration for GraphManager
+// Forward declarations
 class GraphManager;
+class GraphLayout;
 
 class GraphEditor {
 public:

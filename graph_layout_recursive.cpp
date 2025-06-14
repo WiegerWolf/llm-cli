@@ -1,7 +1,8 @@
 #include "graph_layout_recursive.h"
+#include "gui_interface/graph_types.h"
 
 void CalculateNodePositionsRecursive(
-    GraphNode* node, 
+    GraphNode* node,
     ImVec2 current_pos,
     float x_spacing, 
     float y_spacing, 

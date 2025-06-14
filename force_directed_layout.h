@@ -5,8 +5,18 @@
 #include <map>
 #include <memory>
 #include "extern/imgui/imgui.h"
-#include "gui_interface/graph_types.h"
 #include "spatial_hash.h"
+
+ // Forward declarations
+ struct GraphNode;
+
+ // Lightweight physics data for each node
+ struct NodePhysics {
+     ImVec2 velocity;
+     ImVec2 force;
+     bool is_fixed;
+     NodePhysics() : velocity(0.0f, 0.0f), force(0.0f, 0.0f), is_fixed(false) {}
+ };
 
 class ForceDirectedLayout {
 public:
@@ -29,19 +39,12 @@ public:
     };
 
 private:
-    struct NodePhysics {
-        ImVec2 velocity = ImVec2(0.0f, 0.0f);
-        ImVec2 force = ImVec2(0.0f, 0.0f);
-        bool is_fixed = false;
-    };
-
-    static constexpr float kConvergenceDispThreshold = 0.01f;
-
     LayoutParams params_;
     std::map<std::shared_ptr<GraphNode>, NodePhysics> node_physics_;
     bool is_running_ = false;
     int current_iteration_ = 0;
     SpatialHash spatial_hash_;
+    friend struct ForceDirectedLayoutDetail;
 
 public:
     ForceDirectedLayout(const LayoutParams& params = LayoutParams());
@@ -55,17 +58,6 @@ public:
     void SetAnimationSpeed(float speed_multiplier);
     void ResetPhysicsState();
     void PinNode(std::shared_ptr<GraphNode> node, bool pinned = true);
-
-private:
-    void CalculateSpringForces(const std::vector<std::shared_ptr<GraphNode>>& nodes);
-    void CalculateRepulsiveForces(const std::vector<std::shared_ptr<GraphNode>>& nodes);
-    void CalculateTemporalForces(const std::vector<std::shared_ptr<GraphNode>>& nodes);
-    void ApplyForces(const std::vector<std::shared_ptr<GraphNode>>& nodes);
-    void ConstrainToBounds(const std::shared_ptr<GraphNode>& node);
-    float CalculateTotalEnergy(const std::vector<std::shared_ptr<GraphNode>>& nodes);
-    void InitializeChronologicalPositions(const std::vector<std::shared_ptr<GraphNode>>& nodes, const ImVec2& canvas_center);
-    std::vector<std::shared_ptr<GraphNode>> SortNodesByTimestamp(const std::vector<std::shared_ptr<GraphNode>>& nodes);
-    std::vector<std::pair<std::shared_ptr<GraphNode>, std::shared_ptr<GraphNode>>> GetChronologicalNeighbors(const std::vector<std::shared_ptr<GraphNode>>& sorted_nodes);
 };
 
 #endif // FORCE_DIRECTED_LAYOUT_H

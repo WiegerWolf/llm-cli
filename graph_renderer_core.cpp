@@ -2,8 +2,6 @@
 #include "camera_utils.h"
 #include "graph_drawing_utils.h"
 #include "theme_utils.h"
-#include "graph_manager.h"
-#include "graph_layout.h"
 #include "id_types.h"
 #include "extern/imgui/imgui_internal.h"
 #include <string>
@@ -39,11 +37,11 @@ void GraphEditor::ClearNodes() {
 }
 
 ImVec2 GraphEditor::WorldToScreen(const ImVec2& world_pos, const GraphViewState& view_state) const {
-    return CameraUtils::WorldToScreen(world_pos, view_state);
+    return app::graph::CameraUtils::WorldToScreen(world_pos, view_state);
 }
 
 ImVec2 GraphEditor::ScreenToWorld(const ImVec2& screen_pos_absolute, const ImVec2& canvas_screen_pos_absolute, const GraphViewState& view_state) const {
-    return CameraUtils::ScreenToWorld(screen_pos_absolute, canvas_screen_pos_absolute, view_state);
+    return app::graph::CameraUtils::ScreenToWorld(screen_pos_absolute, canvas_screen_pos_absolute, view_state);
 }
 
 void GraphEditor::HandlePanning(const ImVec2& canvas_screen_pos, const ImVec2& canvas_size, GraphViewState& view_state) {
@@ -308,10 +306,10 @@ void GraphEditor::UpdateAutoPan(float delta_time, GraphViewState& view_state) {
 
     view_state.auto_pan_timer += delta_time;
     float t = std::min(view_state.auto_pan_timer / view_state.auto_pan_duration, 1.0f);
-    float eased_t = CameraUtils::Easing::EaseInOutCubic(t);
+    float eased_t = app::graph::Easing::EaseInOutCubic(t);
 
-    view_state.pan_offset = CameraUtils::Easing::LerpVec2(view_state.auto_pan_start_offset, view_state.auto_pan_target_offset, eased_t);
-    view_state.zoom_scale = CameraUtils::Easing::Lerp(view_state.auto_pan_start_zoom, view_state.auto_pan_target_zoom, eased_t);
+    view_state.pan_offset = app::graph::Easing::LerpVec2(view_state.auto_pan_start_offset, view_state.auto_pan_target_offset, eased_t);
+    view_state.zoom_scale = app::graph::Easing::Lerp(view_state.auto_pan_start_zoom, view_state.auto_pan_target_zoom, eased_t);
 
     if (t >= 1.0f) {
         view_state.auto_pan_active = false;

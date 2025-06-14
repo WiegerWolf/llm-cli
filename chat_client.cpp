@@ -353,7 +353,7 @@ void ChatClient::cacheModelsToDB(const std::vector<ModelData>& models) {
 }
 // --- ChatClient Method Implementations ---
 
-std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool use_tools) {
+std::string ChatClient::makeApiCall(const std::vector<app::db::Message>& context, bool use_tools) {
     CURL* curl = nullptr;
     CURLcode res;
     long http_code = 0;
@@ -390,7 +390,7 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     std::unordered_set<std::string> valid_tool_ids;
     nlohmann::json msg_array = nlohmann::json::array();
     for (size_t i = 0; i < context.size(); ++i) {
-        const Message& msg = context[i];
+        const app::db::Message& msg = context[i];
         if (msg.role == "assistant" && !msg.content.empty() && msg.content.front() == '{') {
             try {
                 auto asst_json = nlohmann::json::parse(msg.content);
@@ -640,7 +640,7 @@ bool ChatClient::handleApiError(const nlohmann::json& api_response,
 // to get the text response based on the tool results, and handles potential errors/retries.
 // Returns true if the entire path (including the final text response) was successful.
 bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message,
-                                          std::vector<Message>& context) // context is IN/OUT
+                                          std::vector<app::db::Message>& context) // context is IN/OUT
 {
     if (response_message.is_null() || !response_message.contains("tool_calls") || response_message["tool_calls"].is_null()) {
         return false; // No standard tool calls to execute
@@ -725,7 +725,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
         // On the 2nd and 3rd attempts, add a temporary system message to strongly discourage further tool use.
         if (attempt > 0) {
-            Message no_tool_msg{.role = "system", .content = "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
+            app::db::Message no_tool_msg{.role = "system", .content = "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
             context.push_back(no_tool_msg); // Add temporary instruction
             final_response_str = makeApiCall(context, /*use_tools=*/false); // Tools explicitly disabled
             context.pop_back(); // Remove the temporary instruction before next iteration or saving
@@ -802,7 +802,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
 // and handles errors/retries, similar to the standard path.
 // Returns true if at least one fallback function was successfully executed and led to a final response.
 bool ChatClient::executeFallbackFunctionTags(const std::string& content,
-                                             std::vector<Message>& context)
+                                             std::vector<app::db::Message>& context)
 {
     bool any_executed = false;
     std::string content_str = content;
@@ -1030,7 +1030,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
                  // Add temporary system message on retries to prevent further tool use.
                  if (attempt > 0) {
-                     Message no_tool_msg{.role = "system", .content = "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
+                     app::db::Message no_tool_msg{.role = "system", .content = "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
                      context.push_back(no_tool_msg);
                      final_response_str = makeApiCall(context, /*use_tools=*/false);
                      context.pop_back();

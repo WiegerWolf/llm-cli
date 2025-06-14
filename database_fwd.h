@@ -1,6 +1,13 @@
 #pragma once
 
+namespace app {
+namespace db {
+
 class SQLiteConnection;
-struct MessageStore;
-struct ModelStore;
-struct SettingsStore;
+class MessageStore;
+class ModelStore;
+class SettingsStore;
+struct Message;
+
+} // namespace db
+} // namespace app

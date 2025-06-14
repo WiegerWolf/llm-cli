@@ -1,5 +1,4 @@
 #include "graph_renderer.h"
-#include "graph_manager.h"
 #include "graph_drawing_utils.h"
 #include "camera_utils.h"
 

@@ -7,10 +7,11 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <algorithm> // For std::clamp
 
-namespace FontUtils {
+namespace app {
+namespace gui {
 
 // Private helper to load fonts without exposing it in the header
-void loadFonts(GuiInterface& gui, float size) {
+void FontUtils::loadFonts(GuiInterface& gui, float size) {
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
 
@@ -26,7 +27,7 @@ void loadFonts(GuiInterface& gui, float size) {
     }
 }
 
-void rebuildFontAtlas(GuiInterface& gui, float new_size) {
+void FontUtils::rebuildFontAtlas(GuiInterface& gui, float new_size) {
     gui.current_font_size = new_size; // Set a temporary size
     loadFonts(gui, new_size);
     ImGuiIO& io = ImGui::GetIO();
@@ -35,7 +36,7 @@ void rebuildFontAtlas(GuiInterface& gui, float new_size) {
     gui.font_rebuild_requested = false;
 }
 
-void changeFontSize(GuiInterface& gui, float delta, Database& db) {
+void FontUtils::changeFontSize(GuiInterface& gui, float delta, Database& db) {
     constexpr float min_font_size = 8.0f;
     constexpr float max_font_size = 72.0f;
     
@@ -48,7 +49,7 @@ void changeFontSize(GuiInterface& gui, float delta, Database& db) {
     }
 }
 
-void resetFontSize(GuiInterface& gui, Database& db) {
+void FontUtils::resetFontSize(GuiInterface& gui, Database& db) {
     constexpr float default_font_size = 18.0f;
     if (fabs(gui.getCurrentFontSize() - default_font_size) > 0.1f) {
         gui.requested_font_size = default_font_size;
@@ -57,10 +58,11 @@ void resetFontSize(GuiInterface& gui, Database& db) {
     }
 }
 
-void setInitialFontSize(GuiInterface& gui, float size) {
+void FontUtils::setInitialFontSize(GuiInterface& gui, float size) {
     constexpr float min_font_size = 8.0f;
     constexpr float max_font_size = 72.0f;
     gui.current_font_size = std::clamp(size, min_font_size, max_font_size);
 }
 
-} // namespace FontUtils
+} // namespace gui
+} // namespace app

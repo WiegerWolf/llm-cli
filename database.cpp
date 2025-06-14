@@ -2,10 +2,10 @@
 #include "sqlite_connection.h"
 
 struct Database::Impl {
-    SQLiteConnection connection;
-    MessageStore message_store;
-    ModelStore model_store;
-    SettingsStore settings_store;
+    app::db::SQLiteConnection connection;
+    app::db::MessageStore message_store;
+    app::db::ModelStore model_store;
+    app::db::SettingsStore settings_store;
 
     Impl() :
         connection(),
@@ -35,11 +35,11 @@ void Database::cleanupOrphanedToolMessages() {
     m_impl->message_store.cleanupOrphanedToolMessages();
 }
 
-std::vector<Message> Database::getContextHistory(size_t max_pairs) {
+std::vector<app::db::Message> Database::getContextHistory(size_t max_pairs) {
     return m_impl->message_store.getContextHistory(max_pairs);
 }
 
-std::vector<Message> Database::getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit) {
+std::vector<app::db::Message> Database::getHistoryRange(const std::string& start_time, const std::string& end_time, size_t limit) {
     return m_impl->message_store.getHistoryRange(start_time, end_time, limit);
 }
 

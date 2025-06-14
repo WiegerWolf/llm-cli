@@ -3,10 +3,12 @@
 
 #include <map>
 #include "extern/imgui/imgui.h"
-#include "gui_interface/graph_types.h"
+
+// Forward declarations
+struct GraphNode;
 
 void CalculateNodePositionsRecursive(
-    GraphNode* node, 
+    GraphNode* node,
     ImVec2 current_pos,
     float x_spacing, 
     float y_spacing, 

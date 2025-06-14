@@ -34,13 +34,13 @@ void handle_font_size_controls(GuiInterface& gui, Database& db) {
     ImGuiIO& io = ImGui::GetIO();
     if (io.KeyCtrl) {
         if (ImGui::IsKeyPressed(ImGuiKey_Equal, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd, false)) {
-            FontUtils::changeFontSize(gui, +1.0f, db);
+            app::gui::FontUtils::changeFontSize(gui, +1.0f, db);
         }
         else if (ImGui::IsKeyPressed(ImGuiKey_Minus, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract, false)) {
-            FontUtils::changeFontSize(gui, -1.0f, db);
+            app::gui::FontUtils::changeFontSize(gui, -1.0f, db);
         }
         else if (ImGui::IsKeyPressed(ImGuiKey_0, false) || ImGui::IsKeyPressed(ImGuiKey_Keypad0, false)) {
-            FontUtils::changeFontSize(gui, 18.0f - gui.getCurrentFontSize(), db);
+            app::gui::FontUtils::changeFontSize(gui, 18.0f - gui.getCurrentFontSize(), db);
         }
     }
 }
@@ -102,7 +102,7 @@ int main(int, char**) {
     }
 
     GuiInterface gui_ui(db_manager);
-    FontUtils::setInitialFontSize(gui_ui, initial_font_size);
+    app::gui::FontUtils::setInitialFontSize(gui_ui, initial_font_size);
 
     try {
         gui_ui.initialize();

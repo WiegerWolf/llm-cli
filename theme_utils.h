@@ -1,7 +1,10 @@
 #pragma once
 
-#include "gui_interface/gui_interface.h"
 #include "extern/imgui/imgui.h" // For ImU32
+
+// Forward declarations
+enum class ThemeType;
+class GuiInterface;
 
 namespace ThemeUtils {
 

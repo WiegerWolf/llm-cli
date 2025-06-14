@@ -67,11 +67,11 @@ private:
 
     // Executes standard tool calls requested in the API response. Returns true if at least one standard tool_call was executed.
     bool executeStandardToolCalls(const nlohmann::json& response_message,
-                                  std::vector<Message>& context);
+                                  std::vector<app::db::Message>& context);
 
     // Executes fallback function calls embedded in <function> tags within the content. Returns true if any fallback function was executed.
     bool executeFallbackFunctionTags(const std::string& content,
-                                     std::vector<Message>& context);
+                                     std::vector<app::db::Message>& context);
 
     // Displays and saves the "normal" assistant content message.
     void printAndSaveAssistantContent(const nlohmann::json& response_message);
@@ -82,7 +82,7 @@ public:
 ~ChatClient(); // Destructor
 
     // Public method for making API calls (used by web_research tool)
-    std::string makeApiCall(const std::vector<Message>& context, bool use_tools = false);
+    std::string makeApiCall(const std::vector<app::db::Message>& context, bool use_tools = false);
 
     // --- Model Selection Method (Part III GUI Changes) ---
     void setActiveModel(const std::string& model_id);

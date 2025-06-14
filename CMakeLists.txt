@@ -215,9 +215,9 @@ add_executable(llm-gui
     extern/imgui/imgui_demo.cpp # Included for testing/examples
 )
 
-target_link_libraries(llm-gui PRIVATE
-    llm_core            # Link against the core library
+target_link_libraries(llm-gui PUBLIC
     graph               # Link against the new graph library
+    llm_core            # Link against the core library
     glfw                # Link against GLFW
     OpenGL::GL          # Link against OpenGL
     Threads::Threads    # Link against Threads
@@ -266,9 +266,9 @@ add_executable(test_chronological_layout
     test_chronological_layout.cpp
 )
 
-target_link_libraries(test_chronological_layout PRIVATE
-    llm_core            # Link against the core library
+target_link_libraries(test_chronological_layout PUBLIC
     graph               # Link against the graph library
+    llm_core            # Link against the core library
     Threads::Threads    # Link against Threads
 )
 
@@ -282,9 +282,9 @@ target_compile_options(test_chronological_layout PRIVATE $<$<CONFIG:Release>:-O3
 add_executable(force_convergence_test
     tests/force_convergence_test.cpp
 )
-target_link_libraries(force_convergence_test PRIVATE
-    llm_core
+target_link_libraries(force_convergence_test PUBLIC
     graph
+    llm_core
     Threads::Threads
 )
 target_include_directories(force_convergence_test PRIVATE

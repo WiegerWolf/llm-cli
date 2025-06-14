@@ -76,7 +76,7 @@ void GuiInterface::initialize() {
     if (loaded_font_size_opt.has_value()) {
         try {
             float size = std::stof(loaded_font_size_opt.value());
-            FontUtils::setInitialFontSize(*this, size);
+            app::gui::FontUtils::setInitialFontSize(*this, size);
         } catch (const std::exception& e) {
             // Corrupted value, use default
         }
@@ -155,7 +155,7 @@ void GuiInterface::initialize() {
 
 
     // Load Fonts using the helper function
-    FontUtils::rebuildFontAtlas(*this, this->current_font_size);
+    app::gui::FontUtils::rebuildFontAtlas(*this, this->current_font_size);
 
     imgui_init_done = true; // Mark ImGui as fully initialized
     std::cout << "GUI Initialized Successfully." << std::endl;

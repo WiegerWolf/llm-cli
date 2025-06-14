@@ -1,19 +1,22 @@
 #include "spatial_hash.h"
+#include "gui_interface/graph_types.h"
 #include <cmath>
 #include <algorithm>
 
-float Distance(const ImVec2& a, const ImVec2& b) {
-    float dx = b.x - a.x;
-    float dy = b.y - a.y;
-    return std::sqrt(dx * dx + dy * dy);
-}
-
-ImVec2 Normalize(const ImVec2& vec) {
-    float length = std::sqrt(vec.x * vec.x + vec.y * vec.y);
-    if (length > 0.001f) {
-        return ImVec2(vec.x / length, vec.y / length);
+namespace detail {
+    float Distance(const ImVec2& a, const ImVec2& b) {
+        float dx = b.x - a.x;
+        float dy = b.y - a.y;
+        return std::sqrt(dx * dx + dy * dy);
     }
-    return ImVec2(0.0f, 0.0f);
+
+    ImVec2 Normalize(const ImVec2& vec) {
+        float length = std::sqrt(vec.x * vec.x + vec.y * vec.y);
+        if (length > 0.001f) {
+            return ImVec2(vec.x / length, vec.y / length);
+        }
+        return ImVec2(0.0f, 0.0f);
+    }
 }
 
 SpatialHash::SpatialHash(float cell_size) : cell_size_(std::max(1.0f, cell_size)) {}
@@ -29,7 +32,7 @@ void SpatialHash::Insert(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
 
         int32_t cx = static_cast<int32_t>(std::floor(n->position.x / cell_size_));
         int32_t cy = static_cast<int32_t>(std::floor(n->position.y / cell_size_));
-        buckets_[PackCell(cx, cy)].push_back(static_cast<int>(idx));
+        buckets_[detail::PackCell(cx, cy)].push_back(static_cast<int>(idx));
     }
 }
 
@@ -44,7 +47,7 @@ std::vector<int> SpatialHash::Query(const ImVec2& position, float radius) {
 
     for (int dx = -search_radius; dx <= search_radius; ++dx) {
         for (int dy = -search_radius; dy <= search_radius; ++dy) {
-            uint64_t key = PackCell(center_cx + dx, center_cy + dy);
+            uint64_t key = detail::PackCell(center_cx + dx, center_cy + dy);
             auto bucket_it = buckets_.find(key);
             if (bucket_it != buckets_.end()) {
                 result.insert(result.end(), bucket_it->second.begin(), bucket_it->second.end());
