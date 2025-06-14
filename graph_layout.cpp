@@ -582,10 +582,9 @@ void ForceDirectedLayout::CalculateTemporalForces(const std::vector<GraphNode*>&
         if (sorted_it != sorted_nodes.end()) {
             size_t chronological_index = std::distance(sorted_nodes.begin(), sorted_it);
             
-            // Calculate expected Y position (older messages at bottom, newer at top)
-            // Use same calculation as in InitializeChronologicalPositions
-            float canvas_height = params_.canvas_bounds.y;
-            float expected_y = canvas_height - 100.0f - (chronological_index * params_.chronological_spacing);
+            // Calculate expected Y position (older messages at TOP, newer at bottom)
+            // This logic MUST match InitializeChronologicalPositions for stability.
+            float expected_y = 100.0f + (chronological_index * params_.chronological_spacing);
             
             float y_deviation = node->position.y - expected_y;
             
