@@ -1133,7 +1133,7 @@ int main(int, char**) {
                 output_history.push_back(user_msg);
                 
                 // Immediately update the graph with the new user input
-                g_graph_manager->HandleNewHistoryMessage(user_msg, g_graph_manager->graph_view_state.selected_node_id, db_manager);
+                g_graph_manager->HandleNewHistoryMessage(user_msg, g_graph_manager->GetSelectedNodeId(), db_manager);
                 
                 // Force immediate layout update to ensure new user input node displays properly
                 g_graph_manager->RestartLayoutAnimation();
