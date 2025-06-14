@@ -53,8 +53,7 @@ std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph
                     prefix = "Assistant (Legacy Model): ";
                 } else {
                     // Use the GraphManager to get the model name, which may be cached
-                    // Use the non-locking version since a lock is already held by the calling function
-                    std::string model_name = graph_manager.getModelName_nolock(actual_model_id);
+                    std::string model_name = graph_manager.getModelName(actual_model_id);
                     if (!model_name.empty()) {
                         prefix = "Assistant (" + model_name + "): ";
                     } else {
