@@ -15,6 +15,7 @@
 #include <sstream>      // For parsing timestamps (Model Dropdown Icons)
 #include <iomanip>      // For std::get_time (Model Dropdown Icons)
 #include <algorithm>    // For std::any_of or string searching (Model Dropdown Icons)
+#include <atomic>       // For g_next_message_id
  
  // Include GUI library headers needed for the main loop
  #include <GLFW/glfw3.h>
@@ -26,6 +27,12 @@
 #include "graph_renderer.h" // For GraphEditor class
 #include "graph_manager.h"  // For GraphManager class
 // Note: graph_types.h is included by graph_renderer.h and graph_manager.h
+
+// --- Issue #44: Persistent Message ID ---
+// A file-scope, persistent, monotonic counter for generating unique message IDs.
+// This ensures that even if output_history is cleared, new messages will not have conflicting IDs.
+static std::atomic<NodeIdType> g_next_message_id {0};
+// --- End Issue #44 ---
 
 // Forward declaration for helper function
 std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph_manager);
@@ -1118,7 +1125,7 @@ int main(int, char**) {
                 // Add user input to history (Issue #8 Refactor)
                 // Add the user's message to the history for display
                 HistoryMessage user_msg;
-                user_msg.message_id = static_cast<NodeIdType>(output_history.size()); // Simple ID for now
+                user_msg.message_id = g_next_message_id++; // Issue #44: Use monotonic counter
                 user_msg.type = MessageType::USER_INPUT;
                 user_msg.content = std::string(input_buf);
                 user_msg.model_id = std::nullopt;
