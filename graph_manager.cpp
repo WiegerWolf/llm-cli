@@ -224,7 +224,12 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
 }
 
 // Layout management functions
+// Threading: This function must be called with an exclusive lock on m_mutex.
+// It performs a layout pass that involves reading and writing node positions.
+// Holding the lock for the entire duration prevents data races where another
+// thread might modify nodes while the layout is being computed.
 void GraphManager::UpdateLayout() {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
     if (!use_force_layout) {
         return;
     }
@@ -299,7 +304,6 @@ void GraphManager::SetAnimationSpeed(float speed_multiplier) {
 }
 
 std::vector<GraphNode*> GraphManager::GetAllNodes() {
-    std::shared_lock<std::shared_mutex> lock(m_mutex);
     std::vector<GraphNode*> nodes;
     nodes.reserve(all_nodes.size());
     
