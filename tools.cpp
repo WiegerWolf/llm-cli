@@ -150,7 +150,7 @@ nlohmann::json ToolManager::get_tool_definitions() const {
 }
 
 // Added ChatClient& client and UserInterface& ui parameters
-std::string ToolManager::execute_tool(PersistenceManager& db, ChatClient& client, UserInterface& ui, const std::string& tool_name, const nlohmann::json& args) {
+std::string ToolManager::execute_tool(Database& db, ChatClient& client, UserInterface& ui, const std::string& tool_name, const nlohmann::json& args) {
     // Execute the appropriate tool based on name
     if (tool_name == "search_web") {
         std::string query = args.value("query", "");

@@ -58,7 +58,7 @@ public:
         // Potentially other metadata if needed for display in the future
     };
     // --- End Model Entry Structure ---
-    GuiInterface(PersistenceManager& db_manager); // Modified constructor
+    GuiInterface(Database& db_manager); // Modified constructor
     virtual ~GuiInterface() override;
 
 // Prevent copying/moving
@@ -82,20 +82,12 @@ public:
 
     // Public method to get the window handle (needed by main_gui.cpp)
     GLFWwindow* getWindow() const;
+    float getCurrentFontSize() const { return current_font_size; }
 
-    // --- Theme Setting Method (Issue #18) ---
-    void setTheme(ThemeType theme);
-    // --- End Theme Setting Method ---
-
-// --- Font Size Control (Issue #19) ---
-    void changeFontSize(float delta);
-void resetFontSize();
-float getCurrentFontSize() const { return current_font_size; }
-    // --- End Font Size Control ---
-void setInitialFontSize(float size); // Added for persistence
     // --- Thread-safe methods for communication (Stage 4) ---
     void requestShutdown(); // Called by GUI thread to signal shutdown
     void sendInputToWorker(const std::string& input); // Called by GUI thread to send input
+    ThemeType getTheme() const { return current_theme; } // Getter for current theme
 
     // --- Getters for GUI State (Stage 3) ---
     char* getInputBuffer(); // Returns pointer to internal buffer
@@ -118,11 +110,21 @@ void setInitialFontSize(float size); // Added for persistence
     ImFont* GetMainFont() const { return main_font; }
     ImFont* GetSmallFont() const { return small_font; }
     // --- End Font Accessors ---
+
+    Database& getDbManager();
  
-public: // Changed from private to allow access from static callback // This public was for window, scroll_x/y. Font pointers should be private.
+public:
+    // Public members for direct access from callbacks and utils
     GLFWwindow* window = nullptr;
     float accumulated_scroll_x = 0.0f;
     float accumulated_scroll_y = 0.0f;
+    std::mutex input_mutex;
+    ImFont* main_font = nullptr;
+    ImFont* small_font = nullptr;
+    float current_font_size = 18.0f;
+    bool font_rebuild_requested = false;
+    float requested_font_size = 18.0f;
+    ThemeType current_theme = ThemeType::DARK;
 
     // --- GUI State Members (Stage 3) ---
     static constexpr size_t INPUT_BUFFER_SIZE = 1024;
@@ -131,8 +133,7 @@ public: // Changed from private to allow access from static callback // This pub
     // --- Threading members (for Stage 4) ---
 
     // Mutexes for thread safety
-    std::mutex display_mutex; // To protect display_queue (updated purpose)
-    std::mutex input_mutex;   // To protect input_queue and input_ready flag
+    std::mutex display_mutex; // To protect display_queue
 
     // Queues for inter-thread communication
     std::queue<std::string> input_queue; // For user input submitted via GUI
@@ -145,7 +146,7 @@ private:
                                const std::string& content,
                                const std::optional<std::string>& model_id = std::nullopt);
 
-    PersistenceManager& db_manager_ref; // Reference to PersistenceManager
+    Database& db_manager_ref; // Reference to Database
 
     // --- Model Selection State (Part III GUI Changes / Updated Part V) ---
     std::string current_selected_model_id_in_ui; // Renamed for clarity
@@ -155,15 +156,5 @@ private:
     mutable std::mutex models_ui_mutex; // To protect available_models_for_ui and current_selected_model_id_in_ui
     // --- End Model Selection State ---
 
-    // --- Font Size State & Helpers (Issue #19) ---
-    float current_font_size = 18.0f; // Default font size
-    bool font_rebuild_requested = false; // Flag to defer rebuild
-    float requested_font_size = 18.0f;   // Target size for deferred rebuild
-    ImFont* main_font = nullptr;         // Added: Pointer to the main font
-    ImFont* small_font = nullptr;        // Added: Pointer to the small font
- 
-    void loadFonts(float size); // Loads both main and small fonts
-    void rebuildFontAtlas(float new_size); // Keep private
- 
-    // --- End Font Size State & Helpers ---
+    // --- End Model Selection State ---
 };

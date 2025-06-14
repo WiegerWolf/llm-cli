@@ -7,7 +7,7 @@
 #include <gumbo.h>    // Include the full Gumbo header here
 
 // Forward declaration if needed, or include necessary headers
-class PersistenceManager;
+class Database;
 class UserInterface; // Forward declaration
 
 class ToolManager {
@@ -24,7 +24,7 @@ public:
     // Needs PersistenceManager for tools like read_history
     // Needs ChatClient for tools like web_research that need to make internal API calls
     // Needs UserInterface to display status messages
-    std::string execute_tool(PersistenceManager& db, class ChatClient& client, UserInterface& ui, const std::string& tool_name, const nlohmann::json& args);
+    std::string execute_tool(Database& db, class ChatClient& client, UserInterface& ui, const std::string& tool_name, const nlohmann::json& args);
 
 private:
     // Tool definitions (JSON schemas for the API)

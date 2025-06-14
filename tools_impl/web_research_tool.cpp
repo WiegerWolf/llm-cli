@@ -10,7 +10,7 @@
 #include <nlohmann/json.hpp>
 #include <string> // For std::to_string
 
-std::string perform_web_research(PersistenceManager& db, ChatClient& client, UserInterface& ui, const std::string& topic) {
+std::string perform_web_research(Database& db, ChatClient& client, UserInterface& ui, const std::string& topic) {
     try {
         ui.displayStatus("  [Research Step 1: Searching web...]"); // Use UI for status
         std::string search_query = topic;
@@ -83,8 +83,8 @@ std::string perform_web_research(PersistenceManager& db, ChatClient& client, Use
         std::string synthesis_context = "Web search results for '" + topic + "':\n" + search_results_raw + visited_content_summary;
 
         std::vector<Message> synthesis_messages;
-        synthesis_messages.push_back({"system", "You are a research assistant. Based *only* on the provided text which contains web search results and content from visited web pages, synthesize a comprehensive answer to the original research topic. Do not add any preamble like 'Based on the provided text...'."});
-        synthesis_messages.push_back({"user", "Original research topic: " + topic + "\n\nProvided research context:\n" + synthesis_context});
+        synthesis_messages.push_back({.role="system", .content="You are a research assistant. Based *only* on the provided text which contains web search results and content from visited web pages, synthesize a comprehensive answer to the original research topic. Do not add any preamble like 'Based on the provided text...'."});
+        synthesis_messages.push_back({.role="user", .content="Original research topic: " + topic + "\n\nProvided research context:\n" + synthesis_context});
 
         synthesis_messages[0].content = "You are a research assistant. Based *only* on the provided text which contains web search results and content from visited web pages, synthesize a comprehensive answer to the original research topic. DO NOT USE ANY TOOLS OR FUNCTIONS. Do not add any preamble like 'Based on the provided text...'";
 

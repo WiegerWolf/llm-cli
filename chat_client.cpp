@@ -31,8 +31,8 @@ std::string get_openrouter_api_key() {
 }
 
 // --- ChatClient Constructor ---
-ChatClient::ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref) :
-    db(db_ref),        // Initialize PersistenceManager reference
+ChatClient::ChatClient(UserInterface& ui_ref, Database& db_ref) :
+    db(db_ref),        // Initialize Database reference
     toolManager(),     // Initialize ToolManager
     ui(ui_ref)         // Initialize the UI reference
 {
@@ -725,7 +725,7 @@ bool ChatClient::executeStandardToolCalls(const nlohmann::json& response_message
     for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
         // On the 2nd and 3rd attempts, add a temporary system message to strongly discourage further tool use.
         if (attempt > 0) {
-            Message no_tool_msg{"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
+            Message no_tool_msg{.role = "system", .content = "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
             context.push_back(no_tool_msg); // Add temporary instruction
             final_response_str = makeApiCall(context, /*use_tools=*/false); // Tools explicitly disabled
             context.pop_back(); // Remove the temporary instruction before next iteration or saving
@@ -1030,7 +1030,7 @@ bool ChatClient::executeFallbackFunctionTags(const std::string& content,
             for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
                  // Add temporary system message on retries to prevent further tool use.
                  if (attempt > 0) {
-                     Message no_tool_msg{"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
+                     Message no_tool_msg{.role = "system", .content = "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
                      context.push_back(no_tool_msg);
                      final_response_str = makeApiCall(context, /*use_tools=*/false);
                      context.pop_back();

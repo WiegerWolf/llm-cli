@@ -9,15 +9,15 @@
 #include <sstream>
 #include <string> // For std::to_string
 
-std::string perform_deep_research(PersistenceManager& db, ChatClient& client, UserInterface& ui, const std::string& goal) {
+std::string perform_deep_research(Database& db, ChatClient& client, UserInterface& ui, const std::string& goal) {
     std::string aggregated_results = "Deep Research Results for: " + goal + "\n\n";
     std::vector<std::string> sub_queries;
 
     try {
         ui.displayStatus("  [Deep Research Step 1: Generating sub-queries...]"); // Use UI for status
         std::vector<Message> subquery_context;
-        subquery_context.push_back({"system", "You are an AI assistant helping with research planning. Given a research goal, break it down into 3-5 specific, actionable sub-topics suitable for individual web research. Output *only* a JSON array of strings, where each string is a sub-topic. Example: [\"sub-topic 1\", \"sub-topic 2\", \"sub-topic 3\"]"});
-        subquery_context.push_back({"user", "Research Goal: " + goal});
+        subquery_context.push_back({.role = "system", .content = "You are an AI assistant helping with research planning. Given a research goal, break it down into 3-5 specific, actionable sub-topics suitable for individual web research. Output *only* a JSON array of strings, where each string is a sub-topic. Example: [\"sub-topic 1\", \"sub-topic 2\", \"sub-topic 3\"]"});
+        subquery_context.push_back({.role = "user", .content = "Research Goal: " + goal});
 
         std::string subquery_response_str = client.makeApiCall(subquery_context, false);
         nlohmann::json subquery_response_json;
@@ -98,8 +98,8 @@ std::string perform_deep_research(PersistenceManager& db, ChatClient& client, Us
 
         ui.displayStatus("  [Deep Research Step 3: Synthesizing final report...]"); // Use UI for status
         std::vector<Message> synthesis_context;
-        synthesis_context.push_back({"system", "You are a research assistant. Based *only* on the provided research goal and the aggregated results from multiple web research sub-queries, synthesize a comprehensive final report that directly addresses the original goal. Integrate the findings smoothly. DO NOT USE ANY TOOLS OR FUNCTIONS. Do not add any preamble like 'Based on the provided text...'."});
-        synthesis_context.push_back({"user", "Original Research Goal: " + goal + "\n\nAggregated Research Findings:\n" + aggregated_results});
+        synthesis_context.push_back({.role = "system", .content = "You are a research assistant. Based *only* on the provided research goal and the aggregated results from multiple web research sub-queries, synthesize a comprehensive final report that directly addresses the original goal. Integrate the findings smoothly. DO NOT USE ANY TOOLS OR FUNCTIONS. Do not add any preamble like 'Based on the provided text...'"});
+        synthesis_context.push_back({.role = "user", .content = "Original Research Goal: " + goal + "\n\nAggregated Research Findings:\n" + aggregated_results});
 
         std::string final_report;
         bool synthesis_success = false;

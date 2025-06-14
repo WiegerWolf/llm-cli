@@ -96,12 +96,34 @@ else()
     message(FATAL_ERROR "Readline libraries not found - install with: sudo apt-get install libreadline-dev")
 endif()
 
+# --- Persistence Library ---
+add_library(persistence STATIC
+    sqlite_connection.cpp
+    sqlite_connection.h
+    message_store.cpp
+    message_store.h
+    model_store.cpp
+    model_store.h
+    settings_store.cpp
+    settings_store.h
+    database.cpp
+    database.h
+    database_fwd.h
+)
+
+target_link_libraries(persistence PUBLIC
+    nlohmann_json::nlohmann_json
+    ${SQLite3_LIBRARIES}
+)
+
+target_include_directories(persistence PUBLIC
+    ${PROJECT_SOURCE_DIR}
+)
+
 # --- Core Library ---
 add_library(llm_core STATIC
     chat_client.cpp
     chat_client.h
-    database.cpp
-    database.h
     tools.cpp
     tools.h
     tools_impl/search_web_tool.cpp
@@ -116,9 +138,8 @@ add_library(llm_core STATIC
 )
 
 target_link_libraries(llm_core PUBLIC
+    persistence
     ${CURL_LIBRARIES}
-    nlohmann_json::nlohmann_json
-    ${SQLite3_LIBRARIES}
     ${GUMBO_LIBRARIES}
     Threads::Threads
 )
@@ -147,18 +168,44 @@ target_link_libraries(llm-cli PRIVATE
 target_compile_options(llm-cli PRIVATE $<$<CONFIG:Release>:-O3>)
 
 
-# --- GUI Executable ---
-add_executable(llm-gui
-    main_gui.cpp
-    gui_interface/gui_interface.cpp
-    gui_interface/gui_interface.h
-    gui_interface/graph_types.h
+# --- Graph Library (Static) ---
+add_library(graph STATIC
     graph_manager.cpp
     graph_manager.h
     graph_renderer.cpp
     graph_renderer.h
+    graph_renderer_core.cpp
+    graph_drawing_utils.cpp
+    graph_drawing_utils.h
+    camera_utils.cpp
+    camera_utils.h
     graph_layout.cpp
     graph_layout.h
+    force_directed_layout.cpp
+    force_directed_layout.h
+    graph_layout_recursive.cpp
+    graph_layout_recursive.h
+    spatial_hash.cpp
+    spatial_hash.h
+)
+
+target_include_directories(graph PUBLIC
+    ${PROJECT_SOURCE_DIR}
+    extern/imgui
+)
+
+# --- GUI Executable ---
+add_executable(llm-gui
+    main_gui_core.cpp
+    main_gui_views.cpp
+    gui_interface/gui_interface.cpp
+    gui_interface/gui_interface.h
+    font_utils.cpp
+    font_utils.h
+    theme_utils.cpp
+    theme_utils.h
+    event_dispatch.cpp
+    event_dispatch.h
     extern/imgui/imgui.cpp
     extern/imgui/imgui_draw.cpp
     extern/imgui/imgui_tables.cpp
@@ -170,7 +217,7 @@ add_executable(llm-gui
 
 target_link_libraries(llm-gui PRIVATE
     llm_core            # Link against the core library
-    # ${IMGUI_LIBRARIES}  # Link against system ImGui via pkg-config -- Manually including sources
+    graph               # Link against the new graph library
     glfw                # Link against GLFW
     OpenGL::GL          # Link against OpenGL
     Threads::Threads    # Link against Threads
@@ -217,14 +264,11 @@ install(TARGETS llm-cli llm-gui # Install both executables
 # --- Test Executables ---
 add_executable(test_chronological_layout
     test_chronological_layout.cpp
-    graph_layout.cpp
-    graph_layout.h
-    gui_interface/graph_types.h
-    gui_interface/gui_interface.h
 )
 
 target_link_libraries(test_chronological_layout PRIVATE
     llm_core            # Link against the core library
+    graph               # Link against the graph library
     Threads::Threads    # Link against Threads
 )
 
@@ -234,15 +278,13 @@ target_include_directories(test_chronological_layout PRIVATE
 )
 target_compile_options(test_chronological_layout PRIVATE $<$<CONFIG:Release>:-O3>)
 # --- Force Convergence Test ---
+# --- Force Convergence Test ---
 add_executable(force_convergence_test
     tests/force_convergence_test.cpp
-    graph_layout.cpp
-    graph_layout.h
-    gui_interface/graph_types.h
-    gui_interface/gui_interface.h
 )
 target_link_libraries(force_convergence_test PRIVATE
     llm_core
+    graph
     Threads::Threads
 )
 target_include_directories(force_convergence_test PRIVATE

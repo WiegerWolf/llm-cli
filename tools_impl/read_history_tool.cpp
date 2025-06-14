@@ -1,7 +1,7 @@
 #include "tools_impl/read_history_tool.h"
 #include <sstream>
 
-std::string read_history(PersistenceManager& db, const std::string& start_time, const std::string& end_time, size_t limit) {
+std::string read_history(Database& db, const std::string& start_time, const std::string& end_time, size_t limit) {
     std::vector<Message> messages = db.getHistoryRange(start_time, end_time, limit);
     if (messages.empty()) {
         return "No messages found between " + start_time + " and " + end_time + " (Limit: " + std::to_string(limit) + ").";

@@ -49,7 +49,7 @@ ImVec2 CalculateNodeSize(const std::string& content) {
 }
 
 // Constructor
-GraphManager::GraphManager(PersistenceManager* db_manager)
+GraphManager::GraphManager(Database* db_manager)
     : m_db_manager(db_manager),
       last_node_added_to_graph(nullptr),
       graph_layout_dirty(false),
@@ -104,7 +104,7 @@ std::string GraphManager::getModelName(ModelId model_id) {
     return model_name;
 }
 
-void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, PersistenceManager& db_manager) {
+void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, Database& db_manager) {
     std::unique_lock<std::recursive_mutex> lock(m_mutex);
     all_nodes.clear();
     root_nodes.clear();
@@ -140,7 +140,7 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
     graph_view_state.user_interrupted_auto_pan = false;
 }
 
-void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager) {
+void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, Database& db_manager) {
     std::unique_lock<std::recursive_mutex> lock(m_mutex);
     std::shared_ptr<GraphNode> parent_node = nullptr;
 
@@ -283,6 +283,16 @@ void GraphManager::RestartLayoutAnimation() {
 void GraphManager::SetAnimationSpeed(float speed_multiplier) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     force_layout.SetAnimationSpeed(speed_multiplier);
+}
+
+void GraphManager::setAnimationPaused(bool is_paused) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    animation_paused = is_paused;
+}
+
+bool GraphManager::isAnimationPaused() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    return animation_paused;
 }
 
 std::unordered_map<NodeIdType, std::shared_ptr<GraphNode>> GraphManager::GetAllNodes() {

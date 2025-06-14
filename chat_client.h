@@ -20,7 +20,7 @@ class ChatClient;
 // Now define ChatClient fully
 class ChatClient {
 private:
-    PersistenceManager& db; // Changed to reference
+    Database& db; // Changed to reference
     ToolManager toolManager;
     UserInterface& ui; // Add reference to the UI
     std::string api_base = "https://openrouter.ai/api/v1/chat/completions";
@@ -78,7 +78,7 @@ private:
 
 public:
     // Constructor now requires a UserInterface reference
-    explicit ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref); // Added db_ref
+    explicit ChatClient(UserInterface& ui_ref, Database& db_ref); // Added db_ref
 ~ChatClient(); // Destructor
 
     // Public method for making API calls (used by web_research tool)
