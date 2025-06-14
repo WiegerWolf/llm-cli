@@ -319,6 +319,7 @@ void GraphManager::RestartLayoutAnimation() {
 }
 
 void GraphManager::SetAnimationSpeed(float speed_multiplier) {
+    std::lock_guard<std::shared_mutex> lock(m_mutex);
     force_layout.SetAnimationSpeed(speed_multiplier);
 }
 
