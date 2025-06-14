@@ -5,6 +5,7 @@
 #include <cmath>
 #include <random>
 #include <iostream>
+#include <unordered_map>
 // RNG engine shared across layout operations to avoid expensive per-node construction.
 // Using static thread_local for deterministic replay and thread safety.
 namespace {
