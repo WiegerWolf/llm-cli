@@ -68,7 +68,7 @@ public:
     }
     
     // Test Scenario 1: Simple linear conversation
-    void TestLinearConversation() {
+    bool TestLinearConversation() {
         std::cout << "\n=== Test 1: Linear Conversation ===" << std::endl;
         
         // Clear previous test data
@@ -87,13 +87,10 @@ public:
         // Set up parent-child relationships
         node2->parent = node1;
         node1->add_child(node2);
-
         node3->parent = node2;
         node2->add_child(node3);
-
         node4->parent = node3;
         node3->add_child(node4);
-
         node5->parent = node4;
         node4->add_child(node5);
         
@@ -101,41 +98,31 @@ public:
         
         // Test chronological initialization
         std::cout << "Testing chronological initialization..." << std::endl;
-        PrintInitialPositions(nodes);
-        
         layout_.Initialize(nodes, ImVec2(750.0f, 600.0f));
         
-        std::cout << "Positions after chronological initialization:" << std::endl;
-        PrintNodePositions(nodes);
-        
         // Verify chronological ordering
-        bool chronological_order = VerifyChronologicalOrder(nodes);
-        std::cout << "Chronological order maintained: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
+        bool ok = VerifyChronologicalOrder(nodes);
+        std::cout << "Chronological order maintained: " << (ok ? "PASS" : "FAIL") << std::endl;
         
         // Run force simulation
         std::cout << "\nRunning force simulation..." << std::endl;
-        auto start_time = std::chrono::high_resolution_clock::now();
-        
         layout_.ComputeLayout(nodes, ImVec2(750.0f, 600.0f));
         
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
-        std::cout << "Force simulation completed in " << duration.count() << "ms" << std::endl;
-        std::cout << "Final positions after force simulation:" << std::endl;
-        PrintNodePositions(nodes);
-        
         // Verify chronological order is still maintained
-        chronological_order = VerifyChronologicalOrder(nodes);
-        std::cout << "Chronological order after simulation: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
+        bool chronological_after_sim = VerifyChronologicalOrder(nodes);
+        std::cout << "Chronological order after simulation: " << (chronological_after_sim ? "PASS" : "FAIL") << std::endl;
+        ok &= chronological_after_sim;
         
         // Verify conversation structure
         bool structure_maintained = VerifyConversationStructure(nodes);
         std::cout << "Conversation structure maintained: " << (structure_maintained ? "PASS" : "FAIL") << std::endl;
+        ok &= structure_maintained;
+
+        return ok;
     }
     
     // Test Scenario 2: Branched conversation
-    void TestBranchedConversation() {
+    bool TestBranchedConversation() {
         std::cout << "\n=== Test 2: Branched Conversation ===" << std::endl;
         
         ClearTestData();
@@ -158,45 +145,36 @@ public:
         root->add_child(reply1);
         root->add_child(reply2);
         root->add_child(reply3);
-
         follow_up1->parent = reply1;
         reply1->add_child(follow_up1);
-
         follow_up2->parent = reply2;
         reply2->add_child(follow_up2);
         
         auto& nodes = test_nodes_;
         
         std::cout << "Testing branched conversation layout..." << std::endl;
-        PrintInitialPositions(nodes);
-        
         layout_.Initialize(nodes, ImVec2(750.0f, 600.0f));
-        
-        std::cout << "Positions after initialization:" << std::endl;
-        PrintNodePositions(nodes);
-        
-        // Run simulation
-        auto start_time = std::chrono::high_resolution_clock::now();
         layout_.ComputeLayout(nodes, ImVec2(750.0f, 600.0f));
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
-        std::cout << "Simulation completed in " << duration.count() << "ms" << std::endl;
-        std::cout << "Final positions:" << std::endl;
-        PrintNodePositions(nodes);
         
         // Verify results
+        bool ok = true;
         bool chronological_order = VerifyChronologicalOrder(nodes);
-        bool structure_maintained = VerifyConversationStructure(nodes);
-        bool depth_positioning = VerifyDepthPositioning(nodes);
-        
         std::cout << "Chronological order: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
+        ok &= chronological_order;
+        
+        bool structure_maintained = VerifyConversationStructure(nodes);
         std::cout << "Conversation structure: " << (structure_maintained ? "PASS" : "FAIL") << std::endl;
+        ok &= structure_maintained;
+
+        bool depth_positioning = VerifyDepthPositioning(nodes);
         std::cout << "Depth positioning: " << (depth_positioning ? "PASS" : "FAIL") << std::endl;
+        ok &= depth_positioning;
+        
+        return ok;
     }
     
     // Test Scenario 3: Mixed chronological order input
-    void TestMixedChronologicalInput() {
+    bool TestMixedChronologicalInput() {
         std::cout << "\n=== Test 3: Mixed Chronological Order Input ===" << std::endl;
         
         ClearTestData();
@@ -214,46 +192,32 @@ public:
         // Set up linear chain (but nodes created out of order)
         node2->parent = node1;
         node1->add_child(node2);
-
         node3->parent = node2;
         node2->add_child(node3);
-
         node4->parent = node3;
         node3->add_child(node4);
-
         node5->parent = node4;
         node4->add_child(node5);
         
-        // Input nodes in mixed order to test sorting
         auto& nodes = test_nodes_;
-        
-        std::cout << "Input nodes in mixed chronological order:" << std::endl;
-        for (size_t i = 0; i < nodes.size(); ++i) {
-            std::cout << "  Input[" << i << "]: Node " << nodes[i]->graph_node_id 
-                      << " (timestamp: " << nodes[i]->message_data.timestamp.time_since_epoch().count() << ")" << std::endl;
-        }
-        
         layout_.Initialize(nodes, ImVec2(750.0f, 600.0f));
         
-        std::cout << "Positions after chronological sorting and initialization:" << std::endl;
-        PrintNodePositions(nodes);
-        
         // Verify that sorting worked correctly
-        bool chronological_order = VerifyChronologicalOrder(nodes);
-        std::cout << "Chronological sorting: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
+        bool ok = VerifyChronologicalOrder(nodes);
+        std::cout << "Chronological sorting: " << (ok ? "PASS" : "FAIL") << std::endl;
         
         // Run simulation
         layout_.ComputeLayout(nodes, ImVec2(750.0f, 600.0f));
         
-        std::cout << "Final positions after simulation:" << std::endl;
-        PrintNodePositions(nodes);
-        
-        chronological_order = VerifyChronologicalOrder(nodes);
-        std::cout << "Chronological order maintained: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
+        bool chronological_after_sim = VerifyChronologicalOrder(nodes);
+        std::cout << "Chronological order maintained: " << (chronological_after_sim ? "PASS" : "FAIL") << std::endl;
+        ok &= chronological_after_sim;
+
+        return ok;
     }
     
     // Test Scenario 4: Varying time gaps
-    void TestVaryingTimeGaps() {
+    bool TestVaryingTimeGaps() {
         std::cout << "\n=== Test 4: Varying Time Gaps ===" << std::endl;
         
         ClearTestData();
@@ -271,43 +235,32 @@ public:
         // Set up relationships
         node2->parent = node1;
         node1->add_child(node2);
-
         node3->parent = node2;
         node2->add_child(node3);
-
         node4->parent = node3;
         node3->add_child(node4);
-
         node5->parent = node4;
         node4->add_child(node5);
         
         auto& nodes = test_nodes_;
-        
-        std::cout << "Testing messages with varying time gaps:" << std::endl;
-        for (const auto& node : nodes) {
-            std::cout << "  Node " << node->graph_node_id << ": " << node->message_data.content << std::endl;
-        }
-        
         layout_.Initialize(nodes, ImVec2(750.0f, 600.0f));
-        
-        std::cout << "Positions after initialization:" << std::endl;
-        PrintNodePositions(nodes);
-        
         layout_.ComputeLayout(nodes, ImVec2(750.0f, 600.0f));
         
-        std::cout << "Final positions:" << std::endl;
-        PrintNodePositions(nodes);
-        
         // Verify chronological order and spacing
+        bool ok = true;
         bool chronological_order = VerifyChronologicalOrder(nodes);
-        bool appropriate_spacing = VerifyTimeGapSpacing(nodes);
-        
         std::cout << "Chronological order: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
+        ok &= chronological_order;
+
+        bool appropriate_spacing = VerifyTimeGapSpacing(nodes);
         std::cout << "Appropriate time gap spacing: " << (appropriate_spacing ? "PASS" : "FAIL") << std::endl;
+        ok &= appropriate_spacing;
+
+        return ok;
     }
     
     // Test parameter validation
-    void TestParameterValidation() {
+    bool TestParameterValidation() {
         std::cout << "\n=== Test 5: Parameter Validation ===" << std::endl;
         
         // Test different parameter combinations
@@ -320,11 +273,6 @@ public:
         ForceDirectedLayout::LayoutParams params3 = CreateTestLayoutParams();
         params3.vertical_bias = 1.0f;
         params3.chronological_spacing = 200.0f;
-        
-        std::cout << "Testing parameter combinations:" << std::endl;
-        std::cout << "  Params 1: chronological_init=false" << std::endl;
-        std::cout << "  Params 2: temporal_strength=0.0" << std::endl;
-        std::cout << "  Params 3: vertical_bias=1.0, spacing=200" << std::endl;
         
         // Create simple test case
         ClearTestData();
@@ -343,6 +291,7 @@ public:
         auto& nodes = test_nodes_;
         
         // Test each parameter set
+        bool ok = true;
         std::vector<ForceDirectedLayout::LayoutParams> param_sets = {params1, params2, params3};
         for (size_t i = 0; i < param_sets.size(); ++i) {
             ForceDirectedLayout test_layout(param_sets[i]);
@@ -350,11 +299,13 @@ public:
             
             bool chronological_order = VerifyChronologicalOrder(nodes);
             std::cout << "  Params " << (i + 1) << " result: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
+            ok &= chronological_order;
         }
+        return ok;
     }
     
     // Performance test
-    void TestPerformance() {
+    bool TestPerformance() {
         std::cout << "\n=== Test 6: Performance Test ===" << std::endl;
         
         ClearTestData();
@@ -378,11 +329,9 @@ public:
         for (int i = 1; i < num_nodes; ++i) {
             if (i % 3 != 0) { // Not every node has a parent
                 nodes[i]->parent = nodes[i - 1];
-                nodes[i - 1]->add_child(nodes[i]);
+                nodes[i-1]->add_child(nodes[i]);
             }
         }
-        
-        std::cout << "Performance test with " << num_nodes << " nodes..." << std::endl;
         
         auto start_time = std::chrono::high_resolution_clock::now();
         std::vector<std::shared_ptr<GraphNode>> raw_nodes;
@@ -392,33 +341,39 @@ public:
         
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
-        std::cout << "Layout computation completed in " << duration.count() << "ms" << std::endl;
-        std::cout << "Average time per node: " << (duration.count() / static_cast<double>(num_nodes)) << "ms" << std::endl;
-        
+        bool ok = true;
         bool chronological_order = VerifyChronologicalOrder(raw_nodes);
         std::cout << "Chronological order maintained: " << (chronological_order ? "PASS" : "FAIL") << std::endl;
+        ok &= chronological_order;
         
         // Performance benchmark
-        if (duration.count() < 1000) { // Should complete within 1 second
-            std::cout << "Performance: PASS (< 1000ms)" << std::endl;
-        } else {
-            std::cout << "Performance: FAIL (>= 1000ms)" << std::endl;
-        }
+        bool performance_ok = duration.count() < 1000;
+        std::cout << "Performance: " << (performance_ok ? "PASS" : "FAIL")
+                  << " (" << duration.count() << "ms)" << std::endl;
+        ok &= performance_ok;
+        
+        return ok;
     }
     
     // Run all tests
-    void RunAllTests() {
+    bool RunAllTests() {
         std::cout << "=== Chronological Layout Algorithm Test Suite ===" << std::endl;
-        std::cout << "Testing hybrid chronological-force layout implementation" << std::endl;
+        bool all_tests_passed = true;
         
-        TestLinearConversation();
-        TestBranchedConversation();
-        TestMixedChronologicalInput();
-        TestVaryingTimeGaps();
-        TestParameterValidation();
-        TestPerformance();
+        all_tests_passed &= TestLinearConversation();
+        all_tests_passed &= TestBranchedConversation();
+        all_tests_passed &= TestMixedChronologicalInput();
+        all_tests_passed &= TestVaryingTimeGaps();
+        all_tests_passed &= TestParameterValidation();
+        all_tests_passed &= TestPerformance();
         
         std::cout << "\n=== Test Suite Complete ===" << std::endl;
+        if (all_tests_passed) {
+            std::cout << "All tests passed." << std::endl;
+        } else {
+            std::cout << "Some tests failed." << std::endl;
+        }
+        return all_tests_passed;
     }
 
 private:
@@ -427,24 +382,8 @@ private:
         layout_.ResetPhysicsState();
     }
     
-    void PrintInitialPositions(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
-        std::cout << "Initial positions (before layout):" << std::endl;
-        for (const auto& node : nodes) {
-            std::cout << "  Node " << node->graph_node_id << ": ("
-                      << std::fixed << std::setprecision(1)
-                      << node->position.x << ", " << node->position.y << ")" << std::endl;
-        }
-    }
-    
-    void PrintNodePositions(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
-        for (const auto& node : nodes) {
-            std::cout << "  Node " << node->graph_node_id
-                      << " (timestamp: " << node->message_data.timestamp.time_since_epoch().count() << "): ("
-                      << std::fixed << std::setprecision(1)
-                      << node->position.x << ", " << node->position.y
-                      << ") depth=" << node->depth << std::endl;
-        }
-    }
+    void PrintInitialPositions(const std::vector<std::shared_ptr<GraphNode>>&) {}
+    void PrintNodePositions(const std::vector<std::shared_ptr<GraphNode>>&) {}
     
     bool VerifyChronologicalOrder(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
         // Sort nodes by timestamp
@@ -540,17 +479,16 @@ private:
 };
 
 int main() {
-    try {
-        ChronologicalLayoutTester tester;
-        tester.RunAllTests();
-        
-        std::cout << "\nAll tests completed successfully!" << std::endl;
-        return 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Test failed with exception: " << e.what() << std::endl;
-        return 1;
-    } catch (...) {
-        std::cerr << "Test failed with unknown exception" << std::endl;
-        return 1;
-    }
+    ChronologicalLayoutTester tester;
+    bool ok = tester.RunAllTests();
+    
+    // Test interactive mode if enabled
+#ifdef INTERACTIVE_TEST_MODE
+    std::cout << "\nEntering interactive test mode. Close the window to exit." << std::endl;
+    TestGui(tester); // The tester is passed to the GUI
+#else
+    //std::cout << "\nTo run in interactive mode, compile with -DINTERACTIVE_TEST_MODE" << std::endl;
+#endif
+    
+    return ok ? 0 : 1;
 }
