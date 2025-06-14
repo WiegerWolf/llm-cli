@@ -25,7 +25,7 @@ int main() {
     // Assign nominal sizes so forces are non-zero
     n1->size = n2->size = n3->size = ImVec2(200.0f, 80.0f);
 
-    std::vector<GraphNode*> nodes = {n1.get(), n2.get(), n3.get()};
+    std::vector<std::shared_ptr<GraphNode>> nodes = {n1, n2, n3};
 
     ForceDirectedLayout layout;
     ImVec2 canvas_center(500.0f, 400.0f);

@@ -6,6 +6,7 @@
 #include "gui_interface/gui_interface.h" // For ThemeType
 #include <vector> // For storing GraphNode pointers or objects
 #include <map>    // For managing nodes by ID
+#include <memory> // For std::shared_ptr
 
 // Forward declaration if GraphNode is complex and defined elsewhere,
 // or include the necessary header if it's simple.
@@ -19,8 +20,8 @@ public:
     GraphEditor();
 
     void Render(ImDrawList* draw_list, const ImVec2& canvas_pos, const ImVec2& canvas_size);
-    void AddNode(GraphNode* node); // Or pass by value/reference depending on ownership model
-    GraphNode* GetNode(int node_id);
+    void AddNode(std::shared_ptr<GraphNode> node);
+    std::shared_ptr<GraphNode> GetNode(int node_id);
     void ClearNodes(); // If nodes are managed internally
 
     // Interaction Handlers
@@ -32,7 +33,7 @@ public:
     void RenderPopups(ImDrawList* draw_list, const ImVec2& canvas_pos); // Renders context menus and modals
 
     // Camera auto-pan functionality
-    void StartAutoPanToNode(const GraphNode* target_node, const ImVec2& canvas_size);
+    void StartAutoPanToNode(const std::shared_ptr<GraphNode>& target_node, const ImVec2& canvas_size);
     void StartAutoPanToPosition(const ImVec2& target_world_pos, float target_zoom, const ImVec2& canvas_size);
     void UpdateAutoPan(float delta_time);
     void CancelAutoPan();
@@ -61,9 +62,9 @@ public:
 
 private:
     GraphViewState view_state_;
-    std::map<int, GraphNode*> nodes_;
-    GraphNode* context_node_ = nullptr; // Node for which context menu is triggered
-    GraphNode* reply_parent_node_ = nullptr; // Parent node for the new message
+    std::map<int, std::shared_ptr<GraphNode>> nodes_;
+    std::shared_ptr<GraphNode> context_node_ = nullptr; // Node for which context menu is triggered
+    std::shared_ptr<GraphNode> reply_parent_node_ = nullptr; // Parent node for the new message
     ThemeType current_theme_ = ThemeType::DARK; // Current theme for color selection
 
     // Buffer for the new message input modal

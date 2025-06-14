@@ -275,7 +275,7 @@ GraphEditor::GraphEditor() {
     // context_node_ and reply_parent_node_ are initialized to nullptr by default
 }
 
-int GetNextUniqueID(const std::map<int, GraphNode*>& nodes) {
+int GetNextUniqueID(const std::map<int, std::shared_ptr<GraphNode>>& nodes) {
     if (nodes.empty()) {
         return 1;
     }
@@ -288,13 +288,13 @@ int GetNextUniqueID(const std::map<int, GraphNode*>& nodes) {
     return max_id + 1;
 }
 
-void GraphEditor::AddNode(GraphNode* node) {
+void GraphEditor::AddNode(std::shared_ptr<GraphNode> node) {
     if (node) {
         nodes_[node->message_id] = node; // Assuming message_id is unique for now, or use graph_node_id
     }
 }
 
-GraphNode* GraphEditor::GetNode(int node_id) {
+std::shared_ptr<GraphNode> GraphEditor::GetNode(int node_id) {
     auto it = nodes_.find(node_id);
     if (it != nodes_.end()) {
         return it->second;
@@ -303,9 +303,6 @@ GraphNode* GraphEditor::GetNode(int node_id) {
 }
 
 void GraphEditor::ClearNodes() {
-    for (auto& pair : nodes_) {
-        delete pair.second; // Assuming GraphEditor owns the nodes
-    }
     nodes_.clear();
 }
 
@@ -381,7 +378,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
     context_node_ = nullptr;
 
     for (auto& pair : nodes_) {
-        GraphNode* node_ptr = pair.second;
+        auto& node_ptr = pair.second;
         if (!node_ptr) continue;
         GraphNode& node = *node_ptr;
 
@@ -423,7 +420,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
         if (ImGui::InvisibleButton(select_btn_id, node_size_screen)) {
             if (view_state_.selected_node_id != node.graph_node_id) {
                 if (view_state_.selected_node_id != -1) {
-                    GraphNode* prev_selected_node = GetNode(view_state_.selected_node_id);
+                    auto prev_selected_node = GetNode(view_state_.selected_node_id);
                     if (prev_selected_node) {
                         prev_selected_node->is_selected = false;
                     }
@@ -445,7 +442,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
 
     if (clicked_on_background && !item_interacted_this_frame) {
         if (view_state_.selected_node_id != -1) {
-            GraphNode* current_selected_node = GetNode(view_state_.selected_node_id);
+            auto current_selected_node = GetNode(view_state_.selected_node_id);
             if (current_selected_node) {
                 current_selected_node->is_selected = false;
             }
@@ -457,7 +454,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
 void GraphEditor::DisplaySelectedNodeDetails() {
     ImGui::Begin("Node Details"); 
     if (view_state_.selected_node_id != -1) {
-        GraphNode* selected_node_ptr = GetNode(view_state_.selected_node_id);
+        auto selected_node_ptr = GetNode(view_state_.selected_node_id);
         if (selected_node_ptr) {
             ImGui::Text("Graph Node ID: %ld", selected_node_ptr->graph_node_id);
             ImGui::Text("Message ID: %ld", selected_node_ptr->message_id);
@@ -771,7 +768,7 @@ void GraphEditor::Render(ImDrawList* draw_list, const ImVec2& canvas_screen_pos,
     // }
 
 
-    std::vector<GraphNode*> root_nodes_to_render;
+    std::vector<std::shared_ptr<GraphNode>> root_nodes_to_render;
     if (!nodes_.empty()) {
         for (auto& pair : nodes_) {
             if (pair.second && !pair.second->parent.lock()) {
@@ -780,7 +777,7 @@ void GraphEditor::Render(ImDrawList* draw_list, const ImVec2& canvas_screen_pos,
         }
     }
 
-    for (GraphNode* root_node_ptr : root_nodes_to_render) {
+    for (const auto& root_node_ptr : root_nodes_to_render) {
         if (root_node_ptr) {
             RenderNodeRecursive(draw_list, *root_node_ptr, canvas_screen_pos, canvas_size);
         }
@@ -860,13 +857,13 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
                 
                 // Example: Manually create and add if not using GraphManager directly here
                 int new_graph_node_id = GetNextUniqueID(nodes_); // Generate a new graph node ID
-                GraphNode* new_graph_node = new GraphNode(new_graph_node_id, new_hist_msg);
+                auto new_graph_node = std::make_shared<GraphNode>(new_graph_node_id, new_hist_msg);
                 new_graph_node->parent = reply_parent_node_->weak_from_this();
                 new_graph_node->depth = reply_parent_node_->depth + 1;
                 // Position and size would be set by layout algorithm
                 new_graph_node->size = ImVec2(150, 80); // Default size
                 
-                reply_parent_node_->add_child(std::shared_ptr<GraphNode>(new_graph_node));
+                reply_parent_node_->add_child(new_graph_node);
                 nodes_[new_graph_node_id] = new_graph_node; // Add to editor's map
                 // graph_layout_dirty = true; // Mark layout as dirty - This should be handled by GraphManager
 
@@ -886,7 +883,7 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
 }
 
 // Camera auto-pan functionality implementation
-void GraphEditor::StartAutoPanToNode(const GraphNode* target_node, const ImVec2& canvas_size) {
+void GraphEditor::StartAutoPanToNode(const std::shared_ptr<GraphNode>& target_node, const ImVec2& canvas_size) {
     if (!target_node) return;
     
     // Calculate optimal camera position to center the target node
@@ -1246,8 +1243,10 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
         ImGui::TextWrapped("Graph is empty. Populate it from history or click 'Refresh Graph'.");
     } else {
         // ImGui::Text("Graph View: Rendering %zu nodes from GraphManager.", graph_manager.all_nodes.size());
-        for (GraphNode* root_node : graph_manager.root_nodes) {
-            render_recursive_lambda(root_node);
+        for (const auto& root_node : graph_manager.root_nodes) {
+            if (root_node) {
+                render_recursive_lambda(root_node.get());
+            }
         }
     }
 }

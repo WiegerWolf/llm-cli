@@ -97,8 +97,7 @@ public:
         node5->parent = node4;
         node4->add_child(node5);
         
-        std::vector<GraphNode*> nodes;
-        for(const auto& n : test_nodes_) nodes.push_back(n.get());
+        auto& nodes = test_nodes_;
         
         // Test chronological initialization
         std::cout << "Testing chronological initialization..." << std::endl;
@@ -166,8 +165,7 @@ public:
         follow_up2->parent = reply2;
         reply2->add_child(follow_up2);
         
-        std::vector<GraphNode*> nodes;
-        for(const auto& n : test_nodes_) nodes.push_back(n.get());
+        auto& nodes = test_nodes_;
         
         std::cout << "Testing branched conversation layout..." << std::endl;
         PrintInitialPositions(nodes);
@@ -227,13 +225,12 @@ public:
         node4->add_child(node5);
         
         // Input nodes in mixed order to test sorting
-        std::vector<GraphNode*> nodes;
-        for(const auto& n : test_nodes_) nodes.push_back(n.get());
+        auto& nodes = test_nodes_;
         
         std::cout << "Input nodes in mixed chronological order:" << std::endl;
         for (size_t i = 0; i < nodes.size(); ++i) {
             std::cout << "  Input[" << i << "]: Node " << nodes[i]->graph_node_id 
-                      << " (timestamp: " << nodes[i]->message_data.timestamp << ")" << std::endl;
+                      << " (timestamp: " << nodes[i]->message_data.timestamp.time_since_epoch().count() << ")" << std::endl;
         }
         
         layout_.Initialize(nodes, ImVec2(750.0f, 600.0f));
@@ -284,11 +281,10 @@ public:
         node5->parent = node4;
         node4->add_child(node5);
         
-        std::vector<GraphNode*> nodes;
-        for(const auto& n : test_nodes_) nodes.push_back(n.get());
+        auto& nodes = test_nodes_;
         
         std::cout << "Testing messages with varying time gaps:" << std::endl;
-        for (GraphNode* node : nodes) {
+        for (const auto& node : nodes) {
             std::cout << "  Node " << node->graph_node_id << ": " << node->message_data.content << std::endl;
         }
         
@@ -344,8 +340,7 @@ public:
         node3->parent = node2;
         node2->add_child(node3);
         
-        std::vector<GraphNode*> nodes;
-        for(const auto& n : test_nodes_) nodes.push_back(n.get());
+        auto& nodes = test_nodes_;
         
         // Test each parameter set
         std::vector<ForceDirectedLayout::LayoutParams> param_sets = {params1, params2, params3};
@@ -390,8 +385,8 @@ public:
         std::cout << "Performance test with " << num_nodes << " nodes..." << std::endl;
         
         auto start_time = std::chrono::high_resolution_clock::now();
-        std::vector<GraphNode*> raw_nodes;
-        for(const auto& n : nodes) raw_nodes.push_back(n.get());
+        std::vector<std::shared_ptr<GraphNode>> raw_nodes;
+        for(const auto& n : nodes) raw_nodes.push_back(n);
         layout_.ComputeLayout(raw_nodes, ImVec2(750.0f, 600.0f));
         auto end_time = std::chrono::high_resolution_clock::now();
         
@@ -432,17 +427,17 @@ private:
         layout_.ResetPhysicsState();
     }
     
-    void PrintInitialPositions(const std::vector<GraphNode*>& nodes) {
+    void PrintInitialPositions(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
         std::cout << "Initial positions (before layout):" << std::endl;
-        for (GraphNode* node : nodes) {
-            std::cout << "  Node " << node->graph_node_id << ": (" 
-                      << std::fixed << std::setprecision(1) 
+        for (const auto& node : nodes) {
+            std::cout << "  Node " << node->graph_node_id << ": ("
+                      << std::fixed << std::setprecision(1)
                       << node->position.x << ", " << node->position.y << ")" << std::endl;
         }
     }
     
-    void PrintNodePositions(const std::vector<GraphNode*>& nodes) {
-        for (GraphNode* node : nodes) {
+    void PrintNodePositions(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
+        for (const auto& node : nodes) {
             std::cout << "  Node " << node->graph_node_id
                       << " (timestamp: " << node->message_data.timestamp.time_since_epoch().count() << "): ("
                       << std::fixed << std::setprecision(1)
@@ -451,11 +446,11 @@ private:
         }
     }
     
-    bool VerifyChronologicalOrder(const std::vector<GraphNode*>& nodes) {
+    bool VerifyChronologicalOrder(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
         // Sort nodes by timestamp
-        std::vector<GraphNode*> sorted_nodes = nodes;
+        std::vector<std::shared_ptr<GraphNode>> sorted_nodes = nodes;
         std::sort(sorted_nodes.begin(), sorted_nodes.end(),
-            [](const GraphNode* a, const GraphNode* b) {
+            [](const auto& a, const auto& b) {
                 return a->message_data.timestamp < b->message_data.timestamp;
             });
         
@@ -472,10 +467,10 @@ private:
         return true;
     }
     
-    bool VerifyConversationStructure(const std::vector<GraphNode*>& nodes) {
-        for (GraphNode* node : nodes) {
+    bool VerifyConversationStructure(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
+        for (const auto& node : nodes) {
             // Check parent-child relationships are reasonable
-            if (auto parent = node->parent_raw()) {
+            if (auto parent = node->parent.lock()) {
                 float distance = std::sqrt(
                     (node->position.x - parent->position.x) * (node->position.x - parent->position.x) +
                     (node->position.y - parent->position.y) * (node->position.y - parent->position.y)
@@ -493,7 +488,7 @@ private:
         return true;
     }
     
-    bool VerifyDepthPositioning(const std::vector<GraphNode*>& nodes) {
+    bool VerifyDepthPositioning(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
         // Nodes with greater depth should generally be positioned more to the right
         for (size_t i = 0; i < nodes.size(); ++i) {
             for (size_t j = i + 1; j < nodes.size(); ++j) {
@@ -512,11 +507,11 @@ private:
         return true;
     }
     
-    bool VerifyTimeGapSpacing(const std::vector<GraphNode*>& nodes) {
+    bool VerifyTimeGapSpacing(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
         // Sort by timestamp
-        std::vector<GraphNode*> sorted_nodes = nodes;
+        std::vector<std::shared_ptr<GraphNode>> sorted_nodes = nodes;
         std::sort(sorted_nodes.begin(), sorted_nodes.end(),
-            [](const GraphNode* a, const GraphNode* b) {
+            [](const auto& a, const auto& b) {
                 return a->message_data.timestamp < b->message_data.timestamp;
             });
         

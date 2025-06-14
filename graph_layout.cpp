@@ -60,13 +60,13 @@ ForceDirectedLayout::ForceDirectedLayout(const LayoutParams& params)
     : params_(params), is_running_(false), current_iteration_(0) {
 }
 
-void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center) {
+void ForceDirectedLayout::Initialize(const std::vector<std::shared_ptr<GraphNode>>& nodes, const ImVec2& canvas_center) {
     // Only initialize new nodes, keep existing positions
     is_running_ = true;
     current_iteration_ = 0;
     
     // Initialize physics data for each node
-    for (GraphNode* node : nodes) {
+    for (const auto& node : nodes) {
         if (!node) continue;
         
         // Only initialize physics if not already present
@@ -92,7 +92,7 @@ void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const
         // close to the origin within a small epsilon threshold.
         const float kUnsetEpsilon = 1e-3f;
 
-        for (GraphNode* node : nodes) {
+        for (const auto& node : nodes) {
             if (!node) continue;
 
             // Detect uninitialized coordinates with an epsilon tolerance
@@ -114,7 +114,7 @@ void ForceDirectedLayout::Initialize(const std::vector<GraphNode*>& nodes, const
     }
 }
 
-bool ForceDirectedLayout::UpdateLayout(const std::vector<GraphNode*>& nodes) {
+bool ForceDirectedLayout::UpdateLayout(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
     // Terminate if we already reached the per-frame iteration cap
     if (!is_running_ || current_iteration_ >= kMaxIterations) {
         is_running_ = false;
@@ -146,7 +146,7 @@ bool ForceDirectedLayout::UpdateLayout(const std::vector<GraphNode*>& nodes) {
     // determined threshold we assume visual stabilisation and stop iterating
     // early, saving CPU/GPU time on small graphs.
     float max_disp = 0.0f;
-    for (GraphNode* node : nodes) {
+    for (const auto& node : nodes) {
         if (!node) continue;
         auto it = node_physics_.find(node);
         if (it == node_physics_.end()) continue;
@@ -165,7 +165,7 @@ bool ForceDirectedLayout::UpdateLayout(const std::vector<GraphNode*>& nodes) {
     return true;
 }
 
-void ForceDirectedLayout::ComputeLayout(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center) {
+void ForceDirectedLayout::ComputeLayout(const std::vector<std::shared_ptr<GraphNode>>& nodes, const ImVec2& canvas_center) {
     Initialize(nodes, canvas_center);
     
     while (UpdateLayout(nodes)) {
@@ -173,7 +173,7 @@ void ForceDirectedLayout::ComputeLayout(const std::vector<GraphNode*>& nodes, co
     }
 }
 
-void ForceDirectedLayout::PinNode(GraphNode* node, bool pinned) {
+void ForceDirectedLayout::PinNode(std::shared_ptr<GraphNode> node, bool pinned) {
     auto it = node_physics_.find(node);
     if (it != node_physics_.end()) {
         it->second.is_fixed = pinned;
@@ -204,17 +204,18 @@ void ForceDirectedLayout::ResetPhysicsState() {
     current_iteration_ = 0;
 }
 
-void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& nodes) {
-    for (GraphNode* node : nodes) {
+void ForceDirectedLayout::CalculateSpringForces(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
+    for (const auto& node : nodes) {
         if (!node) continue;
         
         auto node_it = node_physics_.find(node);
         if (node_it == node_physics_.end()) continue;
         
         // Apply spring forces to connected nodes (parent-child relationships)
-        node->for_each_child([&](GraphNode* child) {
-            auto child_it = node_physics_.find(child);
+        node->for_each_child([&](GraphNode* child_raw) {
+            auto child_it = node_physics_.find(child_raw->shared_from_this()); // Find requires shared_ptr
             if (child_it == node_physics_.end()) return;
+            auto& child = child_it->first;
 
             ImVec2 delta = ImVec2(child->position.x - node->position.x,
                                  child->position.y - node->position.y);
@@ -250,7 +251,7 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
         });
         
         // Also apply spring forces to parent (bidirectional)
-        if (auto parent_ptr = node->parent_raw()) {
+        if (auto parent_ptr = node->parent.lock()) {
             auto parent_it = node_physics_.find(parent_ptr);
             if (parent_it != node_physics_.end()) {
                 ImVec2 delta = ImVec2(parent_ptr->position.x - node->position.x,
@@ -286,7 +287,7 @@ void ForceDirectedLayout::CalculateSpringForces(const std::vector<GraphNode*>& n
     }
 }
 
-void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<GraphNode*>& nodes) {
+void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
     // Uniform-grid spatial hashing to reduce O(N²) pair checks to ~O(N)
     if (nodes.empty()) return;
 
@@ -296,7 +297,7 @@ void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<GraphNode*>
 
     // First pass – bucket each node by cell
     for (size_t idx = 0; idx < nodes.size(); ++idx) {
-        GraphNode* n = nodes[idx];
+        const auto& n = nodes[idx];
         if (!n) continue;
         int32_t cx = static_cast<int32_t>(std::floor(n->position.x / cell_size));
         int32_t cy = static_cast<int32_t>(std::floor(n->position.y / cell_size));
@@ -305,7 +306,7 @@ void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<GraphNode*>
 
     // Second pass – for each node, only compare with nodes in its cell & 8 neighbors
     for (size_t i = 0; i < nodes.size(); ++i) {
-        GraphNode* node1 = nodes[i];
+        const auto& node1 = nodes[i];
         if (!node1) continue;
 
         auto node1_it = node_physics_.find(node1);
@@ -323,7 +324,7 @@ void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<GraphNode*>
                 const std::vector<int>& indices = bucket_it->second;
                 for (int j_index : indices) {
                     if (j_index <= static_cast<int>(i)) continue; // avoid double-counting
-                    GraphNode* node2 = nodes[j_index];
+                    const auto& node2 = nodes[j_index];
                     if (!node2) continue;
 
                     auto node2_it = node_physics_.find(node2);
@@ -359,8 +360,8 @@ void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<GraphNode*>
     }
 }
 
-void ForceDirectedLayout::ApplyForces(const std::vector<GraphNode*>& nodes) {
-    for (GraphNode* node : nodes) {
+void ForceDirectedLayout::ApplyForces(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
+    for (const auto& node : nodes) {
         if (!node) continue;
         
         auto it = node_physics_.find(node);
@@ -385,7 +386,7 @@ void ForceDirectedLayout::ApplyForces(const std::vector<GraphNode*>& nodes) {
     }
 }
 
-void ForceDirectedLayout::ConstrainToBounds(GraphNode* node) {
+void ForceDirectedLayout::ConstrainToBounds(const std::shared_ptr<GraphNode>& node) {
     if (!node) return;
     
     // Keep nodes within canvas bounds
@@ -437,10 +438,10 @@ ImVec2 ForceDirectedLayout::Normalize(const ImVec2& vec) {
     return ImVec2(0.0f, 0.0f);
 }
 
-float ForceDirectedLayout::CalculateTotalEnergy(const std::vector<GraphNode*>& nodes) {
+float ForceDirectedLayout::CalculateTotalEnergy(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
     float total_energy = 0.0f;
     
-    for (GraphNode* node : nodes) {
+    for (const auto& node : nodes) {
         if (!node) continue;
         
         auto it = node_physics_.find(node);
@@ -455,9 +456,9 @@ float ForceDirectedLayout::CalculateTotalEnergy(const std::vector<GraphNode*>& n
     return total_energy;
 }
 
-void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center) {
+void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<std::shared_ptr<GraphNode>>& nodes, const ImVec2& canvas_center) {
     // Sort nodes by timestamp (oldest first)
-    std::vector<GraphNode*> sorted_nodes = SortNodesByTimestamp(nodes);
+    auto sorted_nodes = SortNodesByTimestamp(nodes);
     
     if (sorted_nodes.empty()) return;
     
@@ -469,7 +470,7 @@ void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<Gra
     
     // Position nodes chronologically from top to bottom (oldest to newest)
     for (size_t i = 0; i < sorted_nodes.size(); ++i) {
-        GraphNode* node = sorted_nodes[i];
+        const auto& node = sorted_nodes[i];
         if (!node) continue;
         
         // ALWAYS override position for chronological layout to ensure correct ordering
@@ -487,14 +488,14 @@ void ForceDirectedLayout::InitializeChronologicalPositions(const std::vector<Gra
     }
 }
 
-std::vector<GraphNode*> ForceDirectedLayout::SortNodesByTimestamp(const std::vector<GraphNode*>& nodes) {
-    std::vector<GraphNode*> sorted_nodes = nodes;
+std::vector<std::shared_ptr<GraphNode>> ForceDirectedLayout::SortNodesByTimestamp(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
+    auto sorted_nodes = nodes;
     
     // Sort by timestamp (chronological order — oldest first, newest last)
     // Older messages (smaller timestamps) come first in the array and will be
     // positioned nearer the TOP of the screen (smaller Y); newer ones lower.
     std::sort(sorted_nodes.begin(), sorted_nodes.end(),
-        [](const GraphNode* a, const GraphNode* b) {
+        [](const auto& a, const auto& b) {
             if (!a || !b) return false;
             return a->message_data.timestamp < b->message_data.timestamp;
         });
@@ -502,8 +503,8 @@ std::vector<GraphNode*> ForceDirectedLayout::SortNodesByTimestamp(const std::vec
     return sorted_nodes;
 }
 
-std::vector<std::pair<GraphNode*, GraphNode*>> ForceDirectedLayout::GetChronologicalNeighbors(const std::vector<GraphNode*>& sorted_nodes) {
-    std::vector<std::pair<GraphNode*, GraphNode*>> neighbors;
+std::vector<std::pair<std::shared_ptr<GraphNode>, std::shared_ptr<GraphNode>>> ForceDirectedLayout::GetChronologicalNeighbors(const std::vector<std::shared_ptr<GraphNode>>& sorted_nodes) {
+    std::vector<std::pair<std::shared_ptr<GraphNode>, std::shared_ptr<GraphNode>>> neighbors;
     
     // Create pairs of chronologically adjacent nodes
     for (size_t i = 0; i < sorted_nodes.size() - 1; ++i) {
@@ -515,20 +516,20 @@ std::vector<std::pair<GraphNode*, GraphNode*>> ForceDirectedLayout::GetChronolog
     return neighbors;
 }
 
-void ForceDirectedLayout::CalculateTemporalForces(const std::vector<GraphNode*>& nodes) {
+void ForceDirectedLayout::CalculateTemporalForces(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
     // Sort nodes by timestamp to find chronological neighbors
-    std::vector<GraphNode*> sorted_nodes = SortNodesByTimestamp(nodes);
-    std::vector<std::pair<GraphNode*, GraphNode*>> chronological_pairs = GetChronologicalNeighbors(sorted_nodes);
+    auto sorted_nodes = SortNodesByTimestamp(nodes);
+    auto chronological_pairs = GetChronologicalNeighbors(sorted_nodes);
     
     // Apply temporal ordering forces between chronologically adjacent messages
     for (const auto& pair : chronological_pairs) {
-        GraphNode* earlier_node = pair.first;  // Should be higher up (smaller Y)
-        GraphNode* later_node = pair.second;   // Should be lower down (larger Y)
+        const auto& earlier_node = pair.first;  // Should be higher up (smaller Y)
+        const auto& later_node   = pair.second; // Should be lower down (larger Y)
         
         if (!earlier_node || !later_node) continue;
         
         auto earlier_it = node_physics_.find(earlier_node);
-        auto later_it = node_physics_.find(later_node);
+        auto later_it   = node_physics_.find(later_node);
         if (earlier_it == node_physics_.end() || later_it == node_physics_.end()) continue;
         
         // Calculate vertical bias force to maintain chronological order.
@@ -572,7 +573,7 @@ void ForceDirectedLayout::CalculateTemporalForces(const std::vector<GraphNode*>&
     }
     
     // Apply general vertical bias to all nodes to maintain top-to-bottom chronological flow
-    for (GraphNode* node : nodes) {
+    for (const auto& node : nodes) {
         if (!node) continue;
         
         auto it = node_physics_.find(node);
@@ -599,7 +600,7 @@ void ForceDirectedLayout::CalculateTemporalForces(const std::vector<GraphNode*>&
 }
 
 // Convenience function
-void ApplyForceDirectedLayout(const std::vector<GraphNode*>& nodes,
+void ApplyForceDirectedLayout(const std::vector<std::shared_ptr<GraphNode>>& nodes,
                              const ImVec2& canvas_center,
                              const ForceDirectedLayout::LayoutParams& params) {
     ForceDirectedLayout layout(params);

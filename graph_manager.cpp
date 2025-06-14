@@ -66,12 +66,12 @@ GraphManager::GraphManager(PersistenceManager* db_manager)
 }
 
 // Helper to get a node by its unique graph_node_id
-GraphNode* GraphManager::GetNodeById(NodeIdType graph_node_id) {
+std::shared_ptr<GraphNode> GraphManager::GetNodeById(NodeIdType graph_node_id) {
     std::shared_lock lock(m_mutex);
     if (graph_node_id == kInvalidNodeId) return nullptr;
     auto it = all_nodes.find(graph_node_id);
     if (it != all_nodes.end()) {
-        return it->second.get();
+        return it->second;
     }
     return nullptr;
 }
@@ -135,35 +135,32 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
         NodeIdType current_g_node_id = next_graph_node_id_counter++;
         // Constructor now takes (graph_node_id, HistoryMessage)
         auto new_node_shared_ptr = std::make_shared<GraphNode>(current_g_node_id, msg);
-        GraphNode* current_node_ptr = new_node_shared_ptr.get();
+        new_node_shared_ptr->label = FormatMessageForGraph(msg, *this);
 
-        // Use the helper function to format message content consistently with linear view
-        current_node_ptr->label = FormatMessageForGraph(msg, *this);
-
-        current_node_ptr->parent = previous_node_ptr;
+        new_node_shared_ptr->parent = previous_node_ptr;
         if (previous_node_ptr) {
             previous_node_ptr->add_child(new_node_shared_ptr);
-            current_node_ptr->depth = previous_node_ptr->depth + 1;
+            new_node_shared_ptr->depth = previous_node_ptr->depth + 1;
         } else {
-            root_nodes.push_back(current_node_ptr);
-            current_node_ptr->depth = 0;
+            root_nodes.push_back(new_node_shared_ptr);
+            new_node_shared_ptr->depth = 0;
         }
 
         // Calculate node size based on formatted content to ensure proper display
-        current_node_ptr->size = CalculateNodeSize(current_node_ptr->label);
+        new_node_shared_ptr->size = CalculateNodeSize(new_node_shared_ptr->label);
         
         // Ensure new nodes are visible and expanded by default for immediate content display
-        current_node_ptr->is_expanded = true;
-        current_node_ptr->content_needs_refresh = true; // Mark for immediate content refresh
+        new_node_shared_ptr->is_expanded = true;
+        new_node_shared_ptr->content_needs_refresh = true; // Mark for immediate content refresh
         
         // Initialize position to zero - will be set by layout algorithm
-        current_node_ptr->position = ImVec2(0.0f, 0.0f);
+        new_node_shared_ptr->position = ImVec2(0.0f, 0.0f);
 
         // Key for all_nodes is now graph_node_id
-        all_nodes[current_node_ptr->graph_node_id] = new_node_shared_ptr;
+        all_nodes[new_node_shared_ptr->graph_node_id] = new_node_shared_ptr;
         
         previous_node_ptr = new_node_shared_ptr;
-        last_node_added_to_graph = current_node_ptr;
+        last_node_added_to_graph = new_node_shared_ptr;
     }
     // Reset physics state when populating from history to ensure fresh animation
     force_layout.ResetPhysicsState();
@@ -202,36 +199,33 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     NodeIdType new_g_node_id = next_graph_node_id_counter++;
     // Constructor now takes (graph_node_id, HistoryMessage)
     auto new_graph_node_shared_ptr = std::make_shared<GraphNode>(new_g_node_id, new_msg);
-    GraphNode* new_graph_node = new_graph_node_shared_ptr.get();
+    new_graph_node_shared_ptr->label = FormatMessageForGraph(new_msg, *this);
 
-    // Use the helper function to format message content consistently with linear view
-    new_graph_node->label = FormatMessageForGraph(new_msg, *this);
-
-    new_graph_node->parent = parent_node;
+    new_graph_node_shared_ptr->parent = parent_node;
     if (parent_node) {
         parent_node->add_child(new_graph_node_shared_ptr);
-        new_graph_node->depth = parent_node->depth + 1;
+        new_graph_node_shared_ptr->depth = parent_node->depth + 1;
     } else {
-        new_graph_node->depth = 0;
-        root_nodes.push_back(new_graph_node);
+        new_graph_node_shared_ptr->depth = 0;
+        root_nodes.push_back(new_graph_node_shared_ptr);
     }
 
     // Calculate node size based on the formatted content to ensure proper display
     // Force recalculation to ensure new content is properly sized
-    new_graph_node->size = CalculateNodeSize(new_graph_node->label);
+    new_graph_node_shared_ptr->size = CalculateNodeSize(new_graph_node_shared_ptr->label);
     
     // Force immediate content refresh by ensuring the node is marked as needing visual update
     // This ensures new nodes display their full content immediately without manual refresh
-    new_graph_node->is_expanded = true; // Ensure new nodes are visible by default
-    new_graph_node->content_needs_refresh = true; // Mark for immediate content refresh
+    new_graph_node_shared_ptr->is_expanded = true; // Ensure new nodes are visible by default
+    new_graph_node_shared_ptr->content_needs_refresh = true; // Mark for immediate content refresh
     
     // Initialize position to zero - will be set by layout algorithm
-    new_graph_node->position = ImVec2(0.0f, 0.0f);
+    new_graph_node_shared_ptr->position = ImVec2(0.0f, 0.0f);
 
     // Key for all_nodes is now graph_node_id
-    all_nodes[new_graph_node->graph_node_id] = new_graph_node_shared_ptr;
+    all_nodes[new_graph_node_shared_ptr->graph_node_id] = new_graph_node_shared_ptr;
 
-    last_node_added_to_graph = new_graph_node;
+    last_node_added_to_graph = new_graph_node_shared_ptr;
     // Reset physics state when adding new nodes to ensure animation restarts
     force_layout.ResetPhysicsState();
     graph_layout_dirty = true;
@@ -254,7 +248,7 @@ void GraphManager::UpdateLayout() {
         return;
     }
     
-    std::vector<GraphNode*> all_nodes_vec = GetAllNodes();
+    auto all_nodes_vec = GetAllNodes();
     if (all_nodes_vec.empty()) {
         return;
     }
@@ -323,13 +317,13 @@ void GraphManager::SetAnimationSpeed(float speed_multiplier) {
     force_layout.SetAnimationSpeed(speed_multiplier);
 }
 
-std::vector<GraphNode*> GraphManager::GetAllNodes() {
-    std::vector<GraphNode*> nodes;
+std::vector<std::shared_ptr<GraphNode>> GraphManager::GetAllNodes() {
+    std::vector<std::shared_ptr<GraphNode>> nodes;
     nodes.reserve(all_nodes.size());
     
     for (auto& pair : all_nodes) {
         if (pair.second) {
-            nodes.push_back(pair.second.get());
+            nodes.push_back(pair.second);
         }
     }
     

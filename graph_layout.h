@@ -89,7 +89,7 @@ private:
    static constexpr float kConvergenceDispThreshold = 0.01f;
 
    LayoutParams params_;
-    std::map<GraphNode*, NodePhysics> node_physics_;
+    std::map<std::shared_ptr<GraphNode>, NodePhysics> node_physics_;
     bool is_running_ = false;
     int current_iteration_ = 0;
 // Helper: pack 2D grid cell coordinates into 64-bit key for unordered_map buckets
@@ -107,21 +107,21 @@ public:
      * @param nodes Vector of all nodes to layout
      * @param canvas_center Center point of the layout area
      */
-    void Initialize(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center);
+    void Initialize(const std::vector<std::shared_ptr<GraphNode>>& nodes, const ImVec2& canvas_center);
     
     /**
      * @brief Perform one iteration of the force-directed simulation
      * @param nodes Vector of all nodes to update
      * @return true if simulation should continue, false if converged
      */
-    bool UpdateLayout(const std::vector<GraphNode*>& nodes);
+    bool UpdateLayout(const std::vector<std::shared_ptr<GraphNode>>& nodes);
     
     /**
      * @brief Run the complete layout algorithm until convergence
      * @param nodes Vector of all nodes to layout
      * @param canvas_center Center point of the layout area
      */
-    void ComputeLayout(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center);
+    void ComputeLayout(const std::vector<std::shared_ptr<GraphNode>>& nodes, const ImVec2& canvas_center);
     
     /**
      * @brief Check if the layout simulation is currently running
@@ -155,33 +155,33 @@ public:
     /**
      * @brief Pin a node at its current position (prevent movement)
      */
-    void PinNode(GraphNode* node, bool pinned = true);
+    void PinNode(std::shared_ptr<GraphNode> node, bool pinned = true);
 
 private:
     /**
      * @brief Calculate attractive forces between connected nodes
      */
-    void CalculateSpringForces(const std::vector<GraphNode*>& nodes);
+    void CalculateSpringForces(const std::vector<std::shared_ptr<GraphNode>>& nodes);
     
     /**
      * @brief Calculate repulsive forces between all node pairs
      */
-    void CalculateRepulsiveForces(const std::vector<GraphNode*>& nodes);
+    void CalculateRepulsiveForces(const std::vector<std::shared_ptr<GraphNode>>& nodes);
     
     /**
      * @brief Calculate chronological ordering forces
      */
-    void CalculateTemporalForces(const std::vector<GraphNode*>& nodes);
+    void CalculateTemporalForces(const std::vector<std::shared_ptr<GraphNode>>& nodes);
     
     /**
      * @brief Apply forces to update node positions
      */
-    void ApplyForces(const std::vector<GraphNode*>& nodes);
+    void ApplyForces(const std::vector<std::shared_ptr<GraphNode>>& nodes);
     
     /**
      * @brief Keep nodes within canvas bounds
      */
-    void ConstrainToBounds(GraphNode* node);
+    void ConstrainToBounds(const std::shared_ptr<GraphNode>& node);
     
     /**
      * @brief Calculate distance between two points
@@ -196,22 +196,22 @@ private:
     /**
      * @brief Calculate total kinetic energy of the system
      */
-    float CalculateTotalEnergy(const std::vector<GraphNode*>& nodes);
+    float CalculateTotalEnergy(const std::vector<std::shared_ptr<GraphNode>>& nodes);
     
     /**
      * @brief Initialize nodes with chronological positioning
      */
-    void InitializeChronologicalPositions(const std::vector<GraphNode*>& nodes, const ImVec2& canvas_center);
+    void InitializeChronologicalPositions(const std::vector<std::shared_ptr<GraphNode>>& nodes, const ImVec2& canvas_center);
     
     /**
      * @brief Sort nodes by chronological order (timestamp)
      */
-    std::vector<GraphNode*> SortNodesByTimestamp(const std::vector<GraphNode*>& nodes);
+    std::vector<std::shared_ptr<GraphNode>> SortNodesByTimestamp(const std::vector<std::shared_ptr<GraphNode>>& nodes);
     
     /**
      * @brief Find chronologically adjacent nodes for temporal forces
      */
-    std::vector<std::pair<GraphNode*, GraphNode*>> GetChronologicalNeighbors(const std::vector<GraphNode*>& sorted_nodes);
+    std::vector<std::pair<std::shared_ptr<GraphNode>, std::shared_ptr<GraphNode>>> GetChronologicalNeighbors(const std::vector<std::shared_ptr<GraphNode>>& sorted_nodes);
 };
 
 /**
@@ -220,8 +220,8 @@ private:
  * @param canvas_center Center point of the layout area
  * @param params Layout parameters (optional)
  */
-void ApplyForceDirectedLayout(const std::vector<GraphNode*>& nodes, 
-                             const ImVec2& canvas_center,
-                             const ForceDirectedLayout::LayoutParams& params = ForceDirectedLayout::LayoutParams());
+void ApplyForceDirectedLayout(const std::vector<std::shared_ptr<GraphNode>>& nodes,
+                              const ImVec2& canvas_center,
+                              const ForceDirectedLayout::LayoutParams& params = ForceDirectedLayout::LayoutParams());
 
 #endif // GRAPH_LAYOUT_H

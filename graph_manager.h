@@ -23,8 +23,8 @@ class GraphManager {
 public:
     // Graph Data
     std::unordered_map<NodeIdType, std::shared_ptr<GraphNode>> all_nodes; // Main storage now uses shared_ptr for safe shared ownership
-    std::vector<GraphNode*> root_nodes; // Pointers to root nodes
-    GraphNode* last_node_added_to_graph = nullptr; // Pointer to the most recently added node
+    std::vector<std::shared_ptr<GraphNode>> root_nodes;
+    std::shared_ptr<GraphNode> last_node_added_to_graph = nullptr;
 
     // Graph View State
     GraphViewState graph_view_state; // Contains selected_node_id (which is a graph_node_id), pan, zoom
@@ -50,7 +50,7 @@ public:
     void HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager);
     
     // Helper to get a node pointer by its unique graph_node_id
-    GraphNode* GetNodeById(NodeIdType graph_node_id);
+    std::shared_ptr<GraphNode> GetNodeById(NodeIdType graph_node_id);
     std::string getModelName(ModelId model_id);
     std::string getModelName_nolock(ModelId model_id);
     
@@ -63,7 +63,7 @@ public:
     void SetAnimationSpeed(float speed_multiplier); // Set animation speed multiplier
     
     // Get all nodes as raw pointers for layout algorithms
-    std::vector<GraphNode*> GetAllNodes();
+    std::vector<std::shared_ptr<GraphNode>> GetAllNodes();
     
     // Auto-pan functionality
     void TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size);
