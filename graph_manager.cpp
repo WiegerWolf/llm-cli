@@ -215,16 +215,17 @@ GraphNode* GraphManager::CreateNode(NodeIdType parent_id, MessageType type, cons
 }
 
 void GraphManager::UpdateLayout() {
-    std::unique_lock<std::recursive_mutex> lock(m_mutex);
-    if (!use_force_layout) {
-        return;
-    }
-    
-    auto all_nodes_map = GetAllNodes();
     std::vector<std::shared_ptr<GraphNode>> all_nodes_vec;
-    all_nodes_vec.reserve(all_nodes_map.size());
-    for (auto const& [id, node_ptr] : all_nodes_map) {
-        all_nodes_vec.push_back(node_ptr);
+    {
+        std::unique_lock<std::recursive_mutex> lock(m_mutex);
+        if (!use_force_layout) {
+            return;
+        }
+        
+        all_nodes_vec.reserve(all_nodes.size());
+        for (const auto& [id, node_ptr] : all_nodes) {
+            all_nodes_vec.push_back(node_ptr);
+        }
     }
     if (all_nodes_vec.empty()) {
         return;
