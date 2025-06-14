@@ -174,6 +174,9 @@ void ForceDirectedLayout::ComputeLayout(const std::vector<std::shared_ptr<GraphN
     }
 }
 
+bool ForceDirectedLayout::IsRunning() const {
+    return is_running_;
+}
 void ForceDirectedLayout::PinNode(std::shared_ptr<GraphNode> node, bool pinned) {
     auto it = node_physics_.find(node);
     if (it != node_physics_.end()) {
