@@ -584,7 +584,7 @@ int main(int, char**) {
            
            // Force immediate layout update for new messages to fix auto-refresh issue
            // This ensures new nodes are properly positioned and rendered immediately
-           g_graph_manager->graph_layout_dirty = true;
+           g_graph_manager->RestartLayoutAnimation();
        }
        
        // --- Automatic Graph Synchronization ---
@@ -1029,7 +1029,7 @@ int main(int, char**) {
                   }
               } else {
                   if (ImGui::Button("Start Animation")) {
-                      g_graph_manager->graph_layout_dirty = true; // Restart the animation
+                      g_graph_manager->RestartLayoutAnimation(); // Restart the animation
                       s_animation_paused = false;
                   }
               }
@@ -1127,7 +1127,7 @@ int main(int, char**) {
                 g_graph_manager->HandleNewHistoryMessage(user_msg, g_graph_manager->graph_view_state.selected_node_id, db_manager);
                 
                 // Force immediate layout update to ensure new user input node displays properly
-                g_graph_manager->graph_layout_dirty = true;
+                g_graph_manager->RestartLayoutAnimation();
                 
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
