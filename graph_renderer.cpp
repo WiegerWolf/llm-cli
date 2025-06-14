@@ -635,9 +635,10 @@ void GraphEditor::RenderBezierEdge(ImDrawList* draw_list, const GraphNode& paren
     if (is_alternative_path) {
         // Make alternative paths slightly more transparent and thinner
         ImU32 base_color = edge_color;
-        ImU32 alpha_mask = 0x00FFFFFF;
-        ImU32 alpha_component = (base_color & 0xFF000000) >> 1; // Half transparency
-        edge_color = (base_color & alpha_mask) | alpha_component;
+        // Correctly halve the alpha channel without corrupting other color channels.
+        uint32_t a = (base_color >> 24) & 0xFF;
+        a >>= 1; // Halve alpha value.
+        edge_color = (base_color & 0x00FFFFFFu) | (a << 24);
         line_thickness *= 0.8f; // Slightly thinner
     }
     
