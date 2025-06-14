@@ -1193,10 +1193,9 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
                         ImU32 edge_color = temp_editor_for_render.GetThemeEdgeColor(current_theme);
                         
                         // Make alternative paths more transparent and thinner
-                        ImU32 base_color = edge_color;
-                        ImU32 alpha_mask = 0x00FFFFFF;
-                        ImU32 alpha_component = (base_color & 0xFF000000) >> 1; // Half transparency
-                        edge_color = (base_color & alpha_mask) | alpha_component;
+                        uint32_t alpha = (edge_color >> 24) & 0xFF;
+                        alpha /= 2;
+                        edge_color = (alpha << 24) | (edge_color & 0x00FFFFFF);
                         
                         ImVec2 start_world = ImVec2(node->position.x + node->size.x / 2.0f, node->position.y + node->size.y);
                         ImVec2 end_world = ImVec2(alt_child->position.x + alt_child->size.x / 2.0f, alt_child->position.y);
