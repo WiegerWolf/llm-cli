@@ -18,7 +18,7 @@ class GraphManager;
 
 class GraphEditor {
 public:
-    GraphEditor();
+    GraphEditor(GraphManager* graph_manager);
 
     void Render(ImDrawList* draw_list, const ImVec2& canvas_pos, const ImVec2& canvas_size);
     void AddNode(std::shared_ptr<GraphNode> node);
@@ -62,6 +62,7 @@ public:
     ImU32 GetThemeExpandCollapseIconColor(ThemeType theme) const;
 
 private:
+    GraphManager* m_graph_manager; // Pointer to the graph manager
     GraphViewState view_state_;
     // Map from unique graph_node_id to the corresponding graph node object.
     std::map<NodeIdType, std::shared_ptr<GraphNode>> nodes_;

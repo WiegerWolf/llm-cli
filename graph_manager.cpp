@@ -185,6 +185,35 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     graph_view_state.user_interrupted_auto_pan = false;
 }
 
+GraphNode* GraphManager::CreateNode(NodeIdType parent_id, MessageType type, const std::string& content) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    auto parent_node = GetNodeById(parent_id);
+    if (!parent_node) {
+        return nullptr; // Or handle error appropriately
+    }
+
+    HistoryMessage new_msg;
+    new_msg.type = type;
+    new_msg.content = content;
+    new_msg.timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+    new_msg.parent_id = parent_node->message_id;
+
+    NodeIdType new_g_node_id = next_graph_node_id_counter++;
+    auto new_node = std::make_shared<GraphNode>(new_g_node_id, new_msg);
+    new_node->parent = parent_node;
+    new_node->depth = parent_node->depth + 1;
+    new_node->label = FormatMessageForGraph(new_msg, *this);
+    new_node->size = CalculateNodeSize(new_node->label);
+
+    parent_node->add_child(new_node);
+    all_nodes[new_g_node_id] = new_node;
+    last_node_added_to_graph = new_node;
+    graph_layout_dirty = true;
+
+    return new_node.get();
+}
+
 void GraphManager::UpdateLayout() {
     std::unique_lock<std::recursive_mutex> lock(m_mutex);
     if (!use_force_layout) {

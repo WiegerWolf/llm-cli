@@ -271,7 +271,7 @@ ImU32 GraphEditor::GetThemeExpandCollapseIconColor(ThemeType theme) const {
 }
 
 
-GraphEditor::GraphEditor() {
+GraphEditor::GraphEditor(GraphManager* graph_manager) : m_graph_manager(graph_manager) {
     // view_state_ is already initialized by its default constructor
     // context_node_ and reply_parent_node_ are initialized to nullptr by default
 }
@@ -858,16 +858,9 @@ void GraphEditor::RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& can
                 // This part would typically be: graph_manager_instance.HandleNewHistoryMessage(new_hist_msg, reply_parent_node_->graph_node_id);
                 
                 // Example: Manually create and add if not using GraphManager directly here
-                int new_graph_node_id = GetNextUniqueID(nodes_); // Generate a new graph node ID
-                auto new_graph_node = std::make_shared<GraphNode>(new_graph_node_id, new_hist_msg);
-                new_graph_node->parent = reply_parent_node_->weak_from_this();
-                new_graph_node->depth = reply_parent_node_->depth + 1;
-                // Position and size would be set by layout algorithm
-                new_graph_node->size = ImVec2(150, 80); // Default size
-                
-                reply_parent_node_->add_child(new_graph_node);
-                nodes_[new_graph_node_id] = new_graph_node; // Add to editor's map
-                // graph_layout_dirty = true; // Mark layout as dirty - This should be handled by GraphManager
+                if (m_graph_manager) {
+                    m_graph_manager->CreateNode(reply_parent_node_->graph_node_id, MessageType::USER_REPLY, new_message_content);
+                }
 
                 memset(newMessageBuffer_, 0, sizeof(newMessageBuffer_));
                 ImGui::CloseCurrentPopup();
@@ -1022,7 +1015,7 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
     ImVec2 canvas_size = ImGui::GetContentRegionAvail(); // Size of the drawable area
 
     // Create a temporary GraphEditor to get theme-aware colors
-    GraphEditor temp_editor_for_colors;
+    GraphEditor temp_editor_for_colors(&graph_manager);
     temp_editor_for_colors.SetCurrentTheme(current_theme);
     
     // Use theme-aware background and border colors
@@ -1038,7 +1031,7 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
     // This is a conceptual merge; a real GraphEditor would encapsulate its own nodes_ map.
 
     // Create a temporary GraphEditor to handle interactions
-    GraphEditor temp_editor_for_interactions;
+    GraphEditor temp_editor_for_interactions(&graph_manager);
     temp_editor_for_interactions.GetViewState() = view_state; // Sync view state
     temp_editor_for_interactions.SetCurrentTheme(current_theme); // Set theme for color consistency
     

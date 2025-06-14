@@ -33,6 +33,9 @@ public:
     // current_selected_node_id is GraphNode::graph_node_id
     void HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager);
     
+    // Create a new node and add it to the graph
+    GraphNode* CreateNode(NodeIdType parent_id, MessageType type, const std::string& content);
+    
     // Helper to get a node pointer by its unique graph_node_id
     std::shared_ptr<GraphNode> GetNodeById(NodeIdType graph_node_id);
     NodeIdType GetSelectedNodeId();
