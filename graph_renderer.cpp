@@ -1059,8 +1059,8 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
     graph_manager.UpdateLayout();
     
     // Trigger auto-pan to newest node if layout was updated and there's a new node
-    if (graph_manager.last_node_added_to_graph &&
-        (graph_manager.last_node_added_to_graph->position.x != 0.0f || graph_manager.last_node_added_to_graph->position.y != 0.0f)) {
+    auto last_added_node = graph_manager.GetLastNodeAdded();
+    if (last_added_node && (last_added_node->position.x != 0.0f || last_added_node->position.y != 0.0f)) {
         // Only auto-pan if not already active and user hasn't interrupted
         if (!temp_editor_for_interactions.IsAutoPanActive() && !view_state.user_interrupted_auto_pan) {
             graph_manager.TriggerAutoPanToNewestNode(&temp_editor_for_interactions, canvas_size);
@@ -1240,11 +1240,11 @@ void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, Th
         }
     };
 
-    if (graph_manager.all_nodes.empty()) {
+    if (graph_manager.GetAllNodes().empty()) {
         ImGui::TextWrapped("Graph is empty. Populate it from history or click 'Refresh Graph'.");
     } else {
         // ImGui::Text("Graph View: Rendering %zu nodes from GraphManager.", graph_manager.all_nodes.size());
-        for (const auto& root_node : graph_manager.root_nodes) {
+        for (const auto& root_node : graph_manager.GetRootNodes()) {
             if (root_node) {
                 render_recursive_lambda(root_node.get());
             }

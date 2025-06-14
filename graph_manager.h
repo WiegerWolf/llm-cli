@@ -22,9 +22,10 @@ using ModelId = std::string;
 class GraphManager {
 public:
     // Graph Data
-    std::unordered_map<NodeIdType, std::shared_ptr<GraphNode>> all_nodes; // Main storage now uses shared_ptr for safe shared ownership
-    std::vector<std::shared_ptr<GraphNode>> root_nodes;
-    std::shared_ptr<GraphNode> last_node_added_to_graph = nullptr;
+    // Accessor methods for graph data
+    std::unordered_map<NodeIdType, std::shared_ptr<GraphNode>> GetAllNodes();
+    std::vector<std::shared_ptr<GraphNode>> GetRootNodes();
+    std::shared_ptr<GraphNode> GetLastNodeAdded();
 
     // Graph View State
     GraphViewState graph_view_state; // Contains selected_node_id (which is a graph_node_id), pan, zoom
@@ -63,13 +64,16 @@ public:
     void RestartLayoutAnimation(); // Restart the layout animation from the beginning
     void SetAnimationSpeed(float speed_multiplier); // Set animation speed multiplier
     
-    // Get all nodes as raw pointers for layout algorithms
-    std::vector<std::shared_ptr<GraphNode>> GetAllNodes();
     
     // Auto-pan functionality
     void TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size);
 
 private:
+    // Graph Data
+    std::unordered_map<NodeIdType, std::shared_ptr<GraphNode>> all_nodes; // Main storage now uses shared_ptr for safe shared ownership
+    std::vector<std::shared_ptr<GraphNode>> root_nodes;
+    std::shared_ptr<GraphNode> last_node_added_to_graph = nullptr;
+
     PersistenceManager* m_db_manager;
     std::map<ModelId, std::string> m_model_name_cache;
     // Placeholder for graph rendering logic, to be implemented in a later step

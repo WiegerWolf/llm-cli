@@ -621,7 +621,7 @@ int main(int, char**) {
        // This is critical for fixing the auto-refresh issue with new message nodes
        if (graph_needs_update || g_graph_manager->graph_layout_dirty || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) {
            // Force layout recalculation if the graph is dirty or animation is running and not paused
-           if ((g_graph_manager->graph_layout_dirty || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) && !g_graph_manager->all_nodes.empty()) {
+           if ((g_graph_manager->graph_layout_dirty || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) && !g_graph_manager->GetAllNodes().empty()) {
                // Update animation speed in the force layout system
                g_graph_manager->SetAnimationSpeed(s_animation_speed);
                
@@ -1008,7 +1008,7 @@ int main(int, char**) {
               static bool graph_tab_was_active = false;
               bool graph_tab_is_active = ImGui::IsItemVisible();
               
-              if (graph_tab_is_active && (!graph_tab_was_active || g_graph_manager->all_nodes.empty())) {
+              if (graph_tab_is_active && (!graph_tab_was_active || g_graph_manager->GetAllNodes().empty())) {
                    if (!output_history.empty()) { // Only populate if there's history
                        g_graph_manager->PopulateGraphFromHistory(output_history, db_manager);
                    }
@@ -1019,7 +1019,7 @@ int main(int, char**) {
                   g_graph_manager->PopulateGraphFromHistory(output_history, db_manager);
               }
               ImGui::SameLine();
-              ImGui::Text("Nodes: %zu (Auto-updating)", g_graph_manager->all_nodes.size());
+              ImGui::Text("Nodes: %zu (Auto-updating)", g_graph_manager->GetAllNodes().size());
 
               // --- Animation Controls ---
               ImGui::Separator();

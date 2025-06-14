@@ -253,7 +253,12 @@ void GraphManager::UpdateLayout() {
         return;
     }
     
-    auto all_nodes_vec = GetAllNodes();
+    auto all_nodes_map = GetAllNodes();
+    std::vector<std::shared_ptr<GraphNode>> all_nodes_vec;
+    all_nodes_vec.reserve(all_nodes_map.size());
+    for (auto const& [id, node_ptr] : all_nodes_map) {
+        all_nodes_vec.push_back(node_ptr);
+    }
     if (all_nodes_vec.empty()) {
         return;
     }
@@ -323,17 +328,22 @@ void GraphManager::SetAnimationSpeed(float speed_multiplier) {
     force_layout.SetAnimationSpeed(speed_multiplier);
 }
 
-std::vector<std::shared_ptr<GraphNode>> GraphManager::GetAllNodes() {
-    std::vector<std::shared_ptr<GraphNode>> nodes;
-    nodes.reserve(all_nodes.size());
-    
-    for (auto& pair : all_nodes) {
-        if (pair.second) {
-            nodes.push_back(pair.second);
-        }
-    }
-    
-    return nodes;
+// Accessor for all_nodes (thread-safe)
+std::unordered_map<NodeIdType, std::shared_ptr<GraphNode>> GraphManager::GetAllNodes() {
+    std::shared_lock<std::shared_mutex> lock(m_mutex);
+    return all_nodes;
+}
+
+// Accessor for root_nodes (thread-safe)
+std::vector<std::shared_ptr<GraphNode>> GraphManager::GetRootNodes() {
+    std::shared_lock<std::shared_mutex> lock(m_mutex);
+    return root_nodes;
+}
+
+// Accessor for last_node_added_to_graph (thread-safe)
+std::shared_ptr<GraphNode> GraphManager::GetLastNodeAdded() {
+    std::shared_lock<std::shared_mutex> lock(m_mutex);
+    return last_node_added_to_graph;
 }
 
 // Auto-pan functionality
