@@ -5,6 +5,7 @@
 #include <algorithm>  // For std::min, std::max
 #include <limits>     // Required for std::numeric_limits
 #include <cstdio>     // For sprintf
+#include <cinttypes>  // For PRIu64
 #include <cstring>    // For strlen
 #include <cmath>      // For sqrtf, FLT_MAX, powf, fabsf
 #include <chrono>     // For std::chrono::system_clock, std::chrono::steady_clock
@@ -457,15 +458,15 @@ void GraphEditor::DisplaySelectedNodeDetails() {
     if (view_state_.selected_node_id != kInvalidNodeId) {
         auto selected_node_ptr = GetNode(view_state_.selected_node_id);
         if (selected_node_ptr) {
-            ImGui::Text("Graph Node ID: %ld", selected_node_ptr->graph_node_id);
-            ImGui::Text("Message ID: %ld", selected_node_ptr->message_id);
+            ImGui::Text("Graph Node ID: %" PRIu64, selected_node_ptr->graph_node_id);
+            ImGui::Text("Message ID: %" PRIu64, selected_node_ptr->message_id);
             ImGui::TextWrapped("Content: %s", selected_node_ptr->message_data.content.c_str());
             ImGui::Text("Type: %d", static_cast<int>(selected_node_ptr->message_data.type));
             if (selected_node_ptr->message_data.model_id.has_value()) {
                 ImGui::Text("Model ID: %s", selected_node_ptr->message_data.model_id.value().c_str());
             }
         } else {
-            ImGui::TextWrapped("Error: Selected node data not found (ID: %ld).", view_state_.selected_node_id);
+            ImGui::TextWrapped("Error: Selected node data not found (ID: %" PRIu64 ").", view_state_.selected_node_id);
         }
     } else {
         ImGui::TextWrapped("Select a node to view its details.");
