@@ -1053,7 +1053,7 @@ int main(int, char**) {
               // so this will always render the most current state
               ImGui::BeginChild("GraphCanvas", ImVec2(0, -bottom_elements_height - ImGui::GetFrameHeightWithSpacing()), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
               // Updated signature for RenderGraphView with theme support
-              RenderGraphView(*g_graph_manager, currentTheme);
+              RenderGraphView(*g_graph_manager, currentTheme, false); // create_window = false
               ImGui::EndChild();
 
               ImGui::EndTabItem();

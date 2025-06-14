@@ -82,6 +82,6 @@ private:
 };
 
 // Graph view rendering function that works with GraphManager
-void RenderGraphView(GraphManager& graph_manager, ThemeType current_theme);
+void RenderGraphView(GraphManager& graph_manager, ThemeType current_theme, bool create_window = true);
 
 #endif // GRAPH_RENDERER_H

@@ -750,11 +750,16 @@ void GraphEditor::UpdateAutoPan(float delta_time, GraphViewState& view_state) {
 
 
 // --- Main Rendering Function ---
-void RenderGraphView(GraphManager& graph_manager, ThemeType current_theme) {
+void RenderGraphView(GraphManager& graph_manager, ThemeType current_theme, bool create_window) {
     static GraphEditor graph_editor(&graph_manager);
     graph_editor.SetCurrentTheme(current_theme);
 
-    ImGui::Begin("Graph View");
+    if (create_window) {
+        if (!ImGui::Begin("Graph View")) {
+            ImGui::End();
+            return; // Window is collapsed, no need to render content
+        }
+    }
 
     ImVec2 canvas_pos = ImGui::GetCursorScreenPos();
     ImVec2 canvas_size = ImGui::GetContentRegionAvail();
@@ -775,8 +780,10 @@ void RenderGraphView(GraphManager& graph_manager, ThemeType current_theme) {
     // After all modifications, update the state in the manager
     graph_manager.setGraphViewState(view_state);
 
-    ImGui::End();
+    if (create_window) {
+        ImGui::End();
+    }
 
-    // Display node details in a separate window
+    // Display node details in a separate window, regardless of whether this function created the window
     graph_editor.DisplaySelectedNodeDetails(view_state);
 }
