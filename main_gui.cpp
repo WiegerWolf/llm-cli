@@ -858,22 +858,15 @@ int main(int, char**) {
                   ImVec4 text_color = ImGui::GetStyleColorVec4(ImGuiCol_Text);
                   bool use_color = false;
 
+                  display_text = FormatMessageForGraph(message, *g_graph_manager);
+
                   if (message.type == MessageType::USER_INPUT) {
                       text_color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
-                      display_text = "User: " + message.content;
                       use_color = true;
                   } else if (message.type == MessageType::STATUS) {
                       text_color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
-                      display_text = "[STATUS] " + message.content;
                       use_color = true;
-                  } else if (message.type == MessageType::ERROR) {
-                      display_text = "ERROR: " + message.content;
-                  } else if (message.type == MessageType::LLM_RESPONSE) {
-                      display_text = FormatMessageForGraph(message, *g_graph_manager);
-                  } else {
-                      display_text = "[Unknown Type] " + message.content;
                   }
-
                   float wrap_width = ImGui::GetContentRegionAvail().x;
                   ImVec2 text_size = ImGui::CalcTextSize(display_text.c_str(), NULL, false, wrap_width);
                   float calculated_height = text_size.y;
