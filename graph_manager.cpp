@@ -338,6 +338,7 @@ std::vector<std::shared_ptr<GraphNode>> GraphManager::GetAllNodes() {
 
 // Auto-pan functionality
 void GraphManager::TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size) {
+    std::lock_guard<std::shared_mutex> lock(m_mutex);
     std::unique_lock<std::shared_mutex> lock(m_mutex);
     if (!graph_editor || !last_node_added_to_graph) {
         return;
