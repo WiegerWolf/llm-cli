@@ -275,11 +275,11 @@ GraphEditor::GraphEditor() {
     // context_node_ and reply_parent_node_ are initialized to nullptr by default
 }
 
-int GetNextUniqueID(const std::map<int, std::shared_ptr<GraphNode>>& nodes) {
+NodeIdType GetNextUniqueID(const std::map<NodeIdType, std::shared_ptr<GraphNode>>& nodes) {
     if (nodes.empty()) {
         return 1;
     }
-    int max_id = 0;
+    NodeIdType max_id = 0;
     for(const auto& pair : nodes) {
         if (pair.first > max_id) {
             max_id = pair.first;
@@ -294,7 +294,7 @@ void GraphEditor::AddNode(std::shared_ptr<GraphNode> node) {
     }
 }
 
-std::shared_ptr<GraphNode> GraphEditor::GetNode(int node_id) {
+std::shared_ptr<GraphNode> GraphEditor::GetNode(NodeIdType node_id) {
     auto it = nodes_.find(node_id);
     if (it != nodes_.end()) {
         return it->second;
@@ -419,7 +419,7 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
         sprintf(select_btn_id, "select##%ld_btn", node.graph_node_id);
         if (ImGui::InvisibleButton(select_btn_id, node_size_screen)) {
             if (view_state_.selected_node_id != node.graph_node_id) {
-                if (view_state_.selected_node_id != -1) {
+                if (view_state_.selected_node_id != kInvalidNodeId) {
                     auto prev_selected_node = GetNode(view_state_.selected_node_id);
                     if (prev_selected_node) {
                         prev_selected_node->is_selected = false;
@@ -441,19 +441,19 @@ void GraphEditor::HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canva
     }
 
     if (clicked_on_background && !item_interacted_this_frame) {
-        if (view_state_.selected_node_id != -1) {
+        if (view_state_.selected_node_id != kInvalidNodeId) {
             auto current_selected_node = GetNode(view_state_.selected_node_id);
             if (current_selected_node) {
                 current_selected_node->is_selected = false;
             }
-            view_state_.selected_node_id = -1;
+            view_state_.selected_node_id = kInvalidNodeId;
         }
     }
 }
 
 void GraphEditor::DisplaySelectedNodeDetails() {
-    ImGui::Begin("Node Details"); 
-    if (view_state_.selected_node_id != -1) {
+    ImGui::Begin("Node Details");
+    if (view_state_.selected_node_id != kInvalidNodeId) {
         auto selected_node_ptr = GetNode(view_state_.selected_node_id);
         if (selected_node_ptr) {
             ImGui::Text("Graph Node ID: %ld", selected_node_ptr->graph_node_id);

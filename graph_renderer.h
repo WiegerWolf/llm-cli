@@ -4,9 +4,10 @@
 #include "extern/imgui/imgui.h"
 #include "gui_interface/graph_types.h" // For GraphNode and GraphViewState
 #include "gui_interface/gui_interface.h" // For ThemeType
-#include <vector> // For storing GraphNode pointers or objects
+#include "id_types.h"
 #include <map>    // For managing nodes by ID
 #include <memory> // For std::shared_ptr
+#include <vector> // For storing GraphNode pointers or objects
 
 // Forward declaration if GraphNode is complex and defined elsewhere,
 // or include the necessary header if it's simple.
@@ -21,7 +22,7 @@ public:
 
     void Render(ImDrawList* draw_list, const ImVec2& canvas_pos, const ImVec2& canvas_size);
     void AddNode(std::shared_ptr<GraphNode> node);
-    std::shared_ptr<GraphNode> GetNode(int node_id);
+    std::shared_ptr<GraphNode> GetNode(NodeIdType node_id);
     void ClearNodes(); // If nodes are managed internally
 
     // Interaction Handlers
@@ -62,7 +63,7 @@ public:
 
 private:
     GraphViewState view_state_;
-    std::map<int, std::shared_ptr<GraphNode>> nodes_;
+    std::map<NodeIdType, std::shared_ptr<GraphNode>> nodes_;
     std::shared_ptr<GraphNode> context_node_ = nullptr; // Node for which context menu is triggered
     std::shared_ptr<GraphNode> reply_parent_node_ = nullptr; // Parent node for the new message
     ThemeType current_theme_ = ThemeType::DARK; // Current theme for color selection
