@@ -32,7 +32,7 @@
 // --- Issue #44: Persistent Message ID ---
 // A file-scope, persistent, monotonic counter for generating unique message IDs.
 // This ensures that even if output_history is cleared, new messages will not have conflicting IDs.
-static std::atomic<NodeIdType> g_next_message_id {0};
+static std::atomic<NodeIdType> g_next_message_id {1};
 // --- End Issue #44 ---
 
 // Forward declaration for helper function
@@ -1126,7 +1126,7 @@ int main(int, char**) {
                 // Add user input to history (Issue #8 Refactor)
                 // Add the user's message to the history for display
                 HistoryMessage user_msg;
-                user_msg.message_id = g_next_message_id++; // Issue #44: Use monotonic counter
+                user_msg.message_id = g_next_message_id.fetch_add(1); // Issue #44: Use monotonic counter
                 user_msg.type = MessageType::USER_INPUT;
                 user_msg.content = std::string(input_buf);
                 user_msg.model_id = std::nullopt;
