@@ -2,6 +2,7 @@
 #include "graph_renderer.h" // For GraphEditor
 #include "imgui.h" // For ImVec2, ImU32, IM_COL32
 #include "id_types.h" // Defines NodeIdType and kInvalidNodeId sentinel
+#include <iostream> // For std::cout
 #include <memory> // For std::make_unique, std::move
 #include <algorithm> // For std::find_if
 #include <cmath> // For std::max, std::min
@@ -9,7 +10,7 @@
 #include <shared_mutex>
 
 // Forward declaration of helper function from main_gui.cpp
-extern std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager& db_manager);
+extern std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph_manager);
 
 // Thread-safe helper that safely computes text size even when no ImGui context is active.
 static inline ImVec2 SafeCalcTextSize(const std::string& text, float wrap_width = FLT_MAX)
@@ -54,8 +55,9 @@ ImVec2 CalculateNodeSize(const std::string& content) {
 }
 
 // Constructor
-GraphManager::GraphManager()
-    : last_node_added_to_graph(nullptr),
+GraphManager::GraphManager(PersistenceManager* db_manager)
+    : m_db_manager(db_manager),
+      last_node_added_to_graph(nullptr),
       graph_layout_dirty(false),
       force_layout(ForceDirectedLayout::LayoutParams()),
       use_force_layout(true),
@@ -72,6 +74,30 @@ GraphNode* GraphManager::GetNodeById(NodeIdType graph_node_id) {
         return it->second.get();
     }
     return nullptr;
+}
+
+std::string GraphManager::getModelName(ModelId model_id) {
+    // Check cache first (read lock)
+    {
+        std::shared_lock lock(m_mutex);
+        auto it = m_model_name_cache.find(model_id);
+        if (it != m_model_name_cache.end()) {
+            std::cout << "Cache hit for model ID: " << model_id << std::endl;
+            return it->second;
+        }
+    }
+
+    // If not in cache, query DB (no lock)
+    std::cout << "Cache miss for model ID: " << model_id << ". Querying database." << std::endl;
+    std::string model_name = m_db_manager->getModelNameById(model_id).value_or("");
+
+    // Update cache (write lock)
+    {
+        std::unique_lock lock(m_mutex);
+        m_model_name_cache[model_id] = model_name;
+    }
+
+    return model_name;
 }
 
 // Implementation of PopulateGraphFromHistory
@@ -92,7 +118,7 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
         GraphNode* current_node_ptr = new_node_shared_ptr.get();
 
         // Use the helper function to format message content consistently with linear view
-        current_node_ptr->label = FormatMessageForGraph(msg, db_manager);
+        current_node_ptr->label = FormatMessageForGraph(msg, *this);
 
         current_node_ptr->parent = previous_node_ptr;
         if (previous_node_ptr) {
@@ -159,7 +185,7 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     GraphNode* new_graph_node = new_graph_node_shared_ptr.get();
 
     // Use the helper function to format message content consistently with linear view
-    new_graph_node->label = FormatMessageForGraph(new_msg, db_manager);
+    new_graph_node->label = FormatMessageForGraph(new_msg, *this);
 
     new_graph_node->parent = parent_node;
     if (parent_node) {

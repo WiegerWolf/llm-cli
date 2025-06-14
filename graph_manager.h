@@ -5,13 +5,19 @@
 #include <string>
 #include <unordered_map>
 #include <shared_mutex>
+#include <map>
 #include "id_types.h"                   // Centralized definition of NodeIdType (int64_t) and sentinel
+#include "model_types.h"
+
+using ModelId = std::string;
+
 #include "gui_interface/graph_types.h"
 #include "gui_interface/gui_interface.h" // For HistoryMessage
 #include "database.h" // For PersistenceManager
 #include "graph_layout.h" // For ForceDirectedLayout
 
 // NodeIdType is now defined in id_types.h as std::int64_t to prevent overflow.
+
 
 class GraphManager {
 public:
@@ -37,7 +43,7 @@ public:
     mutable std::shared_mutex m_mutex;
 
 
-    GraphManager(); // Constructor to initialize members
+    GraphManager(PersistenceManager* db_manager); // Constructor to initialize members
 
     void PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, PersistenceManager& db_manager);
     // current_selected_node_id is GraphNode::graph_node_id
@@ -45,6 +51,7 @@ public:
     
     // Helper to get a node pointer by its unique graph_node_id
     GraphNode* GetNodeById(NodeIdType graph_node_id);
+    std::string getModelName(ModelId model_id);
     
     // Layout management functions
     void UpdateLayout(); // Apply force-directed layout if needed
@@ -60,6 +67,9 @@ public:
     // Auto-pan functionality
     void TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size);
 
+private:
+    PersistenceManager* m_db_manager;
+    std::map<ModelId, std::string> m_model_name_cache;
     // Placeholder for graph rendering logic, to be implemented in a later step
     // void RenderGraphView(); // This will likely be a free function or part of a different class
 };

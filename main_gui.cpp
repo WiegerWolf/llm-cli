@@ -28,10 +28,10 @@
 // Note: graph_types.h is included by graph_renderer.h and graph_manager.h
 
 // Forward declaration for helper function
-std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager& db_manager);
+std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph_manager);
 
 // Helper function to format message content for graph display (matches linear view formatting)
-std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager& db_manager) {
+std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph_manager) {
     std::string content_prefix;
     switch (msg.type) {
         case MessageType::USER_INPUT:
@@ -44,9 +44,10 @@ std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager&
                 if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
                     prefix = "Assistant (Legacy Model): ";
                 } else {
-                    std::optional<std::string> model_name_opt = db_manager.getModelNameById(actual_model_id);
-                    if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
-                        prefix = "Assistant (" + model_name_opt.value() + "): ";
+                    // Use the GraphManager to get the model name, which may be cached
+                    std::string model_name = graph_manager.getModelName(actual_model_id);
+                    if (!model_name.empty()) {
+                        prefix = "Assistant (" + model_name + "): ";
                     } else {
                         prefix = "Assistant (" + actual_model_id + "): ";
                     }
@@ -73,7 +74,7 @@ std::string FormatMessageForGraph(const HistoryMessage& msg, PersistenceManager&
 
 // --- Graph Editor Instance & State ---
 // static GraphEditor g_graph_editor; // Manages graph state and rendering (existing) - To be phased out or integrated with GraphManager
-static GraphManager g_graph_manager; // Manages graph data (new)
+static GraphManager* g_graph_manager = nullptr; // Manages graph data (new)
 // static std::vector<GraphNode> s_graph_nodes; // Owns the actual node data (placeholder, to be replaced by g_graph_manager) - Removed
 static bool s_is_graph_view_visible = true; // To toggle graph view window (existing, might be adapted)
 // static bool s_graph_data_initialized = false; // For placeholder data - Removed
@@ -384,6 +385,7 @@ bool MapScreenCoordsToTextIndices(
 int main(int, char**) {
     // --- Database Initialization (Issue #18 DB Persistence) ---
     PersistenceManager db_manager; // Instantiate DB manager first
+    g_graph_manager = new GraphManager(&db_manager);
     try {
         // Load theme preference from database
         std::optional<std::string> theme_value = db_manager.loadSetting("theme");
@@ -576,13 +578,13 @@ int main(int, char**) {
             auto first_new_message = std::next(output_history.begin(), old_size);
             for (auto it = first_new_message; it != output_history.end(); ++it) {
                 const auto& new_msg_ref = *it;
-                g_graph_manager.HandleNewHistoryMessage(new_msg_ref, g_graph_manager.graph_view_state.selected_node_id, db_manager);
+                g_graph_manager->HandleNewHistoryMessage(new_msg_ref, g_graph_manager->graph_view_state.selected_node_id, db_manager);
             }
            graph_needs_update = true;
            
            // Force immediate layout update for new messages to fix auto-refresh issue
            // This ensures new nodes are properly positioned and rendered immediately
-           g_graph_manager.graph_layout_dirty = true;
+           g_graph_manager->graph_layout_dirty = true;
        }
        
        // --- Automatic Graph Synchronization ---
@@ -597,7 +599,7 @@ int main(int, char**) {
                if (output_history.size() < last_known_history_size ||
                    (output_history.size() > last_known_history_size + new_messages.size())) {
                    // History was modified (messages removed or bulk changes), repopulate graph
-                   g_graph_manager.PopulateGraphFromHistory(output_history, db_manager);
+                   g_graph_manager->PopulateGraphFromHistory(output_history, db_manager);
                    graph_needs_update = true;
                }
            }
@@ -608,15 +610,15 @@ int main(int, char**) {
        // --- Ensure Graph Layout Updates (Even When Tab Not Visible) ---
        // Process graph layout updates immediately when needed, regardless of tab visibility
        // This is critical for fixing the auto-refresh issue with new message nodes
-       if (graph_needs_update || g_graph_manager.graph_layout_dirty || (g_graph_manager.IsLayoutRunning() && !s_animation_paused)) {
+       if (graph_needs_update || g_graph_manager->graph_layout_dirty || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) {
            // Force layout recalculation if the graph is dirty or animation is running and not paused
-           if ((g_graph_manager.graph_layout_dirty || (g_graph_manager.IsLayoutRunning() && !s_animation_paused)) && !g_graph_manager.all_nodes.empty()) {
+           if ((g_graph_manager->graph_layout_dirty || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) && !g_graph_manager->all_nodes.empty()) {
                // Update animation speed in the force layout system
-               g_graph_manager.SetAnimationSpeed(s_animation_speed);
+               g_graph_manager->SetAnimationSpeed(s_animation_speed);
                
                // Use force-directed layout for better node organization
                // This will now perform per-frame updates for smooth animation
-               g_graph_manager.UpdateLayout();
+               g_graph_manager->UpdateLayout();
            }
        }
        // --- End Ensure Graph Layout Updates ---
@@ -865,9 +867,9 @@ int main(int, char**) {
                           if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
                               prefix = "Assistant (Legacy Model): ";
                           } else {
-                              std::optional<std::string> model_name_opt = db_manager.getModelNameById(actual_model_id);
-                              if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
-                                  prefix = "Assistant (" + model_name_opt.value() + "): ";
+                              std::string model_name = g_graph_manager->getModelName(actual_model_id);
+                              if (!model_name.empty()) {
+                                  prefix = "Assistant (" + model_name + "): ";
                               } else {
                                   prefix = "Assistant (" + actual_model_id + "): ";
                               }
@@ -997,25 +999,25 @@ int main(int, char**) {
               static bool graph_tab_was_active = false;
               bool graph_tab_is_active = ImGui::IsItemVisible();
               
-              if (graph_tab_is_active && (!graph_tab_was_active || g_graph_manager.all_nodes.empty())) {
+              if (graph_tab_is_active && (!graph_tab_was_active || g_graph_manager->all_nodes.empty())) {
                    if (!output_history.empty()) { // Only populate if there's history
-                       g_graph_manager.PopulateGraphFromHistory(output_history, db_manager);
+                       g_graph_manager->PopulateGraphFromHistory(output_history, db_manager);
                    }
               }
               graph_tab_was_active = graph_tab_is_active;
 
               if (ImGui::Button("Refresh Graph")) {
-                  g_graph_manager.PopulateGraphFromHistory(output_history, db_manager);
+                  g_graph_manager->PopulateGraphFromHistory(output_history, db_manager);
               }
               ImGui::SameLine();
-              ImGui::Text("Nodes: %zu (Auto-updating)", g_graph_manager.all_nodes.size());
+              ImGui::Text("Nodes: %zu (Auto-updating)", g_graph_manager->all_nodes.size());
 
               // --- Animation Controls ---
               ImGui::Separator();
               ImGui::Text("Animation Controls:");
               
               // Play/Pause button
-              if (g_graph_manager.IsLayoutRunning()) {
+              if (g_graph_manager->IsLayoutRunning()) {
                   if (s_animation_paused) {
                       if (ImGui::Button("Resume")) {
                           s_animation_paused = false;
@@ -1027,7 +1029,7 @@ int main(int, char**) {
                   }
               } else {
                   if (ImGui::Button("Start Animation")) {
-                      g_graph_manager.graph_layout_dirty = true; // Restart the animation
+                      g_graph_manager->graph_layout_dirty = true; // Restart the animation
                       s_animation_paused = false;
                   }
               }
@@ -1036,7 +1038,7 @@ int main(int, char**) {
               
               // Reset Layout button
               if (ImGui::Button("Reset Layout")) {
-                  g_graph_manager.RestartLayoutAnimation();
+                  g_graph_manager->RestartLayoutAnimation();
                   s_animation_paused = false;
               }
               
@@ -1048,7 +1050,7 @@ int main(int, char**) {
               
               // Animation status
               ImGui::SameLine();
-              if (g_graph_manager.IsLayoutRunning()) {
+              if (g_graph_manager->IsLayoutRunning()) {
                   if (s_animation_paused) {
                       ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "PAUSED");
                   } else {
@@ -1064,7 +1066,7 @@ int main(int, char**) {
               // so this will always render the most current state
               ImGui::BeginChild("GraphCanvas", ImVec2(0, -bottom_elements_height - ImGui::GetFrameHeightWithSpacing()), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
               // Updated signature for RenderGraphView with theme support
-              RenderGraphView(g_graph_manager, g_graph_manager.graph_view_state, currentTheme);
+              RenderGraphView(*g_graph_manager, g_graph_manager->graph_view_state, currentTheme);
               ImGui::EndChild();
 
               ImGui::EndTabItem();
@@ -1122,10 +1124,10 @@ int main(int, char**) {
                 output_history.push_back(user_msg);
                 
                 // Immediately update the graph with the new user input
-                g_graph_manager.HandleNewHistoryMessage(user_msg, g_graph_manager.graph_view_state.selected_node_id, db_manager);
+                g_graph_manager->HandleNewHistoryMessage(user_msg, g_graph_manager->graph_view_state.selected_node_id, db_manager);
                 
                 // Force immediate layout update to ensure new user input node displays properly
-                g_graph_manager.graph_layout_dirty = true;
+                g_graph_manager->graph_layout_dirty = true;
                 
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
@@ -1219,5 +1221,6 @@ int main(int, char**) {
     }
 
     std::cout << "Exiting." << std::endl;
+    delete g_graph_manager;
     return 0;
 }
