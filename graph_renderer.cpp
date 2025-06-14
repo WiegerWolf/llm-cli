@@ -10,7 +10,7 @@
 #include <chrono>     // For std::chrono::system_clock, std::chrono::steady_clock
 #include <functional> // For std::function
 // Initialize the static member for the new message buffer
-char GraphEditor::newMessageBuffer_[1024 * 16] = {0};
+char GraphEditor::newMessageBuffer_[1024 * 16] = {};
 #include "graph_manager.h" // For GraphManager
 #include "graph_layout.h" // For CalculateNodePositionsRecursive
 
