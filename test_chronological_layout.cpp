@@ -337,6 +337,8 @@ public:
         auto start_time = std::chrono::high_resolution_clock::now();
         std::vector<std::shared_ptr<GraphNode>> raw_nodes;
         for(const auto& n : nodes) raw_nodes.push_back(n);
+        // Initialize layout to reset velocities and ensure chronological placement
+        layout_.Initialize(raw_nodes, ImVec2(750.0f, 600.0f));
         layout_.ComputeLayout(raw_nodes, ImVec2(750.0f, 600.0f));
         auto end_time = std::chrono::high_resolution_clock::now();
         
