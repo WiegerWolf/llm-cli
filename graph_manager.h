@@ -55,7 +55,8 @@ public:
     
     // Accessors for thread-safe, encapsulated access
     const GraphViewState& getGraphViewState() const;
-    GraphViewState& getGraphViewStateNonConst();
+    GraphViewState getGraphViewStateSnapshot() const;
+    void setGraphViewState(const GraphViewState& state);
     bool isGraphLayoutDirty() const;
     bool isForceLayout() const;
     bool isUseForceLayout() const;
@@ -63,6 +64,8 @@ public:
     std::recursive_mutex& mutex();
 
 private:
+    GraphViewState& getGraphViewStateNonConst();
+
     // Graph View State
     GraphViewState graph_view_state; // Contains selected_node_id (which is a graph_node_id), pan, zoom
 

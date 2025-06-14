@@ -313,7 +313,19 @@ void GraphManager::TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, c
 }
 // Accessors for thread-safe, encapsulated access
 const GraphViewState& GraphManager::getGraphViewState() const {
+    // This is not thread-safe, but it's used in contexts where a lock is already held.
+    // For public, safe access, use getGraphViewStateSnapshot().
     return graph_view_state;
+}
+
+GraphViewState GraphManager::getGraphViewStateSnapshot() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    return graph_view_state;
+}
+
+void GraphManager::setGraphViewState(const GraphViewState& state) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    graph_view_state = state;
 }
 
 GraphViewState& GraphManager::getGraphViewStateNonConst() {

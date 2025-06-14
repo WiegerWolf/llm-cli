@@ -20,37 +20,35 @@ class GraphEditor {
 public:
     GraphEditor(GraphManager* graph_manager);
 
-    void Render(ImDrawList* draw_list, const ImVec2& canvas_pos, const ImVec2& canvas_size);
+    void Render(ImDrawList* draw_list, const ImVec2& canvas_pos, const ImVec2& canvas_size, GraphViewState& view_state);
     void AddNode(std::shared_ptr<GraphNode> node);
     std::shared_ptr<GraphNode> GetNode(NodeIdType node_id);
     void ClearNodes(); // If nodes are managed internally
 
     // Interaction Handlers
-    void HandlePanning(const ImVec2& canvas_pos, const ImVec2& canvas_size); // Corrected typo
-    void HandleZooming(const ImVec2& canvas_pos, const ImVec2& canvas_size);
-    void HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canvas_pos, const ImVec2& canvas_size);
-    void DisplaySelectedNodeDetails(); // To be called by main GUI loop
-    void HandleExpandCollapse(GraphNode& node, const ImVec2& canvas_pos); // Handles button logic for expand/collapse
-    void RenderPopups(ImDrawList* draw_list, const ImVec2& canvas_pos); // Renders context menus and modals
+    void HandlePanning(const ImVec2& canvas_pos, const ImVec2& canvas_size, GraphViewState& view_state); // Corrected typo
+    void HandleZooming(const ImVec2& canvas_pos, const ImVec2& canvas_size, GraphViewState& view_state);
+    void HandleNodeSelection(ImDrawList* draw_list, const ImVec2& canvas_pos, const ImVec2& canvas_size, GraphViewState& view_state);
+    void DisplaySelectedNodeDetails(GraphViewState& view_state); // To be called by main GUI loop
+    void HandleExpandCollapse(GraphNode& node, const ImVec2& canvas_pos, GraphViewState& view_state); // Handles button logic for expand/collapse
+    void RenderPopups(ImDrawList* draw_list, const ImVec2& canvas_pos, GraphViewState& view_state); // Renders context menus and modals
 
     // Camera auto-pan functionality
     void StartAutoPanToNode(const std::shared_ptr<GraphNode>& target_node, const ImVec2& canvas_size);
-    void StartAutoPanToPosition(const ImVec2& target_world_pos, float target_zoom, const ImVec2& canvas_size);
-    void UpdateAutoPan(float delta_time);
-    void CancelAutoPan();
-    bool IsAutoPanActive() const { return view_state_.auto_pan_active; }
+    void StartAutoPanToPosition(const ImVec2& target_world_pos, float target_zoom, const ImVec2& canvas_size, GraphViewState& view_state);
+    void UpdateAutoPan(float delta_time, GraphViewState& view_state);
+    void CancelAutoPan(GraphViewState& view_state);
+    bool IsAutoPanActive(const GraphViewState& view_state) const { return view_state.auto_pan_active; }
 
-    ImVec2 WorldToScreen(const ImVec2& world_pos) const;
-    ImVec2 ScreenToWorld(const ImVec2& screen_pos, const ImVec2& canvas_screen_pos) const;
-
-    GraphViewState& GetViewState() { return view_state_; } // Getter for view_state
+    ImVec2 WorldToScreen(const ImVec2& world_pos, const GraphViewState& view_state) const;
+    ImVec2 ScreenToWorld(const ImVec2& screen_pos, const ImVec2& canvas_screen_pos, const GraphViewState& view_state) const;
 
     // Theme management
     void SetCurrentTheme(ThemeType theme) { current_theme_ = theme; }
     ThemeType GetCurrentTheme() const { return current_theme_; }
 
     // Culling helper
-    bool IsNodeVisible(const GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size) const;
+    bool IsNodeVisible(const GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size, const GraphViewState& view_state) const;
 
     // Theme-aware color getters
     ImU32 GetThemeNodeColor(ThemeType theme) const;
@@ -63,7 +61,6 @@ public:
 
 private:
     GraphManager* m_graph_manager; // Pointer to the graph manager
-    GraphViewState view_state_;
     // Map from unique graph_node_id to the corresponding graph node object.
     std::map<NodeIdType, std::shared_ptr<GraphNode>> nodes_;
     std::shared_ptr<GraphNode> context_node_ = nullptr; // Node for which context menu is triggered
@@ -77,14 +74,14 @@ private:
     void RenderNodeContextMenu();
     void RenderNewMessageModal(ImDrawList* draw_list, const ImVec2& canvas_pos); // Pass draw_list and canvas_pos if needed for node creation logic
 
-    void RenderNode(ImDrawList* draw_list, GraphNode& node);
-    void RenderEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node);
-    void RenderBezierEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node, bool is_alternative_path = false);
+    void RenderNode(ImDrawList* draw_list, GraphNode& node, const GraphViewState& view_state);
+    void RenderEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node, const GraphViewState& view_state);
+    void RenderBezierEdge(ImDrawList* draw_list, const GraphNode& parent_node, const GraphNode& child_node, const GraphViewState& view_state, bool is_alternative_path = false);
     // Recursive rendering helper for nodes and their children if expanded
-    void RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size);
+    void RenderNodeRecursive(ImDrawList* draw_list, GraphNode& node, const ImVec2& canvas_screen_pos, const ImVec2& canvas_size, GraphViewState& view_state);
 };
 
 // Graph view rendering function that works with GraphManager
-void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state, ThemeType current_theme);
+void RenderGraphView(GraphManager& graph_manager, ThemeType current_theme);
 
 #endif // GRAPH_RENDERER_H
