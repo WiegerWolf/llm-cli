@@ -16,6 +16,7 @@
 #include <iomanip>      // For std::get_time (Model Dropdown Icons)
 #include <algorithm>    // For std::any_of or string searching (Model Dropdown Icons)
 #include <atomic>       // For g_next_message_id
+#include <memory>      // For std::unique_ptr
  
  // Include GUI library headers needed for the main loop
  #include <GLFW/glfw3.h>
@@ -82,7 +83,7 @@ std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph
 
 // --- Graph Editor Instance & State ---
 // static GraphEditor g_graph_editor; // Manages graph state and rendering (existing) - To be phased out or integrated with GraphManager
-static GraphManager* g_graph_manager = nullptr; // Manages graph data (new)
+static std::unique_ptr<GraphManager> g_graph_manager; // Manages graph data (new)
 // static std::vector<GraphNode> s_graph_nodes; // Owns the actual node data (placeholder, to be replaced by g_graph_manager) - Removed
 static bool s_is_graph_view_visible = true; // To toggle graph view window (existing, might be adapted)
 // static bool s_graph_data_initialized = false; // For placeholder data - Removed
@@ -393,7 +394,7 @@ bool MapScreenCoordsToTextIndices(
 int main(int, char**) {
     // --- Database Initialization (Issue #18 DB Persistence) ---
     PersistenceManager db_manager; // Instantiate DB manager first
-    g_graph_manager = new GraphManager(&db_manager);
+    g_graph_manager = std::make_unique<GraphManager>(&db_manager);
     try {
         // Load theme preference from database
         std::optional<std::string> theme_value = db_manager.loadSetting("theme");
@@ -1229,6 +1230,5 @@ int main(int, char**) {
     }
 
     std::cout << "Exiting." << std::endl;
-    delete g_graph_manager;
     return 0;
 }
