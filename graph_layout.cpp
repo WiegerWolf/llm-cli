@@ -6,6 +6,7 @@
 #include <random>
 #include <iostream>
 #include <unordered_map>
+#include <cassert>
 // RNG engine shared across layout operations to avoid expensive per-node construction.
 // Using static thread_local for deterministic replay and thread safety.
 namespace {
@@ -291,7 +292,9 @@ void ForceDirectedLayout::CalculateRepulsiveForces(const std::vector<std::shared
     // Uniform-grid spatial hashing to reduce O(N²) pair checks to ~O(N)
     if (nodes.empty()) return;
 
-    const float cell_size = params_.min_distance; // grid cell dimension
+    // Clamp cell_size to a minimum of 1.0f to avoid division by zero.
+    const float cell_size = std::max(1.0f, params_.min_distance);
+    assert(params_.min_distance > 0.f && "min_distance must be positive");
     std::unordered_map<uint64_t, std::vector<int>> buckets;
     buckets.reserve(nodes.size() * 2);
 
