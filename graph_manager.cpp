@@ -197,7 +197,7 @@ GraphNode* GraphManager::CreateNode(NodeIdType parent_id, MessageType type, cons
     new_msg.type = type;
     new_msg.content = content;
     new_msg.timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-    new_msg.parent_id = parent_node->message_id;
+    new_msg.parent_id = parent_node->message_data.message_id;
 
     NodeIdType new_g_node_id = next_graph_node_id_counter++;
     auto new_node = std::make_shared<GraphNode>(new_g_node_id, new_msg);
