@@ -76,27 +76,47 @@ GraphNode* GraphManager::GetNodeById(NodeIdType graph_node_id) {
     return nullptr;
 }
 
+// This is the new non-locking version for internal calls that already hold a lock.
+std::string GraphManager::getModelName_nolock(ModelId model_id) {
+    // Check cache first (no lock)
+    auto it = m_model_name_cache.find(model_id);
+    if (it != m_model_name_cache.end()) {
+        // This function is called frequently, so cout is commented out to reduce noise
+        // std::cout << "Cache hit for model ID: " << model_id << std::endl;
+        return it->second;
+    }
+
+    // If not in cache, query DB (no lock)
+    // std::cout << "Cache miss for model ID: " << model_id << ". Querying database." << std::endl;
+    std::string model_name = m_db_manager->getModelNameById(model_id).value_or("");
+
+    // Update cache (no lock, caller must hold a unique_lock)
+    m_model_name_cache[model_id] = model_name;
+
+    return model_name;
+}
+
+// This is the public, thread-safe version that acquires locks.
 std::string GraphManager::getModelName(ModelId model_id) {
-    // Check cache first (read lock)
+    // Check cache with a read lock first.
     {
         std::shared_lock lock(m_mutex);
         auto it = m_model_name_cache.find(model_id);
         if (it != m_model_name_cache.end()) {
-            std::cout << "Cache hit for model ID: " << model_id << std::endl;
             return it->second;
         }
+    } // Release read lock
+
+    // If not in cache, acquire a write lock to query the DB and update the cache.
+    std::unique_lock lock(m_mutex);
+    // Re-check cache in case another thread populated it while we were waiting for the lock
+    auto it = m_model_name_cache.find(model_id);
+    if (it != m_model_name_cache.end()) {
+        return it->second;
     }
 
-    // If not in cache, query DB (no lock)
-    std::cout << "Cache miss for model ID: " << model_id << ". Querying database." << std::endl;
     std::string model_name = m_db_manager->getModelNameById(model_id).value_or("");
-
-    // Update cache (write lock)
-    {
-        std::unique_lock lock(m_mutex);
-        m_model_name_cache[model_id] = model_name;
-    }
-
+    m_model_name_cache[model_id] = model_name;
     return model_name;
 }
 

@@ -52,6 +52,7 @@ public:
     // Helper to get a node pointer by its unique graph_node_id
     GraphNode* GetNodeById(NodeIdType graph_node_id);
     std::string getModelName(ModelId model_id);
+    std::string getModelName_nolock(ModelId model_id);
     
     // Layout management functions
     void UpdateLayout(); // Apply force-directed layout if needed
