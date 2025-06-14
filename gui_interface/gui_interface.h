@@ -13,6 +13,8 @@
 #include <atomic>  // Added for Stage 4
 #include <imgui.h> // Required for ImVec2, ImFont
 #include <map>     // Required for ModelEntry if it uses map, or for getAllModels return type transformation
+#include "id_types.h" // NodeIdType definition
+#include <chrono>      // std::chrono::time_point
  
 // Forward declaration for ImFont
 struct ImFont;
@@ -23,13 +25,17 @@ enum class MessageType {
     USER_INPUT, // Note: User input is added directly in main_gui.cpp, not via this queue
     LLM_RESPONSE,
     STATUS,
-    ERROR
+    ERROR,
+    USER_REPLY // Added for graph-based replies
 };
 
 struct HistoryMessage {
+    NodeIdType message_id; // Unique identifier for the message (64-bit)
     MessageType type;
     std::string content;
     std::optional<std::string> model_id; // Changed for backward compatibility
+    std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> timestamp; // High-resolution timestamp
+    NodeIdType parent_id; // Parent message identifier or kInvalidNodeId if none
 };
 // --- End Message History Structure ---
 
@@ -134,6 +140,11 @@ public: // Changed from private to allow access from static callback // This pub
     std::condition_variable input_cv; // To signal when input is available
     std::atomic<bool> shutdown_requested{false}; // Updated for Stage 4
 private:
+    // Helper for DRY message enqueueing
+    void enqueueDisplayMessage(MessageType type,
+                               const std::string& content,
+                               const std::optional<std::string>& model_id = std::nullopt);
+
     PersistenceManager& db_manager_ref; // Reference to PersistenceManager
 
     // --- Model Selection State (Part III GUI Changes / Updated Part V) ---

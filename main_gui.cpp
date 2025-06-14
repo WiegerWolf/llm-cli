@@ -1,4 +1,5 @@
 #include "gui_interface/gui_interface.h"
+#include "id_types.h" // NodeIdType definition
 #include <stdexcept>
 #include <cmath>
 #include <iostream>
@@ -14,6 +15,8 @@
 #include <sstream>      // For parsing timestamps (Model Dropdown Icons)
 #include <iomanip>      // For std::get_time (Model Dropdown Icons)
 #include <algorithm>    // For std::any_of or string searching (Model Dropdown Icons)
+#include <atomic>       // For g_next_message_id
+#include <memory>      // For std::unique_ptr
  
  // Include GUI library headers needed for the main loop
  #include <GLFW/glfw3.h>
@@ -22,7 +25,75 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <stdio.h> // For glClearColor
- 
+#include "graph_renderer.h" // For GraphEditor class
+#include "graph_manager.h"  // For GraphManager class
+// Note: graph_types.h is included by graph_renderer.h and graph_manager.h
+
+// --- Issue #44: Persistent Message ID ---
+// A file-scope, persistent, monotonic counter for generating unique message IDs.
+// This ensures that even if output_history is cleared, new messages will not have conflicting IDs.
+static std::atomic<NodeIdType> g_next_message_id {1};
+// --- End Issue #44 ---
+
+// Forward declaration for helper function
+std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph_manager);
+
+// Helper function to format message content for graph display (matches linear view formatting)
+std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph_manager) {
+    std::string content_prefix;
+    switch (msg.type) {
+        case MessageType::USER_INPUT:
+            content_prefix = "User: ";
+            break;
+        case MessageType::LLM_RESPONSE: {
+            std::string prefix = "Assistant: ";
+            if (msg.model_id.has_value()) {
+                const std::string& actual_model_id = msg.model_id.value();
+                if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
+                    prefix = "Assistant (Legacy Model): ";
+                } else {
+                    // Use the GraphManager to get the model name, which may be cached
+                    std::string model_name = graph_manager.getModelName(actual_model_id);
+                    if (!model_name.empty()) {
+                        prefix = "Assistant (" + model_name + "): ";
+                    } else {
+                        prefix = "Assistant (" + actual_model_id + "): ";
+                    }
+                }
+            }
+            content_prefix = prefix;
+            break;
+        }
+        case MessageType::STATUS:
+            content_prefix = "[STATUS] ";
+            break;
+        case MessageType::ERROR:
+            content_prefix = "ERROR: ";
+            break;
+        case MessageType::USER_REPLY:
+            content_prefix = "Reply: ";
+            break;
+        default:
+            content_prefix = "[Unknown Type] ";
+            break;
+    }
+    return content_prefix + msg.content;
+}
+
+// --- Graph Editor Instance & State ---
+// static GraphEditor g_graph_editor; // Manages graph state and rendering (existing) - To be phased out or integrated with GraphManager
+static std::unique_ptr<GraphManager> g_graph_manager; // Manages graph data (new)
+// static std::vector<GraphNode> s_graph_nodes; // Owns the actual node data (placeholder, to be replaced by g_graph_manager) - Removed
+static bool s_is_graph_view_visible = true; // To toggle graph view window (existing, might be adapted)
+// static bool s_graph_data_initialized = false; // For placeholder data - Removed
+// Old static graph state variables are managed by GraphManager's GraphViewState
+
+// --- Animation Control Variables ---
+static bool s_animation_paused = false; // Control animation play/pause
+static float s_animation_speed = 1.0f; // Animation speed multiplier (0.1x to 3.0x)
+// --- End Animation Control Variables ---
+// --- End Graph Editor Instance & State ---
+
 // --- Theme State (Issue #18) ---
 static ThemeType currentTheme = ThemeType::DARK; // Default theme
  
@@ -322,6 +393,7 @@ bool MapScreenCoordsToTextIndices(
 int main(int, char**) {
     // --- Database Initialization (Issue #18 DB Persistence) ---
     PersistenceManager db_manager; // Instantiate DB manager first
+    g_graph_manager = std::make_unique<GraphManager>(&db_manager);
     try {
         // Load theme preference from database
         std::optional<std::string> theme_value = db_manager.loadSetting("theme");
@@ -434,6 +506,9 @@ int main(int, char**) {
     client.setActiveModel(current_gui_selected_model_id);
     // --- End Model Selection GUI State ---
 
+    // --- Placeholder Graph Data Initialization Removed ---
+    // This will now be handled by PopulateGraphFromHistory when the Graph View tab is first selected,
+    // or potentially by an explicit "load" button if desired.
 
     GLFWwindow* window = gui_ui.getWindow(); // Get the window handle
     // Apply initial theme (Issue #18)
@@ -445,25 +520,26 @@ int main(int, char**) {
     std::vector<HistoryMessage> output_history; // Updated for Issue #8
     static bool initial_focus_set = false; // Added for Issue #5
     static bool request_input_focus = false;
-
+ 
     // --- Main Render Loop ---
     while (!glfwWindowShouldClose(window)) {
-        // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
-        // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         glfwPollEvents();
 
-        // --- Process Deferred Font Rebuild (Issue #19 Fix) ---
-        // Font rebuilding is now handled internally by GuiInterface when font size changes.
-        // The explicit call to processFontRebuildRequest() is no longer needed here.
-        // --- End Process Deferred Font Rebuild ---
- 
-        // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        // --- Graph View Toggle (Example, can be moved to a menu) ---
+        // if (ImGui::BeginMainMenuBar()) {
+        //     if (ImGui::BeginMenu("View")) {
+        //         ImGui::MenuItem("Graph View", NULL, &s_is_graph_view_visible);
+        //         ImGui::EndMenu();
+        //     }
+        //     ImGui::EndMainMenuBar();
+        // }
+        // For now, let's add a simple checkbox in settings or always show if s_is_graph_view_visible is true.
+        // We'll place the actual graph window rendering later.
+
 // --- Font Size Control Handling (Issue #19) ---
         ImGuiIO& io = ImGui::GetIO();
 
@@ -494,13 +570,67 @@ int main(int, char**) {
         // Process messages from the worker thread by getting the drained queue
         std::vector<HistoryMessage> new_messages = gui_ui.processDisplayQueue();
         bool new_output_added = !new_messages.empty(); // Check if any messages were actually returned
+        bool graph_needs_update = false;
+        
         if (new_output_added) {
+            // Before moving, record the end of the existing history.
+            auto const old_size = output_history.size();
+            
             // Append the new messages to the history using move iterators for efficiency
             output_history.insert(output_history.end(),
                                   std::make_move_iterator(new_messages.begin()),
                                   std::make_move_iterator(new_messages.end()));
-      }
-      // --- End Process Display Updates ---
+           
+            // After moving the new messages into `output_history`, iterate over the new sub-range.
+            // This is crucial because `new_messages` is now in a moved-from (empty) state.
+            auto first_new_message = std::next(output_history.begin(), old_size);
+            for (auto it = first_new_message; it != output_history.end(); ++it) {
+                const auto& new_msg_ref = *it;
+                g_graph_manager->HandleNewHistoryMessage(new_msg_ref, g_graph_manager->GetSelectedNodeId(), db_manager);
+            }
+           graph_needs_update = true;
+           
+           // Force immediate layout update for new messages to fix auto-refresh issue
+           // This ensures new nodes are properly positioned and rendered immediately
+           g_graph_manager->RestartLayoutAnimation();
+       }
+       
+       // --- Automatic Graph Synchronization ---
+       // Check if the graph needs to be synchronized with the current history
+       // This handles cases where messages might be modified or the graph gets out of sync
+       static size_t last_known_history_size = 0;
+       if (output_history.size() != last_known_history_size) {
+           // History size changed, ensure graph is synchronized
+           if (!graph_needs_update && !output_history.empty()) {
+               // Only do a full repopulation if we haven't already updated via HandleNewHistoryMessage
+               // and if the size difference suggests more than just additions
+               if (output_history.size() < last_known_history_size ||
+                   (output_history.size() > last_known_history_size + new_messages.size())) {
+                   // History was modified (messages removed or bulk changes), repopulate graph
+                   g_graph_manager->PopulateGraphFromHistory(output_history, db_manager);
+                   graph_needs_update = true;
+               }
+           }
+           last_known_history_size = output_history.size();
+       }
+       // --- End Automatic Graph Synchronization ---
+       
+       // --- Ensure Graph Layout Updates (Even When Tab Not Visible) ---
+       // Process graph layout updates immediately when needed, regardless of tab visibility
+       // This is critical for fixing the auto-refresh issue with new message nodes
+       if (graph_needs_update || g_graph_manager->isGraphLayoutDirty() || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) {
+           // Force layout recalculation if the graph is dirty or animation is running and not paused
+           if ((g_graph_manager->isGraphLayoutDirty() || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) && !g_graph_manager->GetAllNodes().empty()) {
+               // Update animation speed in the force layout system
+               g_graph_manager->SetAnimationSpeed(s_animation_speed);
+               
+               // Use force-directed layout for better node organization
+               // This will now perform per-frame updates for smooth animation
+               g_graph_manager->UpdateLayout();
+           }
+       }
+       // --- End Ensure Graph Layout Updates ---
+     // --- End Process Display Updates ---
 
       // --- Retrieve and Apply Scroll Offsets (Comment 1) ---
       ImVec2 scroll_offsets = gui_ui.getAndClearScrollOffsets();
@@ -685,6 +815,13 @@ int main(int, char**) {
           }
           ImGui::Unindent();
           // --- End Model Selection Combo Box ---
+
+          // --- Graph View Toggle Checkbox ---
+          ImGui::Indent();
+          ImGui::Checkbox("Show Graph View", &s_is_graph_view_visible);
+          ImGui::Unindent();
+          settings_height += ImGui::GetItemRectSize().y; // Add height of checkbox line
+          // --- End Graph View Toggle Checkbox ---
   
           settings_height += ImGui::GetStyle().ItemSpacing.y; // Add spacing
       } else {
@@ -692,222 +829,239 @@ int main(int, char**) {
       }
       // --- End Settings Area ---
   
-      // Calculate height for the output area dynamically
-      // Add spacing between settings and input, ensure it's positive
+      // Calculate height for the main content area (tabs) dynamically
       float spacing_between_settings_input = ImGui::GetStyle().ItemSpacing.y > 0 ? ImGui::GetStyle().ItemSpacing.y : 8.0f;
       const float bottom_elements_height = input_height + settings_height + spacing_between_settings_input;
   
+      // --- Tab Bar for Views ---
+      if (ImGui::BeginTabBar("ViewModeTabBar", ImGuiTabBarFlags_None)) {
+          // --- Linear View Tab ---
+          if (ImGui::BeginTabItem("Linear View")) {
+              ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true); // Output Area (Linear History)
+
+              if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+                  ImGuiIO& io_output = ImGui::GetIO();
+                  ImGui::SetScrollY(ImGui::GetScrollY() - io_output.MouseDelta.y);
+                  ImGui::SetScrollX(ImGui::GetScrollX() - io_output.MouseDelta.x);
+              }
+
+              // --- Selection State (Issue #26 / Phase 3 Update) ---
+              static bool is_selecting = false;
+              static int selecting_message_index = -1;
+              static ImVec2 selection_start_pos;
+              static int selection_start_char_index = -1;
+              static int selection_end_char_index = -1;
+
+              for (int i = 0; i < output_history.size(); ++i) {
+                  const auto& message = output_history[i];
+                  std::string display_text;
+                  ImVec4 text_color = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+                  bool use_color = false;
+
+                  display_text = FormatMessageForGraph(message, *g_graph_manager);
+
+                  if (message.type == MessageType::USER_INPUT) {
+                      text_color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
+                      use_color = true;
+                  } else if (message.type == MessageType::STATUS) {
+                      text_color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
+                      use_color = true;
+                  }
+                  float wrap_width = ImGui::GetContentRegionAvail().x;
+                  ImVec2 text_size = ImGui::CalcTextSize(display_text.c_str(), NULL, false, wrap_width);
+                  float calculated_height = text_size.y;
+                  if (calculated_height < ImGui::GetTextLineHeight()) {
+                      calculated_height = ImGui::GetTextLineHeight();
+                  }
+
+                  std::string selectable_id = "##msg_" + std::to_string(i);
+                  ImVec2 text_pos = ImGui::GetCursorScreenPos();
+
+                  ImGui::Selectable(selectable_id.c_str(),
+                                    is_selecting && selecting_message_index == i,
+                                    ImGuiSelectableFlags_AllowItemOverlap,
+                                    ImVec2(wrap_width, calculated_height));
+
+                  if (ImGui::IsItemHovered()) {
+                      if (ImGui::IsMouseDragging(0) && !is_selecting) {
+                          is_selecting = true;
+                          selecting_message_index = i;
+                          selection_start_pos = ImGui::GetMousePos();
+                          selection_start_char_index = -1;
+                          selection_end_char_index = -1;
+                          ImGui::SetScrollY(ImGui::GetScrollY());
+                      }
+                  }
+
+                  if (!ImGui::IsMouseDown(0) && is_selecting) {
+                      if (selecting_message_index == i &&
+                          selection_start_char_index != -1 &&
+                          selection_end_char_index != -1 &&
+                          selection_start_char_index < selection_end_char_index)
+                      {
+                          std::string selected_substring = display_text.substr(
+                              selection_start_char_index,
+                              selection_end_char_index - selection_start_char_index
+                          );
+                          if (!selected_substring.empty()) {
+                              ImGui::SetClipboardText(selected_substring.c_str());
+                          }
+                      }
+                      is_selecting = false;
+                      selecting_message_index = -1;
+                      selection_start_char_index = -1;
+                      selection_end_char_index = -1;
+                  }
+
+                  if (is_selecting && selecting_message_index == i) {
+                      ImVec2 current_mouse_pos = ImGui::GetMousePos();
+                      ImVec2 selectable_min = ImGui::GetItemRectMin();
+                      ImVec2 selectable_max = ImGui::GetItemRectMax();
+
+                      ImVec2 rect_min = ImVec2(std::min(selection_start_pos.x, current_mouse_pos.x),
+                                               std::min(selection_start_pos.y, current_mouse_pos.y));
+                      ImVec2 rect_max = ImVec2(std::max(selection_start_pos.x, current_mouse_pos.x),
+                                               std::max(selection_start_pos.y, current_mouse_pos.y));
+
+                      rect_min.x = std::max(rect_min.x, selectable_min.x);
+                      rect_min.y = std::max(rect_min.y, selectable_min.y);
+                      rect_max.x = std::min(rect_max.x, selectable_max.x);
+                      rect_max.y = std::min(rect_max.y, selectable_max.y);
+
+                      if (rect_min.x < rect_max.x && rect_min.y < rect_max.y) {
+                          std::vector<ImRect> current_char_rects;
+                          bool indices_found = MapScreenCoordsToTextIndices(
+                              display_text.c_str(),
+                              wrap_width,
+                              selectable_min,
+                              rect_min,
+                              rect_max,
+                              selection_start_char_index,
+                              selection_end_char_index,
+                              current_char_rects);
+
+                          if (indices_found && selection_start_char_index != -1 && selection_end_char_index != -1 && selection_start_char_index < selection_end_char_index) {
+                              ImDrawList* draw_list_fg = ImGui::GetForegroundDrawList();
+                              for (int k = selection_start_char_index; k < selection_end_char_index; ++k) {
+                                  if (k >= 0 && k < current_char_rects.size()) {
+                                       draw_list_fg->AddRectFilled(current_char_rects[k].Min, current_char_rects[k].Max, ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
+                                  }
+                              }
+                          }
+                      } else {
+                           selection_start_char_index = -1;
+                           selection_end_char_index = -1;
+                      }
+                  }
+
+                  ImGui::SetCursorScreenPos(text_pos);
+                  if (use_color) {
+                      ImGui::PushStyleColor(ImGuiCol_Text, text_color);
+                  }
+                  ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrap_width);
+                  ImGui::TextWrapped("%s", display_text.c_str());
+                  ImGui::PopTextWrapPos();
+                  if (use_color) {
+                      ImGui::PopStyleColor();
+                  }
+              }
+              if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) {
+                  ImGui::SetScrollHereY(1.0f);
+                  new_output_added = false;
+              }
+
+              if (scroll_offsets.x != 0.0f || scroll_offsets.y != 0.0f) {
+                   ImGui::SetScrollY(ImGui::GetScrollY() + scroll_offsets.y);
+                   ImGui::SetScrollX(ImGui::GetScrollX() + scroll_offsets.x);
+              }
+
+              ImGui::EndChild(); // End Output Area (Linear View)
+              ImGui::EndTabItem();
+          }
+
+          // --- Graph View Tab ---
+          if (s_is_graph_view_visible && ImGui::BeginTabItem("Graph View")) {
+              // Populate graph when this tab is active to ensure content is up to date
+              // This ensures that any changes to content formatting are reflected
+              static bool graph_tab_was_active = false;
+              bool graph_tab_is_active = ImGui::IsItemVisible();
+              
+              if (graph_tab_is_active && (!graph_tab_was_active || g_graph_manager->GetAllNodes().empty())) {
+                   if (!output_history.empty()) { // Only populate if there's history
+                       g_graph_manager->PopulateGraphFromHistory(output_history, db_manager);
+                   }
+              }
+              graph_tab_was_active = graph_tab_is_active;
+
+              if (ImGui::Button("Refresh Graph")) {
+                  g_graph_manager->PopulateGraphFromHistory(output_history, db_manager);
+              }
+              ImGui::SameLine();
+              ImGui::Text("Nodes: %zu (Auto-updating)", g_graph_manager->GetAllNodes().size());
+
+              // --- Animation Controls ---
+              ImGui::Separator();
+              ImGui::Text("Animation Controls:");
+              
+              // Play/Pause button
+              if (g_graph_manager->IsLayoutRunning()) {
+                  if (s_animation_paused) {
+                      if (ImGui::Button("Resume")) {
+                          s_animation_paused = false;
+                      }
+                  } else {
+                      if (ImGui::Button("Pause")) {
+                          s_animation_paused = true;
+                      }
+                  }
+              } else {
+                  if (ImGui::Button("Start Animation")) {
+                      g_graph_manager->RestartLayoutAnimation(); // Restart the animation
+                      s_animation_paused = false;
+                  }
+              }
+              
+              ImGui::SameLine();
+              
+              // Reset Layout button
+              if (ImGui::Button("Reset Layout")) {
+                  g_graph_manager->RestartLayoutAnimation();
+                  s_animation_paused = false;
+              }
+              
+              // Animation speed slider
+              ImGui::Text("Speed:");
+              ImGui::SameLine();
+              ImGui::SetNextItemWidth(150.0f);
+              ImGui::SliderFloat("##AnimSpeed", &s_animation_speed, 0.1f, 3.0f, "%.1fx");
+              
+              // Animation status
+              ImGui::SameLine();
+              if (g_graph_manager->IsLayoutRunning()) {
+                  if (s_animation_paused) {
+                      ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "PAUSED");
+                  } else {
+                      ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "RUNNING");
+                  }
+              } else {
+                  ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "STOPPED");
+              }
+              // --- End Animation Controls ---
+
+              // Call the main rendering function for the graph interface
+              // The graph layout is now automatically updated in the main loop,
+              // so this will always render the most current state
+              ImGui::BeginChild("GraphCanvas", ImVec2(0, -bottom_elements_height - ImGui::GetFrameHeightWithSpacing()), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+              // Updated signature for RenderGraphView with theme support
+              RenderGraphView(*g_graph_manager, currentTheme, false); // create_window = false
+              ImGui::EndChild();
+
+              ImGui::EndTabItem();
+          }
+          ImGui::EndTabBar();
+      }
+      // --- End Tab Bar ---
   
-      // --- Output Area ---
-      // Use negative height to automatically fill space minus the bottom elements
-      ImGui::BeginChild("Output", ImVec2(0, -bottom_elements_height), true);
-
-       // Implement touch scrolling by dragging within the child window
-       // Check if the left mouse button is held down and the mouse is being dragged
-       if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-           ImGuiIO& io = ImGui::GetIO();
-           // Adjust scroll position based on mouse delta
-           ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
-           ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
-       }
-
-       // --- Selection State (Issue #26 / Phase 3 Update) ---
-       static bool is_selecting = false;
-       static int selecting_message_index = -1;
-       static ImVec2 selection_start_pos; // Store where selection drag started
-       static int selection_start_char_index = -1; // Index of the first selected character
-       static int selection_end_char_index = -1;   // Index of the character AFTER the last selected one
-
-       // Iterate over HistoryMessage objects (Issue #8 Refactor / Issue #18 Color Fix / Issue #26 Wrap+Select Fix)
-       for (int i = 0; i < output_history.size(); ++i) {
-           const auto& message = output_history[i];
-           std::string display_text;
-           ImVec4 text_color = ImGui::GetStyleColorVec4(ImGuiCol_Text); // Default color
-           bool use_color = false;
-
-           // Determine text and color based on message type
-           if (message.type == MessageType::USER_INPUT) {
-               text_color = (currentTheme == ThemeType::DARK) ? darkUserColor : lightUserColor;
-               display_text = "User: " + message.content;
-               use_color = true;
-           } else if (message.type == MessageType::STATUS) {
-               text_color = (currentTheme == ThemeType::DARK) ? darkStatusColor : lightStatusColor;
-               display_text = "[STATUS] " + message.content;
-               use_color = true;
-           } else if (message.type == MessageType::ERROR) {
-                // Keep default text color for errors
-                display_text = "ERROR: " + message.content;
-           } else if (message.type == MessageType::LLM_RESPONSE) {
-                // Keep default text color for responses
-                std::string prefix = "Assistant: "; // Default prefix
-                // Check if model_id exists and fetch name/use ID
-                if (message.model_id.has_value()) {
-                    const std::string& actual_model_id = message.model_id.value();
-                    if (actual_model_id == "UNKNOWN_LEGACY_MODEL_ID") {
-                        prefix = "Assistant (Legacy Model): ";
-                    } else {
-                        std::optional<std::string> model_name_opt = db_manager.getModelNameById(actual_model_id);
-                        if (model_name_opt.has_value() && !model_name_opt.value().empty()) {
-                            prefix = "Assistant (" + model_name_opt.value() + "): "; // Use model name
-                        } else {
-                            prefix = "Assistant (" + actual_model_id + "): "; // Fallback to model ID
-                        }
-                    }
-                }
-                display_text = prefix + message.content;
-           } else {
-                // Handle potential unknown message types gracefully
-                display_text = "[Unknown Type] " + message.content;
-           }
-
-           // Calculate selectable height based on wrapped text
-           float wrap_width = ImGui::GetContentRegionAvail().x;
-           ImVec2 text_size = ImGui::CalcTextSize(display_text.c_str(), NULL, false, wrap_width);
-           // Use text_size.y directly, Selectable doesn't need extra FramePadding like InputTextMultiline
-           float calculated_height = text_size.y;
-            // Add a minimum height to prevent zero-height selectables for empty messages
-           if (calculated_height < ImGui::GetTextLineHeight()) {
-               calculated_height = ImGui::GetTextLineHeight();
-           }
-
-
-           // Create a unique ID for the selectable
-           std::string selectable_id = "##msg_" + std::to_string(i);
-
-           // Store cursor position before selectable to position text later
-           ImVec2 text_pos = ImGui::GetCursorScreenPos();
-
-           // Render the selectable area
-           ImGui::Selectable(selectable_id.c_str(),
-                             is_selecting && selecting_message_index == i, // Highlight if it's the one being selected
-                             ImGuiSelectableFlags_AllowItemOverlap,        // Allow text to be drawn over it
-                             ImVec2(wrap_width, calculated_height));
-
-           // --- Input Handling for Selection (Phase 1: Drag Detection) ---
-           if (ImGui::IsItemHovered()) {
-               // Start selection on drag *within* this selectable
-               if (ImGui::IsMouseDragging(0) && !is_selecting) { // Start drag only if not already selecting
-                   is_selecting = true;
-                   selecting_message_index = i;
-                   selection_start_pos = ImGui::GetMousePos(); // Record start position
-                   selection_start_char_index = -1; // Reset indices on new selection start
-                   selection_end_char_index = -1;
-                   // Prevent parent window scroll while dragging *within* the selectable
-                   ImGui::SetScrollY(ImGui::GetScrollY());
-               }
-           }
-
-           // Stop selection on mouse release (anywhere)
-           if (!ImGui::IsMouseDown(0) && is_selecting) {
-               // --- Clipboard Copy Logic (Phase 3) ---
-               if (selecting_message_index == i && // Ensure this is the message that was being selected
-                   selection_start_char_index != -1 &&
-                   selection_end_char_index != -1 &&
-                   selection_start_char_index < selection_end_char_index)
-               {
-                   // Extract the substring
-                   std::string selected_substring = display_text.substr(
-                       selection_start_char_index,
-                       selection_end_char_index - selection_start_char_index
-                   );
-
-                   // Copy to clipboard
-                   if (!selected_substring.empty()) {
-                       ImGui::SetClipboardText(selected_substring.c_str());
-                   }
-               }
-               // --- End Clipboard Copy Logic ---
-
-               // Reset selection state *after* potential clipboard copy
-               is_selecting = false;
-               selecting_message_index = -1;
-               selection_start_char_index = -1;
-               selection_end_char_index = -1;
-           }
-           // --- End Input Handling ---
-
-           // --- Selection Rendering & Coordinate Mapping (Phase 2 & 3 / Phase 5 Update) ---
-           if (is_selecting && selecting_message_index == i) {
-               ImVec2 current_mouse_pos = ImGui::GetMousePos();
-               ImVec2 selectable_min = ImGui::GetItemRectMin(); // Bounds of the *last* item (the Selectable)
-               ImVec2 selectable_max = ImGui::GetItemRectMax();
-
-               // Determine selection rectangle corners, ensuring min is top-left and max is bottom-right
-               ImVec2 rect_min = ImVec2(std::min(selection_start_pos.x, current_mouse_pos.x),
-                                        std::min(selection_start_pos.y, current_mouse_pos.y));
-               ImVec2 rect_max = ImVec2(std::max(selection_start_pos.x, current_mouse_pos.x),
-                                        std::max(selection_start_pos.y, current_mouse_pos.y));
-
-               // Clamp the selection rectangle to the bounds of the current selectable item
-               rect_min.x = std::max(rect_min.x, selectable_min.x);
-               rect_min.y = std::max(rect_min.y, selectable_min.y);
-               rect_max.x = std::min(rect_max.x, selectable_max.x);
-               rect_max.y = std::min(rect_max.y, selectable_max.y);
-
-               // Only draw and map if the clamped rectangle is valid (min < max)
-               if (rect_min.x < rect_max.x && rect_min.y < rect_max.y) {
-                   // Phase 5: Declare vector to store character rects for this message
-                   std::vector<ImRect> current_char_rects;
-
-                   // --- Coordinate Mapping (Phase 3 / Phase 5 Update) ---
-                   // Call the helper function to map screen coords to text indices AND get char rects
-                   bool indices_found = MapScreenCoordsToTextIndices(
-                       display_text.c_str(),
-                       wrap_width,
-                       selectable_min, // Pass the top-left corner of the selectable
-                       rect_min,       // Pass the clamped selection rectangle
-                       rect_max,
-                       selection_start_char_index, // Update state variables
-                       selection_end_char_index,
-                       current_char_rects);        // Phase 5: Get char rects
-                   // --- End Coordinate Mapping ---
-
-                   // --- Selection Rendering (Phase 5: Per-Character Highlighting) ---
-                   if (indices_found && selection_start_char_index != -1 && selection_end_char_index != -1 && selection_start_char_index < selection_end_char_index) {
-                       ImDrawList* draw_list = ImGui::GetForegroundDrawList(); // Draw on top
-                       for (int k = selection_start_char_index; k < selection_end_char_index; ++k) {
-                           // Ensure index is valid before accessing (safety check)
-                           if (k >= 0 && k < current_char_rects.size()) {
-                                draw_list->AddRectFilled(current_char_rects[k].Min, current_char_rects[k].Max, ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
-                           }
-                       }
-                   }
-                   // --- End Selection Rendering ---
-
-               } else {
-                    // If the rectangle becomes invalid (e.g., mouse moved outside), reset indices
-                    selection_start_char_index = -1;
-                    selection_end_char_index = -1;
-               }
-           }
-           // --- End Selection Rendering & Coordinate Mapping ---
-
-           // Render the text *over* the selectable area
-           ImGui::SetCursorScreenPos(text_pos); // Reset cursor to where it was before the Selectable
-           if (use_color) {
-               ImGui::PushStyleColor(ImGuiCol_Text, text_color);
-           }
-           ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrap_width); // Ensure TextWrapped respects the width
-           ImGui::TextWrapped("%s", display_text.c_str());
-           ImGui::PopTextWrapPos();
-           if (use_color) {
-               ImGui::PopStyleColor();
-           }
-       }
-       // Auto-scroll based on the flag set by processDisplayQueue
-       if (new_output_added && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f) { // Only auto-scroll if near the bottom
-           ImGui::SetScrollHereY(1.0f); // Scroll to bottom if new content added
-           new_output_added = false; // Reset flag
-       }
-
-       // Apply accumulated scroll offsets (Comment 1)
-       if (scroll_offsets.x != 0.0f || scroll_offsets.y != 0.0f) {
-            ImGui::SetScrollY(ImGui::GetScrollY() + scroll_offsets.y);
-            ImGui::SetScrollX(ImGui::GetScrollX() + scroll_offsets.x);
-       }
-
-       ImGui::EndChild(); // End Output Area
-
         // --- Input Area ---
         bool enter_pressed = false;
         bool send_pressed = false;
@@ -948,8 +1102,20 @@ int main(int, char**) {
                 gui_ui.sendInputToWorker(input_buf);
 
                 // Add user input to history (Issue #8 Refactor)
-// Add the user's message to the history for display
-                output_history.push_back({MessageType::USER_INPUT, std::string(input_buf)});
+                // Add the user's message to the history for display
+                HistoryMessage user_msg;
+                user_msg.message_id = g_next_message_id.fetch_add(1); // Issue #44: Use monotonic counter
+                user_msg.type = MessageType::USER_INPUT;
+                user_msg.content = std::string(input_buf);
+                user_msg.model_id = std::nullopt;
+                output_history.push_back(user_msg);
+                
+                // Immediately update the graph with the new user input
+                g_graph_manager->HandleNewHistoryMessage(user_msg, g_graph_manager->GetSelectedNodeId(), db_manager);
+                
+                // Force immediate layout update to ensure new user input node displays properly
+                g_graph_manager->RestartLayoutAnimation();
+                
                 new_output_added = true; // Ensure the log scrolls down
                 input_buf[0] = '\0';
                 request_input_focus = true; // Set flag to request focus next frame
@@ -959,6 +1125,35 @@ int main(int, char**) {
         ImGui::End(); // End Main Window
         // --- End Main UI Layout ---
 
+        // --- Graph View Window (Using GraphEditor) - This section seems redundant if graph is in a tab ---
+        // The plan implies the graph view is integrated, likely within a tab.
+        // If s_is_graph_view_visible controls the tab's content visibility, this separate window might be old.
+        // For now, I will comment out this separate Graph View window logic as it uses g_graph_editor
+        // which is being phased out in favor of g_graph_manager and RenderGraphView.
+        /*
+        if (s_is_graph_view_visible) { // This bool now controls the tab item's content
+            ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("Graph View Standalone", &s_is_graph_view_visible)) { // Renamed to avoid conflict
+                // This was using g_graph_editor.Render.
+                // If a standalone window is still desired, it should also use:
+                // RenderGraphView(g_graph_manager, g_graph_manager.getGraphViewState());
+                // For now, focusing on the tabbed view.
+            }
+            ImGui::End();
+        }
+        */
+        // --- End Graph View Window ---
+
+        // --- Display Selected Node Details (after all other windows) ---
+        // This was tied to g_graph_editor. If selection details are needed for g_graph_manager,
+        // a similar function or logic within RenderGraphView would be required.
+        // For now, commenting out as it's tied to the old system.
+        /*
+        if (s_is_graph_view_visible) {
+             // g_graph_editor.DisplaySelectedNodeDetails();
+        }
+        */
+        // --- End Display Selected Node Details ---
 
         // Rendering
         ImGui::Render(); // End the ImGui frame and prepare draw data
@@ -1009,10 +1204,9 @@ int main(int, char**) {
     try {
         gui_ui.shutdown(); // Cleanup ImGui, GLFW
     } catch (const std::exception& e) {
-        std::cerr << "GUI Shutdown failed: " << e.what() << std::endl;
-        // Continue execution to ensure main returns, but report error.
+        std::cerr << "Error during GUI shutdown: " << e.what() << std::endl;
     }
-    std::cout << "Main function finished." << std::endl;
 
-    return 0; // Success
+    std::cout << "Exiting." << std::endl;
+    return 0;
 }

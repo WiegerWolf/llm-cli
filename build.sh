@@ -20,6 +20,8 @@ fi
 echo "Updating submodules..."
 git submodule update --init --recursive
 
+# Add pthread flag for mutex support
+export CXXFLAGS="${CXXFLAGS} -pthread"
 mkdir -p build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE $CMAKE_OPENROUTER_API_KEY

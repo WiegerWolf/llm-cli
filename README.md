@@ -7,6 +7,7 @@ LLM-CLI/GUI is a chat assistant that connects to OpenRouter LLM APIs (e.g., GPT-
 - **Chat with LLMs** (default: GPT-4.1-nano via OpenRouter)
 - **Command-Line Interface (`llm-cli`)**: Fast, scriptable terminal interaction.
 - **Graphical User Interface (`llm-gui`)**: User-friendly chat window powered by ImGui.
+- **Graph-Based Conversation Visualization**: Interactive graph view with hybrid chronological-force layout algorithm for message history.
 - **Web search**: Uses Brave Search (HTML scraping), DuckDuckGo (HTML scraping fallback), and Brave Search API (final fallback).
 - **Visit URLs**: Extracts readable content from web pages.
 - **Web research**: Multi-step research with synthesis.
@@ -150,6 +151,41 @@ If you only built locally, run them directly from the `build` directory:
 - `read_history`: Queries the local conversation history database.
 - `get_current_datetime`: Retrieves the current date and time.
 
+## Graph-Based Conversation Visualization
+
+The GUI includes an advanced graph-based visualization system for conversation history, featuring a hybrid chronological-force layout algorithm that combines temporal awareness with natural clustering.
+
+### Key Features
+
+- **Chronological Layout**: Messages are arranged chronologically with older messages appearing higher
+- **Force-Directed Clustering**: Related messages naturally cluster together through physics-based forces
+- **Interactive Navigation**: Pan, zoom, and select nodes for detailed viewing
+- **Branched Conversations**: Supports complex conversation threads and alternative discussion paths
+- **Real-time Animation**: Smooth layout transitions and interactive positioning
+
+### Layout Algorithm
+
+The hybrid chronological-force layout algorithm provides:
+
+- **Temporal Forces**: Maintain chronological ordering of messages
+- **Spring Forces**: Attract related messages (parent-child relationships)
+- **Repulsive Forces**: Prevent overlap and ensure readable spacing
+- **Configurable Parameters**: Tunable strength for different conversation types
+
+### Documentation
+
+- **[Algorithm Overview](docs/chronological-layout-algorithm.md)**: Technical details of the hybrid layout algorithm
+- **[User Guide](docs/chronological-layout-user-guide.md)**: Configuration and usage instructions
+- **[API Reference](docs/chronological-layout-api-reference.md)**: Developer documentation and integration guide
+
+### Usage
+
+Switch to graph view in the GUI to visualize conversation history. The layout automatically adapts to different conversation structures:
+
+- **Linear conversations**: Vertical timeline arrangement
+- **Branched discussions**: Horizontal spreading with chronological flow
+- **Complex threads**: Multi-level organization with clear relationships
+
 ## Development
 
 - **Core Logic:** `chat_client.cpp` (LLM interaction, tool execution), `database.cpp` (SQLite history)
@@ -157,10 +193,16 @@ If you only built locally, run them directly from the `build` directory:
     - `cli_interface.cpp`: Handles command-line input/output.
     - `gui_interface.cpp`: Manages the ImGui-based graphical interface.
     - `ui_interface.h`: Abstract base class for UI interactions.
+- **Graph Visualization:**
+    - `graph_layout.h/cpp`: Hybrid chronological-force layout algorithm implementation.
+    - `graph_manager.h/cpp`: Graph data management and layout coordination.
+    - `graph_renderer.h/cpp`: OpenGL-based graph rendering and interaction.
+    - `gui_interface/graph_types.h`: Graph node and state data structures.
 - **Entry Points:** `main_cli.cpp` (for `llm-cli`), `main_gui.cpp` (for `llm-gui`)
 - **Tool Implementations:** Located in the `tools_impl/` directory (e.g., `search_web_tool.cpp`).
 - **Tool Definitions:** `tools.cpp` / `tools.h` (Tool registration and definition structure).
 - **Build System:** `CMakeLists.txt`, `build.sh`, `install.sh`
+- **Testing:** `test_chronological_layout.cpp` (Layout algorithm validation and performance testing)
 
 ### Adding a New Tool
 

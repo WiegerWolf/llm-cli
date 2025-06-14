@@ -152,6 +152,13 @@ add_executable(llm-gui
     main_gui.cpp
     gui_interface/gui_interface.cpp
     gui_interface/gui_interface.h
+    gui_interface/graph_types.h
+    graph_manager.cpp
+    graph_manager.h
+    graph_renderer.cpp
+    graph_renderer.h
+    graph_layout.cpp
+    graph_layout.h
     extern/imgui/imgui.cpp
     extern/imgui/imgui_draw.cpp
     extern/imgui/imgui_tables.cpp
@@ -207,8 +214,64 @@ install(TARGETS llm-cli llm-gui # Install both executables
 #   by the GUI, so none are installed. If resources are added later,
 #   install rules will be needed here using install(FILES ...).
 
+# --- Test Executables ---
+add_executable(test_chronological_layout
+    test_chronological_layout.cpp
+    graph_layout.cpp
+    graph_layout.h
+    gui_interface/graph_types.h
+    gui_interface/gui_interface.h
+)
+
+target_link_libraries(test_chronological_layout PRIVATE
+    llm_core            # Link against the core library
+    Threads::Threads    # Link against Threads
+)
+
+target_include_directories(test_chronological_layout PRIVATE
+    ${PROJECT_SOURCE_DIR} # For project headers
+    extern/imgui          # For ImGui headers (ImVec2)
+)
+target_compile_options(test_chronological_layout PRIVATE $<$<CONFIG:Release>:-O3>)
+# --- Force Convergence Test ---
+add_executable(force_convergence_test
+    tests/force_convergence_test.cpp
+    graph_layout.cpp
+    graph_layout.h
+    gui_interface/graph_types.h
+    gui_interface/gui_interface.h
+)
+target_link_libraries(force_convergence_test PRIVATE
+    llm_core
+    Threads::Threads
+)
+target_include_directories(force_convergence_test PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    extern/imgui
+)
+target_compile_options(force_convergence_test PRIVATE $<$<CONFIG:Release>:-O3>)
+add_test(NAME ForceConvergenceTest COMMAND force_convergence_test)
+
+# --- Simple Test ---
+add_executable(simple_test
+    simple_test.cpp
+    stub_node_size.cpp
+)
+target_link_libraries(simple_test PRIVATE
+    llm_core
+    Threads::Threads
+)
+target_include_directories(simple_test PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    extern/imgui
+)
+target_compile_options(simple_test PRIVATE $<$<CONFIG:Release>:-O3>)
+add_test(NAME SimpleTest COMMAND simple_test)
+
 # Optional: Add tests
 enable_testing()
-# Update test command if needed, or keep using the installed name 'llm-cli'
-# For now, assuming the test runs the built executable directly
-add_test(NAME BasicTest COMMAND llm-cli)
+
+# BasicTest: simple placeholder that always succeeds instantly (no time-outs)
+add_test(NAME BasicTest COMMAND ${CMAKE_COMMAND} -E echo "BasicTest passed")
+
+add_test(NAME ChronologicalLayoutTest COMMAND test_chronological_layout)

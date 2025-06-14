@@ -1,6 +1,8 @@
 #include <cmath>
 #include <cstdio> // For fprintf
 #include "gui_interface.h"
+#include <atomic>  // For std::atomic message id counter
+#include <chrono> // Timestamp utilities
 #include <stdexcept>
 #include <iostream> // For error reporting during init/shutdown
 #include <algorithm> // For std::clamp (Issue #19)
@@ -13,8 +15,23 @@
 #include <backends/imgui_impl_opengl3.h>
 #include "../resources/noto_sans_font.h" // Include the generated font header
 
-// Forward declaration
+ // Forward declaration
 class GuiInterface;
+
+namespace {
+/* Thread-safe monotonic message id counter */
+std::atomic<NodeIdType> g_message_id_counter{0};
+
+inline NodeIdType getNextMessageId() {
+    return g_message_id_counter.fetch_add(1, std::memory_order_relaxed);
+}
+
+/* Timestamp helper (milliseconds since epoch, matching HistoryMessage::timestamp type) */
+inline std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> getCurrentTimestamp() {
+    return std::chrono::time_point_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now());
+}
+} // anonymous namespace
 
 // Custom GLFW scroll callback
 static void custom_glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
@@ -232,30 +249,33 @@ std::optional<std::string> GuiInterface::promptUserInput() {
 
 // Called by the *worker thread* to add regular output to the display queue.
 void GuiInterface::displayOutput(const std::string& output, const std::string& model_id) {
-    // Lock the display mutex to ensure exclusive access to the display queue.
-    std::lock_guard<std::mutex> lock(display_mutex);
-    // Push the message and its type onto the queue for the GUI thread to process.
-    display_queue.push({MessageType::LLM_RESPONSE, output, std::make_optional(model_id)}); // Updated for Issue #8 and Part IV
-    // The GUI thread periodically calls processDisplayQueue to check this queue.
+    enqueueDisplayMessage(MessageType::LLM_RESPONSE, output, std::make_optional(model_id));
 }
 
 // Called by the *worker thread* to add error messages to the display queue.
 void GuiInterface::displayError(const std::string& error) {
-    // Lock the display mutex.
-    std::lock_guard<std::mutex> lock(display_mutex);
-    // Push the error message and its type onto the queue.
-    display_queue.push({MessageType::ERROR, error}); // Updated for Issue #8
+    enqueueDisplayMessage(MessageType::ERROR, error);
 }
 
 // Called by the *worker thread* to update the status text in the display queue.
 void GuiInterface::displayStatus(const std::string& status) {
-    // Lock the display mutex.
-    std::lock_guard<std::mutex> lock(display_mutex);
-    // Push the status message and its type onto the queue.
-    display_queue.push({MessageType::STATUS, status}); // Updated for Issue #8
+    enqueueDisplayMessage(MessageType::STATUS, status);
 }
-
-
+ 
+void GuiInterface::enqueueDisplayMessage(MessageType type,
+                                         const std::string& content,
+                                         const std::optional<std::string>& model_id) {
+    NodeIdType id = getNextMessageId();
+    auto now = getCurrentTimestamp();
+    std::lock_guard<std::mutex> lock(display_mutex);
+    display_queue.push({id,
+                        type,
+                        content,
+                        model_id,
+                        now,
+                        kInvalidNodeId});
+}
+ 
 // --- Methods for GUI thread to interact with Worker thread ---
 
 // Called by the *GUI thread* (e.g., when the window close button is pressed).
