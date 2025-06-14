@@ -7,6 +7,7 @@
 #include <algorithm> // For std::find_if
 #include <cmath> // For std::max, std::min
 #include <cfloat> // For FLT_MAX
+#include <mutex>
 #include <shared_mutex>
 
 // Forward declaration of helper function from main_gui.cpp
@@ -332,6 +333,7 @@ std::vector<std::shared_ptr<GraphNode>> GraphManager::GetAllNodes() {
 
 // Auto-pan functionality
 void GraphManager::TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size) {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
     if (!graph_editor || !last_node_added_to_graph) {
         return;
     }
