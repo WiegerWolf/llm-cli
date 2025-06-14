@@ -350,7 +350,3 @@ uint64_t GraphManager::nextGraphNodeIdCounter() const {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return next_graph_node_id_counter;
 }
-
-std::recursive_mutex& GraphManager::mutex() {
-    return m_mutex;
-}

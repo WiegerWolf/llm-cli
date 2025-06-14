@@ -61,7 +61,6 @@ public:
     bool isForceLayout() const;
     bool isUseForceLayout() const;
     uint64_t nextGraphNodeIdCounter() const;
-    std::recursive_mutex& mutex();
 
 private:
     GraphViewState& getGraphViewStateNonConst();
