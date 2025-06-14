@@ -79,11 +79,10 @@ private:
     };
 
    // Adaptive convergence constants
-   // Maximum number of iterations to run before forcing termination for a single step/frame.
-   // Large/complex graphs may need several dozen iterations, while small graphs typically
-   // stabilise in <10. 50 gives parity with previous behaviour but now serves only as an
-   // upper-bound rather than a fixed loop count.
-   static constexpr int kMaxIterations = 50;
+   // DEPRECATED: This constant is no longer used for iteration control.
+   // The LayoutParams::max_iterations field now governs the iteration cap.
+   // This is retained temporarily as a comment for historical context.
+   // static constexpr int kMaxIterations = 50;
    // Threshold for early exit based on maximum per-iteration node displacement (in pixels).
    // Tuned experimentally – values <0.01f result in imperceptible motion.
    static constexpr float kConvergenceDispThreshold = 0.01f;
