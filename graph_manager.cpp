@@ -8,7 +8,6 @@
 #include <cmath> // For std::max, std::min
 #include <cfloat> // For FLT_MAX
 #include <mutex>
-#include <shared_mutex>
 
 // Forward declaration of helper function from main_gui.cpp
 extern std::string FormatMessageForGraph(const HistoryMessage& msg, GraphManager& graph_manager);
@@ -46,12 +45,6 @@ ImVec2 CalculateNodeSize(const std::string& content) {
     ImVec2 wrapped_text_size = SafeCalcTextSize(content, effective_width);
     float node_height = std::max(min_height, wrapped_text_size.y + padding);
     
-    // Remove extra +30px height for expand/collapse icons - size tightly around text
-    // No additional height needed for text-only nodes
-    
-    // Remove aspect ratio constraints - let text determine natural size
-    // Text-only nodes should be sized exactly to their content
-    
     return ImVec2(node_width, node_height);
 }
 
@@ -63,12 +56,11 @@ GraphManager::GraphManager(PersistenceManager* db_manager)
       force_layout(ForceDirectedLayout::LayoutParams()),
       use_force_layout(true),
       next_graph_node_id_counter(0) { // Initialize ID counter
-    // graph_view_state is default constructed (selected_node_id = -1)
 }
 
 // Helper to get a node by its unique graph_node_id
 std::shared_ptr<GraphNode> GraphManager::GetNodeById(NodeIdType graph_node_id) {
-    std::shared_lock lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (graph_node_id == kInvalidNodeId) return nullptr;
     auto it = all_nodes.find(graph_node_id);
     if (it != all_nodes.end()) {
@@ -77,71 +69,55 @@ std::shared_ptr<GraphNode> GraphManager::GetNodeById(NodeIdType graph_node_id) {
     return nullptr;
 }
 NodeIdType GraphManager::GetSelectedNodeId() {
-    std::shared_lock lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return graph_view_state.selected_node_id;
 }
 
 // This is the new non-locking version for internal calls that already hold a lock.
 std::string GraphManager::getModelName_nolock(ModelId model_id) {
-    // Check cache first (no lock)
     auto it = m_model_name_cache.find(model_id);
     if (it != m_model_name_cache.end()) {
-        // This function is called frequently, so cout is commented out to reduce noise
-        // std::cout << "Cache hit for model ID: " << model_id << std::endl;
         return it->second;
     }
-
-    // If not in cache, query DB (no lock)
-    // std::cout << "Cache miss for model ID: " << model_id << ". Querying database." << std::endl;
     std::string model_name = m_db_manager->getModelNameById(model_id).value_or("");
-
-    // Update cache (no lock, caller must hold a unique_lock)
     m_model_name_cache[model_id] = model_name;
-
     return model_name;
 }
 
 // This is the public, thread-safe version that acquires locks.
 std::string GraphManager::getModelName(ModelId model_id) {
-    // Check cache with a read lock first.
     {
-        std::shared_lock lock(m_mutex);
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         auto it = m_model_name_cache.find(model_id);
         if (it != m_model_name_cache.end()) {
             return it->second;
         }
-    } // Release read lock
+    }
 
-    // If not in cache, acquire a write lock to query the DB and update the cache.
-    std::unique_lock lock(m_mutex);
-    // Re-check cache in case another thread populated it while we were waiting for the lock
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     auto it = m_model_name_cache.find(model_id);
     if (it != m_model_name_cache.end()) {
         return it->second;
     }
-
     std::string model_name = m_db_manager->getModelNameById(model_id).value_or("");
     m_model_name_cache[model_id] = model_name;
     return model_name;
 }
 
-// Implementation of PopulateGraphFromHistory
 void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, PersistenceManager& db_manager) {
-    std::unique_lock<std::shared_mutex> lock(m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     all_nodes.clear();
     root_nodes.clear();
     last_node_added_to_graph = nullptr;
     graph_view_state.selected_node_id = kInvalidNodeId;
-    next_graph_node_id_counter = 0; // Reset ID counter
+    next_graph_node_id_counter = 0;
 
     std::shared_ptr<GraphNode> previous_node_ptr = nullptr;
 
     for (const auto& msg : history_messages) {
         NodeIdType current_g_node_id = next_graph_node_id_counter++;
-        // Constructor now takes (graph_node_id, HistoryMessage)
         auto new_node_shared_ptr = std::make_shared<GraphNode>(current_g_node_id, msg);
         new_node_shared_ptr->label = FormatMessageForGraph(msg, *this);
-
         new_node_shared_ptr->parent = previous_node_ptr;
         if (previous_node_ptr) {
             previous_node_ptr->add_child(new_node_shared_ptr);
@@ -151,37 +127,23 @@ void GraphManager::PopulateGraphFromHistory(const std::vector<HistoryMessage>& h
             new_node_shared_ptr->depth = 0;
         }
 
-        // Calculate node size based on formatted content to ensure proper display
         new_node_shared_ptr->size = CalculateNodeSize(new_node_shared_ptr->label);
-        
-        // Ensure new nodes are visible and expanded by default for immediate content display
         new_node_shared_ptr->is_expanded = true;
-        new_node_shared_ptr->content_needs_refresh = true; // Mark for immediate content refresh
-        
-        // Initialize position to zero - will be set by layout algorithm
+        new_node_shared_ptr->content_needs_refresh = true;
         new_node_shared_ptr->position = ImVec2(0.0f, 0.0f);
-
-        // Key for all_nodes is now graph_node_id
         all_nodes[new_node_shared_ptr->graph_node_id] = new_node_shared_ptr;
-        
         previous_node_ptr = new_node_shared_ptr;
         last_node_added_to_graph = new_node_shared_ptr;
     }
-    // Reset physics state when populating from history to ensure fresh animation
     force_layout.ResetPhysicsState();
     graph_layout_dirty = true;
-    
-    // Reset user interruption flag when populating from history so auto-pan can work
     graph_view_state.user_interrupted_auto_pan = false;
 }
 
-// Implementation of HandleNewHistoryMessage
-// current_selected_graph_node_id is GraphNode::graph_node_id or -1
 void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager) {
-    std::unique_lock<std::shared_mutex> lock(m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     std::shared_ptr<GraphNode> parent_node = nullptr;
 
-    // 1. Determine Parent Node
     if (current_selected_graph_node_id != kInvalidNodeId) {
         auto it = all_nodes.find(current_selected_graph_node_id);
         if (it != all_nodes.end()) {
@@ -190,7 +152,7 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
     }
 
     if (!parent_node && last_node_added_to_graph) {
-        if (all_nodes.count(last_node_added_to_graph->graph_node_id)) { // Check using graph_node_id
+        if (all_nodes.count(last_node_added_to_graph->graph_node_id)) { 
             auto it = all_nodes.find(last_node_added_to_graph->graph_node_id);
             if (it != all_nodes.end()) {
                 parent_node = it->second;
@@ -200,12 +162,9 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
         }
     }
     
-    // 2. Create and Link New GraphNode
     NodeIdType new_g_node_id = next_graph_node_id_counter++;
-    // Constructor now takes (graph_node_id, HistoryMessage)
     auto new_graph_node_shared_ptr = std::make_shared<GraphNode>(new_g_node_id, new_msg);
     new_graph_node_shared_ptr->label = FormatMessageForGraph(new_msg, *this);
-
     new_graph_node_shared_ptr->parent = parent_node;
     if (parent_node) {
         parent_node->add_child(new_graph_node_shared_ptr);
@@ -215,40 +174,19 @@ void GraphManager::HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeId
         root_nodes.push_back(new_graph_node_shared_ptr);
     }
 
-    // Calculate node size based on the formatted content to ensure proper display
-    // Force recalculation to ensure new content is properly sized
     new_graph_node_shared_ptr->size = CalculateNodeSize(new_graph_node_shared_ptr->label);
-    
-    // Force immediate content refresh by ensuring the node is marked as needing visual update
-    // This ensures new nodes display their full content immediately without manual refresh
-    new_graph_node_shared_ptr->is_expanded = true; // Ensure new nodes are visible by default
-    new_graph_node_shared_ptr->content_needs_refresh = true; // Mark for immediate content refresh
-    
-    // Initialize position to zero - will be set by layout algorithm
+    new_graph_node_shared_ptr->is_expanded = true;
+    new_graph_node_shared_ptr->content_needs_refresh = true;
     new_graph_node_shared_ptr->position = ImVec2(0.0f, 0.0f);
-
-    // Key for all_nodes is now graph_node_id
     all_nodes[new_graph_node_shared_ptr->graph_node_id] = new_graph_node_shared_ptr;
-
     last_node_added_to_graph = new_graph_node_shared_ptr;
-    // Reset physics state when adding new nodes to ensure animation restarts
     force_layout.ResetPhysicsState();
     graph_layout_dirty = true;
-    
-    // Reset user interruption flag when a new node is added so auto-pan can work again
     graph_view_state.user_interrupted_auto_pan = false;
-    
-    // Note: Auto-pan will be triggered after layout is updated and the node has a valid position
-    // This is handled in the main GUI loop or wherever TriggerAutoPanToNewestNode is called
 }
 
-// Layout management functions
-// Threading: This function must be called with an exclusive lock on m_mutex.
-// It performs a layout pass that involves reading and writing node positions.
-// Holding the lock for the entire duration prevents data races where another
-// thread might modify nodes while the layout is being computed.
 void GraphManager::UpdateLayout() {
-    std::unique_lock<std::shared_mutex> lock(m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     if (!use_force_layout) {
         return;
     }
@@ -263,9 +201,6 @@ void GraphManager::UpdateLayout() {
         return;
     }
     
-    // Calculate canvas center dynamically based on the current ImGui viewport.
-    // Falls back to a sensible default (1000×750) when no ImGui context
-    // is active (e.g., during unit tests or headless builds).
     ImVec2 canvas_center(1000.0f, 750.0f);
     if (ImGui::GetCurrentContext() != nullptr) {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -274,35 +209,28 @@ void GraphManager::UpdateLayout() {
         }
     }
     
-    // If layout is dirty, initialize the simulation
     if (graph_layout_dirty) {
         force_layout.Initialize(all_nodes_vec, canvas_center);
-        graph_layout_dirty = false; // Clear the dirty flag after initialization
+        graph_layout_dirty = false;
     }
     
-    // Perform one iteration of the force-directed simulation
-    // This will return false when the simulation converges
     bool simulation_continues = force_layout.UpdateLayout(all_nodes_vec);
     
-    // Keep the layout "running" by not setting graph_layout_dirty to false
-    // until the simulation converges
     if (!simulation_continues) {
-        // Simulation has converged, no need to continue updating
-        // graph_layout_dirty remains false
     }
 }
 
 void GraphManager::SetLayoutParams(const ForceDirectedLayout::LayoutParams& params) {
-    std::unique_lock<std::shared_mutex> lock(m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     force_layout.SetParams(params);
-    graph_layout_dirty = true; // Trigger layout recalculation
+    graph_layout_dirty = true;
 }
 
 void GraphManager::ToggleForceLayout(bool enable) {
-    std::unique_lock<std::shared_mutex> lock(m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     use_force_layout = enable;
     if (enable) {
-        graph_layout_dirty = true; // Trigger layout recalculation
+        graph_layout_dirty = true;
     }
 }
 
@@ -311,61 +239,45 @@ bool GraphManager::IsLayoutRunning() const {
 }
 
 void GraphManager::RestartLayoutAnimation() {
-    std::unique_lock<std::shared_mutex> lock(m_mutex);
-    // Reset all node positions to trigger a fresh layout
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     for (auto& pair : all_nodes) {
         if (pair.second) {
             pair.second->position = ImVec2(0.0f, 0.0f);
         }
     }
-    // Reset the physics state to ensure a fresh start
     force_layout.ResetPhysicsState();
     graph_layout_dirty = true;
 }
 
 void GraphManager::SetAnimationSpeed(float speed_multiplier) {
-    std::lock_guard<std::shared_mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     force_layout.SetAnimationSpeed(speed_multiplier);
 }
 
-// Accessor for all_nodes (thread-safe)
 std::unordered_map<NodeIdType, std::shared_ptr<GraphNode>> GraphManager::GetAllNodes() {
-    std::shared_lock<std::shared_mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return all_nodes;
 }
 
-// Accessor for root_nodes (thread-safe)
 std::vector<std::shared_ptr<GraphNode>> GraphManager::GetRootNodes() {
-    std::shared_lock<std::shared_mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return root_nodes;
 }
 
-// Accessor for last_node_added_to_graph (thread-safe)
 std::shared_ptr<GraphNode> GraphManager::GetLastNodeAdded() {
-    std::shared_lock<std::shared_mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return last_node_added_to_graph;
 }
 
-// Auto-pan functionality
 void GraphManager::TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size) {
-    std::lock_guard<std::shared_mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (!graph_editor || !last_node_added_to_graph) {
         return;
     }
     
-    // Only trigger auto-pan if the node has a valid position (layout has been applied)
     if (last_node_added_to_graph->position.x == 0.0f && last_node_added_to_graph->position.y == 0.0f) {
-        // Position hasn't been set by layout yet, skip auto-pan for now
         return;
     }
     
-    // Trigger auto-pan to the newest node
     graph_editor->StartAutoPanToNode(last_node_added_to_graph, canvas_size);
 }
-
-// Placeholder for RenderGraphView - to be implemented in graph_renderer.cpp or similar
-// The signature in graph_manager.h is: void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state);
-// This definition should be in graph_renderer.cpp
-// void RenderGraphView(GraphManager& graph_manager, GraphViewState& view_state) {
-//     // Actual rendering logic will go into graph_renderer.cpp
-// }

@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <shared_mutex>
+#include <mutex>
 #include <map>
 #include "id_types.h"                   // Centralized definition of NodeIdType (int64_t) and sentinel
 #include "model_types.h"
@@ -41,7 +41,7 @@ public:
     NodeIdType next_graph_node_id_counter;
 
     // Thread-safety mutex guards graph data and flags
-    mutable std::shared_mutex m_mutex;
+    mutable std::recursive_mutex m_mutex;
 
 
     GraphManager(PersistenceManager* db_manager); // Constructor to initialize members
