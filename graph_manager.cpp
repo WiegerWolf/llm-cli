@@ -76,6 +76,10 @@ std::shared_ptr<GraphNode> GraphManager::GetNodeById(NodeIdType graph_node_id) {
     }
     return nullptr;
 }
+NodeIdType GraphManager::GetSelectedNodeId() {
+    std::shared_lock lock(m_mutex);
+    return graph_view_state.selected_node_id;
+}
 
 // This is the new non-locking version for internal calls that already hold a lock.
 std::string GraphManager::getModelName_nolock(ModelId model_id) {

@@ -51,6 +51,7 @@ public:
     
     // Helper to get a node pointer by its unique graph_node_id
     std::shared_ptr<GraphNode> GetNodeById(NodeIdType graph_node_id);
+    NodeIdType GetSelectedNodeId();
     std::string getModelName(ModelId model_id);
     std::string getModelName_nolock(ModelId model_id);
     

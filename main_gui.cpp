@@ -586,7 +586,7 @@ int main(int, char**) {
             auto first_new_message = std::next(output_history.begin(), old_size);
             for (auto it = first_new_message; it != output_history.end(); ++it) {
                 const auto& new_msg_ref = *it;
-                g_graph_manager->HandleNewHistoryMessage(new_msg_ref, g_graph_manager->graph_view_state.selected_node_id, db_manager);
+                g_graph_manager->HandleNewHistoryMessage(new_msg_ref, g_graph_manager->GetSelectedNodeId(), db_manager);
             }
            graph_needs_update = true;
            
