@@ -5,6 +5,7 @@
 #include <algorithm>  // For std::min, std::max
 #include <limits>     // Required for std::numeric_limits
 #include <cstdio>     // For sprintf
+#include <cstring>    // For strlen
 #include <cmath>      // For sqrtf, FLT_MAX, powf, fabsf
 #include <chrono>     // For std::chrono::system_clock, std::chrono::steady_clock
 #include <functional> // For std::function
