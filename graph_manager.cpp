@@ -282,3 +282,34 @@ void GraphManager::TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, c
     
     graph_editor->StartAutoPanToNode(last_node_added_to_graph, canvas_size);
 }
+// Accessors for thread-safe, encapsulated access
+const GraphViewState& GraphManager::getGraphViewState() const {
+    return graph_view_state;
+}
+
+GraphViewState& GraphManager::getGraphViewStateNonConst() {
+    return graph_view_state;
+}
+bool GraphManager::isGraphLayoutDirty() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    return graph_layout_dirty;
+}
+
+bool GraphManager::isForceLayout() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    return force_layout.IsRunning();
+}
+
+bool GraphManager::isUseForceLayout() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    return use_force_layout;
+}
+
+uint64_t GraphManager::nextGraphNodeIdCounter() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    return next_graph_node_id_counter;
+}
+
+std::recursive_mutex& GraphManager::mutex() {
+    return m_mutex;
+}

@@ -619,9 +619,9 @@ int main(int, char**) {
        // --- Ensure Graph Layout Updates (Even When Tab Not Visible) ---
        // Process graph layout updates immediately when needed, regardless of tab visibility
        // This is critical for fixing the auto-refresh issue with new message nodes
-       if (graph_needs_update || g_graph_manager->graph_layout_dirty || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) {
+       if (graph_needs_update || g_graph_manager->isGraphLayoutDirty() || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) {
            // Force layout recalculation if the graph is dirty or animation is running and not paused
-           if ((g_graph_manager->graph_layout_dirty || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) && !g_graph_manager->GetAllNodes().empty()) {
+           if ((g_graph_manager->isGraphLayoutDirty() || (g_graph_manager->IsLayoutRunning() && !s_animation_paused)) && !g_graph_manager->GetAllNodes().empty()) {
                // Update animation speed in the force layout system
                g_graph_manager->SetAnimationSpeed(s_animation_speed);
                
@@ -1075,7 +1075,7 @@ int main(int, char**) {
               // so this will always render the most current state
               ImGui::BeginChild("GraphCanvas", ImVec2(0, -bottom_elements_height - ImGui::GetFrameHeightWithSpacing()), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
               // Updated signature for RenderGraphView with theme support
-              RenderGraphView(*g_graph_manager, g_graph_manager->graph_view_state, currentTheme);
+              RenderGraphView(*g_graph_manager, g_graph_manager->getGraphViewStateNonConst(), currentTheme);
               ImGui::EndChild();
 
               ImGui::EndTabItem();
@@ -1158,7 +1158,7 @@ int main(int, char**) {
             if (ImGui::Begin("Graph View Standalone", &s_is_graph_view_visible)) { // Renamed to avoid conflict
                 // This was using g_graph_editor.Render.
                 // If a standalone window is still desired, it should also use:
-                // RenderGraphView(g_graph_manager, g_graph_manager.graph_view_state);
+                // RenderGraphView(g_graph_manager, g_graph_manager.getGraphViewState());
                 // For now, focusing on the tabbed view.
             }
             ImGui::End();
