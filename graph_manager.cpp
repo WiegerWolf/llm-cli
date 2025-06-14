@@ -235,9 +235,8 @@ void GraphManager::ToggleForceLayout(bool enable) {
 }
 
 bool GraphManager::IsLayoutRunning() const {
-    // This method is now thread-safe.
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
-    return force_layout.IsRunning();
+    return force_layout.is_running_;
 }
 
 void GraphManager::RestartLayoutAnimation() {

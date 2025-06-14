@@ -89,7 +89,7 @@ private:
 
    LayoutParams params_;
     std::map<std::shared_ptr<GraphNode>, NodePhysics> node_physics_;
-    bool is_running_ = false;
+bool is_running_ = false;
     int current_iteration_ = 0;
 // Helper: pack 2D grid cell coordinates into 64-bit key for unordered_map buckets
     static constexpr uint64_t PackCell(int32_t x, int32_t y)
@@ -125,7 +125,7 @@ public:
     /**
      * @brief Check if the layout simulation is currently running
      */
-    bool IsRunning() const { return is_running_; }
+    bool IsRunning() const;
     
     /**
      * @brief Get current layout parameters
