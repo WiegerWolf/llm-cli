@@ -1,9 +1,9 @@
 #include <iostream>
 #include <vector>
+#include <cmath>
 #include "id_types.h" // NodeIdType
 #include <chrono>     // std::chrono utilities
 #include <cstdlib>    // std::llabs
-#include <chrono>
 #include <random>
 #include <cassert>
 #include <algorithm>
