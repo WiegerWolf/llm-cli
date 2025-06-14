@@ -8,6 +8,8 @@
 #include <cmath>      // For sqrtf, FLT_MAX, powf, fabsf
 #include <chrono>     // For std::chrono::system_clock, std::chrono::steady_clock
 #include <functional> // For std::function
+// Initialize the static member for the new message buffer
+char GraphEditor::newMessageBuffer_[1024 * 16] = {0};
 #include "graph_manager.h" // For GraphManager
 #include "graph_layout.h" // For CalculateNodePositionsRecursive
 
@@ -266,8 +268,6 @@ ImU32 GraphEditor::GetThemeExpandCollapseIconColor(ThemeType theme) const {
     }
 }
 
-// Initialize static member
-char GraphEditor::newMessageBuffer_[1024 * 16] = "";
 
 GraphEditor::GraphEditor() {
     // view_state_ is already initialized by its default constructor
