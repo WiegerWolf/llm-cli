@@ -115,8 +115,11 @@ void ForceDirectedLayout::Initialize(const std::vector<std::shared_ptr<GraphNode
 }
 
 bool ForceDirectedLayout::UpdateLayout(const std::vector<std::shared_ptr<GraphNode>>& nodes) {
-    // Terminate if we already reached the per-frame iteration cap
-    if (!is_running_ || current_iteration_ >= kMaxIterations) {
+    // Use the caller-specified iteration count, but capped by the safety limit.
+    const int max_iterations = std::min(params_.max_iterations, kMaxIterations);
+
+    // Terminate if we have already reached the per-frame iteration cap
+    if (!is_running_ || current_iteration_ >= max_iterations) {
         is_running_ = false;
         return false;
     }
