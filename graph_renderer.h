@@ -63,6 +63,7 @@ public:
 
 private:
     GraphViewState view_state_;
+    // Map from unique graph_node_id to the corresponding graph node object.
     std::map<NodeIdType, std::shared_ptr<GraphNode>> nodes_;
     std::shared_ptr<GraphNode> context_node_ = nullptr; // Node for which context menu is triggered
     std::shared_ptr<GraphNode> reply_parent_node_ = nullptr; // Parent node for the new message

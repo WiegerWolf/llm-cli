@@ -290,11 +290,12 @@ NodeIdType GetNextUniqueID(const std::map<NodeIdType, std::shared_ptr<GraphNode>
 
 void GraphEditor::AddNode(std::shared_ptr<GraphNode> node) {
     if (node) {
-        nodes_[node->message_id] = node; // Assuming message_id is unique for now, or use graph_node_id
+        nodes_[node->graph_node_id] = node; // Use graph_node_id as the unique key
     }
 }
 
 std::shared_ptr<GraphNode> GraphEditor::GetNode(NodeIdType node_id) {
+    if (node_id == kInvalidNodeId) return nullptr;
     auto it = nodes_.find(node_id);
     if (it != nodes_.end()) {
         return it->second;
