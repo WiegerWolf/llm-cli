@@ -133,8 +133,7 @@ target_include_directories(persistence PUBLIC
 
 # --- Core Library ---
 add_library(llm_core STATIC
-    chat_client.cpp
-    chat_client.h
+    # Chat client sources are now managed in a dedicated target_sources() block.
     tools.cpp
     tools.h
     tools_impl/search_web_tool.cpp
@@ -161,6 +160,24 @@ target_include_directories(llm_core PUBLIC
     ${PROJECT_SOURCE_DIR} # For project headers
 )
 target_compile_options(llm_core PRIVATE $<$<CONFIG:Release>:-O3>)
+
+# Group chat client sources for clarity and IDE organization
+target_sources(llm_core PRIVATE
+    chat_client.cpp
+    chat_client_turn.cpp
+    chat_client_models.cpp
+    chat_client_api.cpp
+)
+
+# Add a source group for IDEs that support it (like Visual Studio)
+if(MSVC)
+    source_group("ChatClient" FILES
+        chat_client.cpp
+        chat_client_turn.cpp
+        chat_client_models.cpp
+        chat_client_api.cpp
+    )
+endif()
 
 # --- CLI Executable ---
 add_executable(llm-cli
