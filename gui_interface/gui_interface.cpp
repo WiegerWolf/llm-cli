@@ -3,7 +3,7 @@
 #include "gui_interface.h"
 #include "font_utils.h"
 #include "theme_utils.h"
-#include "event_dispatch.h"
+#include <core/event_dispatch.h>
 #include <atomic>  // For std::atomic message id counter
 #include <chrono> // Timestamp utilities
 #include <stdexcept>

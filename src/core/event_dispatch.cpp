@@ -1,4 +1,4 @@
-#include "event_dispatch.h"
+#include <core/event_dispatch.h>
 #include "gui_interface/gui_interface.h"
 #include <iostream>
 #include <mutex>

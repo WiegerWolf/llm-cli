@@ -2,7 +2,7 @@
 #include "camera_utils.h"
 #include "graph_drawing_utils.h"
 #include "theme_utils.h"
-#include "id_types.h"
+#include <core/id_types.h>
 #include "extern/imgui/imgui_internal.h"
 #include <string>
 #include <algorithm>

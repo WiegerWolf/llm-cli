@@ -13,7 +13,7 @@
 #include <atomic>  // Added for Stage 4
 #include <imgui.h> // Required for ImVec2, ImFont
 #include <map>     // Required for ModelEntry if it uses map, or for getAllModels return type transformation
-#include "id_types.h" // NodeIdType definition
+#include <core/id_types.h> // NodeIdType definition
 #include <chrono>      // std::chrono::time_point
  
 // Forward declaration for ImFont

@@ -1,7 +1,7 @@
 #include "graph_manager.h"
 #include "graph_renderer.h" // For GraphEditor
 #include "imgui.h" // For ImVec2, ImU32, IM_COL32
-#include "id_types.h" // Defines NodeIdType and kInvalidNodeId sentinel
+#include <core/id_types.h> // Defines NodeIdType and kInvalidNodeId sentinel
 #include <iostream> // For std::cout
 #include <memory> // For std::make_unique, std::move
 #include <algorithm> // For std::find_if

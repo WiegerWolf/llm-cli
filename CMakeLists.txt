@@ -218,13 +218,15 @@ add_library(graph STATIC
 )
 
 target_include_directories(graph PUBLIC
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include   # Needed for <core/...> headers
+    ${PROJECT_SOURCE_DIR}           # Legacy root includes
     extern/imgui
 )
 
 # --- GUI Executable ---
+# --- GUI Executable ---
 add_executable(llm-gui
-    main_gui_core.cpp
+    $<TARGET_OBJECTS:core>            # objects from core domain (main_gui_core.cpp, event_dispatch.cpp)
     main_gui_views.cpp
     gui_interface/gui_interface.cpp
     gui_interface/gui_interface.h
@@ -232,8 +234,6 @@ add_executable(llm-gui
     font_utils.h
     theme_utils.cpp
     theme_utils.h
-    event_dispatch.cpp
-    event_dispatch.h
     extern/imgui/imgui.cpp
     extern/imgui/imgui_draw.cpp
     extern/imgui/imgui_tables.cpp
@@ -334,6 +334,7 @@ target_link_libraries(simple_test PRIVATE
 target_include_directories(simple_test PRIVATE
     ${PROJECT_SOURCE_DIR}
     extern/imgui
+    ${PROJECT_SOURCE_DIR}/include
 )
 target_compile_options(simple_test PRIVATE $<$<CONFIG:Release>:-O3>)
 add_test(NAME SimpleTest COMMAND simple_test)

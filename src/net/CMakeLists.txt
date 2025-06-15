@@ -6,3 +6,6 @@ target_include_directories(net
 )
 
 # target_link_libraries(net PRIVATE ...)
+
+# Temporary placeholder until networking sources are migrated
+target_sources(net PRIVATE ${PROJECT_SOURCE_DIR}/src/dummy.cpp)

@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <map>
-#include "id_types.h"                   // Centralized definition of NodeIdType (int64_t) and sentinel
+#include <core/id_types.h>                   // Centralized definition of NodeIdType (int64_t) and sentinel
 #include "model_types.h"
 
 using ModelId = std::string;

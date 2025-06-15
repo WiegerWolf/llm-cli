@@ -6,3 +6,6 @@ target_include_directories(gui_views
 )
 
 # target_link_libraries(gui_views PRIVATE ...)
+
+# Temporary placeholder until real GUI view sources are migrated
+target_sources(gui_views PRIVATE ${PROJECT_SOURCE_DIR}/src/dummy.cpp)

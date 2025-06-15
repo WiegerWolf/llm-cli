@@ -6,3 +6,6 @@ target_include_directories(db_stores
 )
 
 # target_link_libraries(db_stores PRIVATE ...)
+
+# Placeholder until actual store sources arrive
+target_sources(db_stores PRIVATE ${PROJECT_SOURCE_DIR}/src/dummy.cpp)

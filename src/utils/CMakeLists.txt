@@ -6,3 +6,6 @@ target_include_directories(utils
 )
 
 # target_link_libraries(utils PRIVATE ...)
+
+# Temporary placeholder so empty OBJECT lib builds
+target_sources(utils PRIVATE ${PROJECT_SOURCE_DIR}/src/dummy.cpp)

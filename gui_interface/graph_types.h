@@ -4,7 +4,7 @@
 #include <string>
 #include <memory>
 #include "../extern/imgui/imgui.h"          // For ImVec2
-#include "id_types.h"                       // Defines NodeIdType (std::int64_t) and kInvalidNodeId
+#include <core/id_types.h>                       // Defines NodeIdType (std::int64_t) and kInvalidNodeId
 #include "gui_interface/gui_interface.h"    // For HistoryMessage
 
 struct GraphNode; // Forward declaration

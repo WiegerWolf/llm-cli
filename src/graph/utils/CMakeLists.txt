@@ -6,3 +6,6 @@ target_include_directories(graph_utils
 )
 
 # target_link_libraries(graph_utils PRIVATE ...)
+
+# Placeholder for Phase-0: compile shared dummy until real utils sources exist
+target_sources(graph_utils PRIVATE ${PROJECT_SOURCE_DIR}/src/dummy.cpp)

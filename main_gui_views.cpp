@@ -4,7 +4,7 @@
 #include "graph_renderer.h"
 #include "font_utils.h"
 #include "theme_utils.h"
-#include "id_types.h"
+#include <core/id_types.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
