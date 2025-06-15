@@ -141,3 +141,15 @@ ctest
 ## Additional Resources
 
 *   [https://deepwiki.com/WiegerWolf/llm-cli](https://deepwiki.com/WiegerWolf/llm-cli)
+
+## Git hooks
+
+To enable the pre-commit hook, run the following command:
+
+```
+git config core.hooksPath .githooks
+```
+
+This hook enforces:
+- Code formatting (`tools/check_format.sh`)
+- Line of code limit of 500 per file (`scripts/loc_report.py`)

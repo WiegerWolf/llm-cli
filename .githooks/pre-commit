@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! tools/check_format.sh; then
+    echo "Code formatting check failed. Please run tools/check_format.sh to fix."
+    exit 1
+fi
+
+if ! python scripts/loc_report.py --threshold 500 --quiet; then
+    echo "LOC limit exceeded. Please reduce lines of code."
+    exit 1
+fi
+
+exit 0

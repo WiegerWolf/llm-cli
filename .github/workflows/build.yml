@@ -1,0 +1,49 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        build_type: [Debug, Release]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up build tools (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build
+
+    - name: Set up build tools (macOS)
+      if: runner.os == 'macOS'
+      run: brew install cmake ninja
+
+    - name: Set up build tools (Windows)
+      if: runner.os == 'Windows'
+      run: choco install ninja
+
+    - name: Run format check
+      shell: bash
+      run: tools/check_format.sh
+
+    - name: Run LOC check
+      run: python scripts/loc_report.py --threshold 500 --quiet
+
+    - name: Configure CMake
+      run: cmake -B build-${{ matrix.build_type }} -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+    - name: Build
+      run: cmake --build build-${{ matrix.build_type }} --config ${{ matrix.build_type }}
+
+    - name: Test
+      working-directory: build-${{ matrix.build_type }}
+      run: ctest -C ${{ matrix.build_type }} --output-on-failure
