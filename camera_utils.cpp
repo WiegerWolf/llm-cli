@@ -29,17 +29,16 @@ namespace detail { namespace Easing {
 } // namespace detail
 
 ImVec2 CameraUtils::WorldToScreen(const ImVec2& world_pos, const GraphViewState& view_state) {
-    return ImVec2((world_pos.x * view_state.zoom_scale) + view_state.pan_offset.x,
-                  (world_pos.y * view_state.zoom_scale) + view_state.pan_offset.y);
+    float screen_x = (world_pos.x * view_state.zoom_scale) + view_state.pan_offset.x;
+    float screen_y = (world_pos.y * view_state.zoom_scale) + view_state.pan_offset.y;
+    return ImVec2(screen_x, screen_y);
 }
 
-ImVec2 CameraUtils::ScreenToWorld(const ImVec2& screen_pos_absolute, const ImVec2& canvas_screen_pos_absolute, const GraphViewState& view_state) {
-    ImVec2 mouse_relative_to_canvas_origin = ImVec2(screen_pos_absolute.x - canvas_screen_pos_absolute.x,
-                                                   screen_pos_absolute.y - canvas_screen_pos_absolute.y);
-
-    if (view_state.zoom_scale == 0.0f) return ImVec2(0,0); // Avoid division by zero
-    return ImVec2((mouse_relative_to_canvas_origin.x - view_state.pan_offset.x) / view_state.zoom_scale,
-                  (mouse_relative_to_canvas_origin.y - view_state.pan_offset.y) / view_state.zoom_scale);
+ImVec2 CameraUtils::ScreenToWorld(const ImVec2& screen_pos, const ImVec2& canvas_pos, const GraphViewState& view_state) {
+    if (view_state.zoom_scale == 0.0f) return ImVec2(0,0);
+    float world_x = (screen_pos.x - view_state.pan_offset.x) / view_state.zoom_scale;
+    float world_y = (screen_pos.y - view_state.pan_offset.y) / view_state.zoom_scale;
+    return ImVec2(world_x, world_y);
 }
 
 } // namespace graph

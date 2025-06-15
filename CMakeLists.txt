@@ -22,6 +22,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(nlohmann_json)
 
 # Find required packages
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/tags/release-1.12.1.zip
+)
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
 find_package(CURL REQUIRED)
 find_package(SQLite3 QUIET) # Fallback search implemented below
 find_package(PkgConfig REQUIRED) # PkgConfig is needed for ImGui discovery now
@@ -312,6 +321,26 @@ add_test(NAME SimpleTest COMMAND simple_test)
 
 # Optional: Add tests
 enable_testing()
+
+# --- New GTests ---
+function(add_gtest target_name)
+    add_executable(${target_name} ${ARGN})
+    target_link_libraries(${target_name} PRIVATE gtest_main)
+    add_test(NAME ${target_name} COMMAND ${target_name})
+endfunction()
+
+add_gtest(db_message_store_test tests/db_message_store_test.cpp)
+target_link_libraries(db_message_store_test PRIVATE persistence)
+target_include_directories(db_message_store_test PRIVATE ${PROJECT_SOURCE_DIR})
+
+add_gtest(layout_force_directed_test tests/layout_force_directed_test.cpp)
+target_link_libraries(layout_force_directed_test PRIVATE graph)
+target_include_directories(layout_force_directed_test PRIVATE ${PROJECT_SOURCE_DIR} extern/imgui ${PROJECT_SOURCE_DIR}/gui_interface)
+
+add_gtest(camera_utils_test tests/camera_utils_test.cpp)
+target_link_libraries(camera_utils_test PRIVATE graph)
+target_include_directories(camera_utils_test PRIVATE ${PROJECT_SOURCE_DIR} extern/imgui ${PROJECT_SOURCE_DIR}/gui_interface)
+
 
 # BasicTest: simple placeholder that always succeeds instantly (no time-outs)
 add_test(NAME BasicTest COMMAND ${CMAKE_COMMAND} -E echo "BasicTest passed")
