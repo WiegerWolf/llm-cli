@@ -5,7 +5,10 @@ target_include_directories(graph_render
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# target_link_libraries(graph_render PRIVATE ...)
+target_link_libraries(graph_render PRIVATE core graph_utils graph_layout)
 
-# Placeholder source until graph render sources are migrated
-target_sources(graph_render PRIVATE ${PROJECT_SOURCE_DIR}/src/dummy.cpp)
+target_sources(graph_render PRIVATE
+    graph_renderer.cpp
+    graph_renderer_core.cpp
+    camera_utils.cpp
+)
