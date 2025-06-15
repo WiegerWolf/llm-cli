@@ -1,5 +1,5 @@
 #include <core/event_dispatch.h>
-#include "gui_interface/gui_interface.h"
+#include <gui/views/gui_interface.h>
 #include <iostream>
 #include <mutex>
 

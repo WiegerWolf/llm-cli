@@ -1,5 +1,5 @@
-#include "spatial_hash.h"
-#include "gui_interface/graph_types.h"
+#include <graph/layout/spatial_hash.h>
+#include <gui/views/graph_types.h>
 #include <cmath>
 #include <algorithm>
 

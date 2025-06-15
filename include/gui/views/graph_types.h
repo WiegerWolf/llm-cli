@@ -5,7 +5,7 @@
 #include <memory>
 #include "../extern/imgui/imgui.h"          // For ImVec2
 #include <core/id_types.h>                       // Defines NodeIdType (std::int64_t) and kInvalidNodeId
-#include "gui_interface/gui_interface.h"    // For HistoryMessage
+#include <gui/views/gui_interface.h>    // For HistoryMessage
 
 struct GraphNode; // Forward declaration
 // Helper to safely obtain a raw pointer from a weak_ptr (nullptr if expired)

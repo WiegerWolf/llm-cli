@@ -1,7 +1,7 @@
-#include "graph_renderer.h"
-#include "camera_utils.h"
-#include "graph_drawing_utils.h"
-#include "theme_utils.h"
+#include <graph/render/graph_renderer.h>
+#include <graph/render/camera_utils.h>
+#include <graph/utils/graph_drawing_utils.h>
+#include <gui/render/theme_utils.h>
 #include <core/id_types.h>
 #include "extern/imgui/imgui_internal.h"
 #include <string>

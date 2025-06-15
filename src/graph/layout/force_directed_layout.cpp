@@ -1,12 +1,12 @@
-#include "force_directed_layout.h"
-#include "spatial_hash.h"
+#include <graph/layout/force_directed_layout.h>
+#include <graph/layout/spatial_hash.h>
 #include <chrono>
 #include <random>
 #include <iostream>
 #include <algorithm>
 #include <cassert>
 
-#include "gui_interface/graph_types.h"
+#include <gui/views/graph_types.h>
 
 // Bring math helpers from SpatialHash detail into this file’s scope
 using detail::Distance;

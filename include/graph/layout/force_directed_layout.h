@@ -5,7 +5,7 @@
 #include <map>
 #include <memory>
 #include "extern/imgui/imgui.h"
-#include "spatial_hash.h"
+#include <graph/layout/spatial_hash.h>
 
  // Forward declarations
  struct GraphNode;

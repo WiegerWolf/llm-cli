@@ -4,8 +4,8 @@
 #include <vector>
 #include <memory>
 #include "extern/imgui/imgui.h"
-#include "force_directed_layout.h" 
-#include "graph_layout_recursive.h"
+#include <graph/layout/force_directed_layout.h>
+#include <graph/layout/graph_layout_recursive.h>
 
 struct GraphNode;
 

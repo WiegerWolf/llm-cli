@@ -1,5 +1,5 @@
-#include "camera_utils.h"
-#include "gui_interface/graph_types.h" // full definition for GraphViewState
+#include <graph/render/camera_utils.h>
+#include <gui/views/graph_types.h> // full definition for GraphViewState
 #include <cmath> // For powf
 
 namespace app {

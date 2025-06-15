@@ -1,6 +1,6 @@
 #include "gtest/gtest.h"
 #include "force_directed_layout.h"
-#include "gui_interface/graph_types.h" // For GraphNode
+#include <gui/views/graph_types.h> // For GraphNode
 #include <memory>
 #include <vector>
 

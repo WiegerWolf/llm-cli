@@ -197,54 +197,33 @@ target_compile_options(llm-cli PRIVATE $<$<CONFIG:Release>:-O3>)
 
 
 # --- Graph Library (Static) ---
-add_library(graph STATIC
-    graph_manager.cpp
-    graph_manager.h
-    graph_renderer.cpp
-    graph_renderer.h
-    graph_renderer_core.cpp
-    graph_drawing_utils.cpp
-    graph_drawing_utils.h
-    camera_utils.cpp
-    camera_utils.h
-    graph_layout.cpp
-    graph_layout.h
-    force_directed_layout.cpp
-    force_directed_layout.h
-    graph_layout_recursive.cpp
-    graph_layout_recursive.h
-    spatial_hash.cpp
-    spatial_hash.h
-)
-
-target_include_directories(graph PUBLIC
-    ${PROJECT_SOURCE_DIR}/include   # Needed for <core/...> headers
-    ${PROJECT_SOURCE_DIR}           # Legacy root includes
-    extern/imgui
-)
+# This has been replaced by the OBJECT libraries in src/graph/*
 
 # --- GUI Executable ---
 # --- GUI Executable ---
-add_executable(llm-gui
-    $<TARGET_OBJECTS:core>            # objects from core domain (main_gui_core.cpp, event_dispatch.cpp)
-    main_gui_views.cpp
-    gui_interface/gui_interface.cpp
-    gui_interface/gui_interface.h
-    font_utils.cpp
-    font_utils.h
-    theme_utils.cpp
-    theme_utils.h
+add_library(imgui_lib STATIC
     extern/imgui/imgui.cpp
     extern/imgui/imgui_draw.cpp
     extern/imgui/imgui_tables.cpp
     extern/imgui/imgui_widgets.cpp
     extern/imgui/backends/imgui_impl_glfw.cpp
     extern/imgui/backends/imgui_impl_opengl3.cpp
-    extern/imgui/imgui_demo.cpp # Included for testing/examples
+    extern/imgui/imgui_demo.cpp
+)
+target_include_directories(imgui_lib PUBLIC extern/imgui extern/imgui/backends)
+
+add_executable(llm-gui
+    $<TARGET_OBJECTS:core>
+    $<TARGET_OBJECTS:gui_render>
+    $<TARGET_OBJECTS:gui_views>
+    $<TARGET_OBJECTS:graph_layout>
+    $<TARGET_OBJECTS:graph_render>
+    $<TARGET_OBJECTS:graph_utils>
+    main_gui.cpp
 )
 
 target_link_libraries(llm-gui PUBLIC
-    graph               # Link against the new graph library
+    imgui_lib
     llm_core            # Link against the core library
     glfw                # Link against GLFW
     OpenGL::GL          # Link against OpenGL
@@ -295,13 +274,18 @@ add_executable(test_chronological_layout
 )
 
 target_link_libraries(test_chronological_layout PUBLIC
-    graph               # Link against the graph library
+    imgui_lib
+    $<TARGET_OBJECTS:graph_layout>
+    $<TARGET_OBJECTS:graph_render>
+    $<TARGET_OBJECTS:graph_utils>
+    $<TARGET_OBJECTS:gui_views>
     llm_core            # Link against the core library
     Threads::Threads    # Link against Threads
 )
 
 target_include_directories(test_chronological_layout PRIVATE
     ${PROJECT_SOURCE_DIR} # For project headers
+    ${PROJECT_SOURCE_DIR}/include
     extern/imgui          # For ImGui headers (ImVec2)
 )
 target_compile_options(test_chronological_layout PRIVATE $<$<CONFIG:Release>:-O3>)
@@ -311,12 +295,16 @@ add_executable(force_convergence_test
     tests/force_convergence_test.cpp
 )
 target_link_libraries(force_convergence_test PUBLIC
-    graph
+    imgui_lib
+    $<TARGET_OBJECTS:graph_layout>
+    $<TARGET_OBJECTS:graph_render>
+    $<TARGET_OBJECTS:graph_utils>
     llm_core
     Threads::Threads
 )
 target_include_directories(force_convergence_test PRIVATE
     ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include
     extern/imgui
 )
 target_compile_options(force_convergence_test PRIVATE $<$<CONFIG:Release>:-O3>)
@@ -354,12 +342,12 @@ target_link_libraries(db_message_store_test PRIVATE persistence)
 target_include_directories(db_message_store_test PRIVATE ${PROJECT_SOURCE_DIR})
 
 add_gtest(layout_force_directed_test tests/layout_force_directed_test.cpp)
-target_link_libraries(layout_force_directed_test PRIVATE graph)
-target_include_directories(layout_force_directed_test PRIVATE ${PROJECT_SOURCE_DIR} extern/imgui ${PROJECT_SOURCE_DIR}/gui_interface)
+target_link_libraries(layout_force_directed_test PRIVATE imgui_lib $<TARGET_OBJECTS:graph_layout> $<TARGET_OBJECTS:graph_utils>)
+target_include_directories(layout_force_directed_test PRIVATE ${PROJECT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include extern/imgui)
 
 add_gtest(camera_utils_test tests/camera_utils_test.cpp)
-target_link_libraries(camera_utils_test PRIVATE graph)
-target_include_directories(camera_utils_test PRIVATE ${PROJECT_SOURCE_DIR} extern/imgui ${PROJECT_SOURCE_DIR}/gui_interface)
+target_link_libraries(camera_utils_test PRIVATE imgui_lib $<TARGET_OBJECTS:graph_render>)
+target_include_directories(camera_utils_test PRIVATE ${PROJECT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include extern/imgui)
 
 
 # BasicTest: simple placeholder that always succeeds instantly (no time-outs)

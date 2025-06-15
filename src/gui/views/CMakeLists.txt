@@ -5,7 +5,9 @@ target_include_directories(gui_views
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# target_link_libraries(gui_views PRIVATE ...)
+target_link_libraries(gui_views PRIVATE core gui_render)
 
-# Temporary placeholder until real GUI view sources are migrated
-target_sources(gui_views PRIVATE ${PROJECT_SOURCE_DIR}/src/dummy.cpp)
+target_sources(gui_views PRIVATE
+    main_gui_views.cpp
+    gui_interface.cpp
+)

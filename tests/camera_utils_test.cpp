@@ -1,6 +1,6 @@
 #include "gtest/gtest.h"
 #include "camera_utils.h"
-#include "gui_interface/graph_types.h" // For GraphViewState
+#include <gui/views/graph_types.h> // For GraphViewState
 
 TEST(CameraUtilsTest, PanAndZoomInvariants) {
     GraphViewState view_state;

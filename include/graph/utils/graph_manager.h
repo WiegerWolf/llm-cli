@@ -7,14 +7,14 @@
 #include <mutex>
 #include <map>
 #include <core/id_types.h>                   // Centralized definition of NodeIdType (int64_t) and sentinel
-#include "model_types.h"
+#include <model_types.h>
 
 using ModelId = std::string;
 
-#include "gui_interface/graph_types.h"
-#include "gui_interface/gui_interface.h" // For HistoryMessage
-#include "database.h" // For Database
-#include "graph_layout.h" // For ForceDirectedLayout
+#include <gui/views/graph_types.h>
+#include <gui/views/gui_interface.h> // For HistoryMessage
+#include <database.h> // For Database
+#include <graph/layout/graph_layout.h> // For ForceDirectedLayout
 
 // NodeIdType is now defined in id_types.h as std::int64_t to prevent overflow.
 

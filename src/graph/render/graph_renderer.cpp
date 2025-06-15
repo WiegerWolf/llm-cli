@@ -1,6 +1,6 @@
-#include "graph_renderer.h"
-#include "graph_drawing_utils.h"
-#include "camera_utils.h"
+#include <graph/render/graph_renderer.h>
+#include <graph/utils/graph_drawing_utils.h>
+#include <graph/render/camera_utils.h>
 
 // This file is now a lightweight coordinator.
 // - It includes the necessary headers.

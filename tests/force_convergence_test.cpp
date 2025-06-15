@@ -2,7 +2,7 @@
 #include <vector>
 #include <iostream>
 #include "graph_layout.h"
-#include "gui_interface/graph_types.h"
+#include <gui/views/graph_types.h>
 
 // Very small helper that builds a three-node linear chain and
 // runs the force-directed solver until convergence.  The test

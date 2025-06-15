@@ -1,5 +1,5 @@
-#include "font_utils.h"
-#include "gui_interface/gui_interface.h"
+#include <gui/render/font_utils.h>
+#include <gui/views/gui_interface.h>
 #include "database.h"
 #include "resources/noto_sans_font.h"
 #include <imgui.h>

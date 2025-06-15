@@ -1,6 +1,6 @@
-#include "graph_layout.h"
-#include "force_directed_layout.h"
-#include "graph_layout_recursive.h"
+#include <graph/layout/graph_layout.h>
+#include <graph/layout/force_directed_layout.h>
+#include <graph/layout/graph_layout_recursive.h>
 
 // This function remains as a convenience wrapper.
 void ApplyForceDirectedLayout(const std::vector<std::shared_ptr<GraphNode>>& nodes,

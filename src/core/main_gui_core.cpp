@@ -1,10 +1,10 @@
-#include "gui_interface/gui_interface.h"
-#include "font_utils.h"
-#include "theme_utils.h"
+#include <gui/views/gui_interface.h>
+#include <gui/render/font_utils.h>
+#include <gui/render/theme_utils.h>
 #include "chat_client.h"
 #include "database.h"
-#include "graph_manager.h"
-#include "main_gui_views.h" // Interface to the drawing logic
+#include <graph/utils/graph_manager.h>
+#include <gui/views/main_gui_views.h> // Interface to the drawing logic
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>

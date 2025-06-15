@@ -1,4 +1,4 @@
-#include "graph_drawing_utils.h"
+#include <graph/utils/graph_drawing_utils.h>
 #include "extern/imgui/imgui_internal.h" // For ImGui::CalcTextSize, ImGui::PushClipRect, ImTextCharToUtf8
 #include <string>
 #include <cstring> // For strlen

@@ -1,5 +1,5 @@
-#include "graph_manager.h"
-#include "graph_renderer.h" // For GraphEditor
+#include <graph/utils/graph_manager.h>
+#include <graph/render/graph_renderer.h> // For GraphEditor
 #include "imgui.h" // For ImVec2, ImU32, IM_COL32
 #include <core/id_types.h> // Defines NodeIdType and kInvalidNodeId sentinel
 #include <iostream> // For std::cout

@@ -1,9 +1,9 @@
-#include "main_gui_views.h"
-#include "gui_interface/gui_interface.h"
-#include "graph_manager.h"
-#include "graph_renderer.h"
-#include "font_utils.h"
-#include "theme_utils.h"
+#include <gui/views/main_gui_views.h>
+#include <gui/views/gui_interface.h>
+#include <graph/utils/graph_manager.h>
+#include <graph/render/graph_renderer.h>
+#include <gui/render/font_utils.h>
+#include <gui/render/theme_utils.h>
 #include <core/id_types.h>
 
 #include <imgui.h>

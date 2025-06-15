@@ -5,7 +5,11 @@ target_include_directories(graph_layout
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# target_link_libraries(graph_layout PRIVATE ...)
+target_link_libraries(graph_layout PRIVATE core)
 
-# Temporary placeholder to satisfy CMake until real layout sources arrive
-target_sources(graph_layout PRIVATE ${PROJECT_SOURCE_DIR}/src/dummy.cpp)
+target_sources(graph_layout PRIVATE
+    graph_layout.cpp
+    force_directed_layout.cpp
+    graph_layout_recursive.cpp
+    spatial_hash.cpp
+)

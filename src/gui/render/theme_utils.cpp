@@ -1,5 +1,5 @@
-#include "theme_utils.h"
-#include "gui_interface/gui_interface.h"
+#include <gui/render/theme_utils.h>
+#include <gui/views/gui_interface.h>
 #include <imgui.h>
 
 namespace ThemeUtils {

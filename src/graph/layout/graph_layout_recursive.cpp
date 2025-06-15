@@ -1,5 +1,5 @@
-#include "graph_layout_recursive.h"
-#include "gui_interface/graph_types.h"
+#include <graph/layout/graph_layout_recursive.h>
+#include <gui/views/graph_types.h>
 
 void CalculateNodePositionsRecursive(
     GraphNode* node,

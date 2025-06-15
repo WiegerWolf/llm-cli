@@ -2,11 +2,11 @@
 #define GRAPH_RENDERER_H
 
 #include "extern/imgui/imgui.h"
-#include "gui_interface/graph_types.h" // For GraphNode and GraphViewState
-#include "gui_interface/gui_interface.h" // For ThemeType
+#include <gui/views/graph_types.h> // For GraphNode and GraphViewState
+#include <gui/views/gui_interface.h> // For ThemeType
 #include <core/id_types.h>
-#include "graph_manager.h"
-#include "graph_layout.h"
+#include <graph/utils/graph_manager.h>
+#include <graph/layout/graph_layout.h>
 #include <map>    // For managing nodes by ID
 #include <memory> // For std::shared_ptr
 #include <vector> // For storing GraphNode pointers or objects

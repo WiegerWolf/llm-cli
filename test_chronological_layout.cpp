@@ -8,9 +8,9 @@
 #include <cassert>
 #include <algorithm>
 #include <iomanip>
-#include "graph_layout.h"
-#include "gui_interface/graph_types.h"
-#include "gui_interface/gui_interface.h"
+#include <graph/layout/graph_layout.h>
+#include <gui/views/graph_types.h>
+#include <gui/views/gui_interface.h>
 
 // Test utility functions
 class ChronologicalLayoutTester {
