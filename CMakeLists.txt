@@ -365,3 +365,17 @@ target_include_directories(camera_utils_test PRIVATE ${PROJECT_SOURCE_DIR} exter
 add_test(NAME BasicTest COMMAND ${CMAKE_COMMAND} -E echo "BasicTest passed")
 
 add_test(NAME ChronologicalLayoutTest COMMAND test_chronological_layout)
+
+# --- Phase-0 skeleton directories ---
+add_subdirectory(src/core)
+add_subdirectory(src/gui/render)
+add_subdirectory(src/gui/views)
+add_subdirectory(src/graph/layout)
+add_subdirectory(src/graph/render)
+add_subdirectory(src/graph/utils)
+add_subdirectory(src/db/drivers)
+add_subdirectory(src/db/stores)
+add_subdirectory(src/cli)
+add_subdirectory(src/utils)
+add_subdirectory(src/net)
+add_subdirectory(tests)
