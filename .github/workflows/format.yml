@@ -1,4 +1,4 @@
-3# This GitHub Actions workflow checks if C/C++ files are correctly formatted.
+# This GitHub Actions workflow checks if C/C++ files are correctly formatted.
 # It is designed to run on pull requests and pushes to the main branch.
 
 name: Format
