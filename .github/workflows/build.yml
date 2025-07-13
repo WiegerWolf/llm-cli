@@ -25,11 +25,11 @@ jobs:
 
     - name: Set up build tools (macOS)
       if: runner.os == 'macOS'
-      run: brew install cmake ninja
+      run: brew install cmake ninja clang-format
 
     - name: Set up build tools (Windows)
       if: runner.os == 'Windows'
-      run: choco install ninja
+      run: choco install ninja llvm
 
     - name: Run format check
       shell: bash
