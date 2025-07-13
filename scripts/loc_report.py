@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 # Define the target file extensions
-SOURCE_EXTENSIONS = {'.cpp', '.h'}
+SOURCE_EXTENSIONS = {ext.lower() for ext in ('.cpp', '.h')}
 
 # Define directories to exclude from the scan
 EXCLUDE_DIRS = {'extern', 'build', '.git', 'resources'}
@@ -82,7 +82,7 @@ def gather_source_files(root_dir):
         dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
 
         for file in files:
-            if Path(file).suffix in SOURCE_EXTENSIONS:
+            if Path(file).suffix.lower() in SOURCE_EXTENSIONS:
                 file_path = os.path.join(root, file)
                 source_files.append(file_path)
 
