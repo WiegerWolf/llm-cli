@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdio> // For fprintf
+#include <optional>
 #include "gui_interface.h"
 #include "font_utils.h"
 #include "theme_utils.h"
