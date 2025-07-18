@@ -16,12 +16,23 @@ FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json
     GIT_TAG v3.11.3
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     CMAKE_ARGS -DJSON_BuildTests=OFF
     CMAKE_ARGS -DJSON_BuildTests=OFF -DJSON_Install=OFF # Don't install json lib separately
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
 # Find required packages
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/tags/release-1.12.1.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
 find_package(CURL REQUIRED)
 find_package(SQLite3 QUIET) # Fallback search implemented below
 find_package(PkgConfig REQUIRED) # PkgConfig is needed for ImGui discovery now
@@ -96,12 +107,33 @@ else()
     message(FATAL_ERROR "Readline libraries not found - install with: sudo apt-get install libreadline-dev")
 endif()
 
-# --- Core Library ---
-add_library(llm_core STATIC
-    chat_client.cpp
-    chat_client.h
+# --- Persistence Library ---
+add_library(persistence STATIC
+    sqlite_connection.cpp
+    sqlite_connection.h
+    message_store.cpp
+    message_store.h
+    model_store.cpp
+    model_store.h
+    settings_store.cpp
+    settings_store.h
     database.cpp
     database.h
+    database_fwd.h
+)
+
+target_link_libraries(persistence PUBLIC
+    nlohmann_json::nlohmann_json
+    ${SQLite3_LIBRARIES}
+)
+
+target_include_directories(persistence PUBLIC
+    ${PROJECT_SOURCE_DIR}
+)
+
+# --- Core Library ---
+add_library(llm_core STATIC
+    # Chat client sources are now managed in a dedicated target_sources() block.
     tools.cpp
     tools.h
     tools_impl/search_web_tool.cpp
@@ -116,9 +148,8 @@ add_library(llm_core STATIC
 )
 
 target_link_libraries(llm_core PUBLIC
+    persistence
     ${CURL_LIBRARIES}
-    nlohmann_json::nlohmann_json
-    ${SQLite3_LIBRARIES}
     ${GUMBO_LIBRARIES}
     Threads::Threads
 )
@@ -129,6 +160,24 @@ target_include_directories(llm_core PUBLIC
     ${PROJECT_SOURCE_DIR} # For project headers
 )
 target_compile_options(llm_core PRIVATE $<$<CONFIG:Release>:-O3>)
+
+# Group chat client sources for clarity and IDE organization
+target_sources(llm_core PRIVATE
+    chat_client.cpp
+    chat_client_turn.cpp
+    chat_client_models.cpp
+    chat_client_api.cpp
+)
+
+# Add a source group for IDEs that support it (like Visual Studio)
+if(MSVC)
+    source_group("ChatClient" FILES
+        chat_client.cpp
+        chat_client_turn.cpp
+        chat_client_models.cpp
+        chat_client_api.cpp
+    )
+endif()
 
 # --- CLI Executable ---
 add_executable(llm-cli
@@ -147,18 +196,44 @@ target_link_libraries(llm-cli PRIVATE
 target_compile_options(llm-cli PRIVATE $<$<CONFIG:Release>:-O3>)
 
 
-# --- GUI Executable ---
-add_executable(llm-gui
-    main_gui.cpp
-    gui_interface/gui_interface.cpp
-    gui_interface/gui_interface.h
-    gui_interface/graph_types.h
+# --- Graph Library (Static) ---
+add_library(graph STATIC
     graph_manager.cpp
     graph_manager.h
     graph_renderer.cpp
     graph_renderer.h
+    graph_renderer_core.cpp
+    graph_drawing_utils.cpp
+    graph_drawing_utils.h
+    camera_utils.cpp
+    camera_utils.h
     graph_layout.cpp
     graph_layout.h
+    force_directed_layout.cpp
+    force_directed_layout.h
+    graph_layout_recursive.cpp
+    graph_layout_recursive.h
+    spatial_hash.cpp
+    spatial_hash.h
+)
+
+target_include_directories(graph PUBLIC
+    ${PROJECT_SOURCE_DIR}
+    extern/imgui
+)
+
+# --- GUI Executable ---
+add_executable(llm-gui
+    main_gui_core.cpp
+    main_gui_views.cpp
+    gui_interface/gui_interface.cpp
+    gui_interface/gui_interface.h
+    font_utils.cpp
+    font_utils.h
+    theme_utils.cpp
+    theme_utils.h
+    event_dispatch.cpp
+    event_dispatch.h
     extern/imgui/imgui.cpp
     extern/imgui/imgui_draw.cpp
     extern/imgui/imgui_tables.cpp
@@ -168,9 +243,9 @@ add_executable(llm-gui
     extern/imgui/imgui_demo.cpp # Included for testing/examples
 )
 
-target_link_libraries(llm-gui PRIVATE
+target_link_libraries(llm-gui PUBLIC
+    graph               # Link against the new graph library
     llm_core            # Link against the core library
-    # ${IMGUI_LIBRARIES}  # Link against system ImGui via pkg-config -- Manually including sources
     glfw                # Link against GLFW
     OpenGL::GL          # Link against OpenGL
     Threads::Threads    # Link against Threads
@@ -217,13 +292,10 @@ install(TARGETS llm-cli llm-gui # Install both executables
 # --- Test Executables ---
 add_executable(test_chronological_layout
     test_chronological_layout.cpp
-    graph_layout.cpp
-    graph_layout.h
-    gui_interface/graph_types.h
-    gui_interface/gui_interface.h
 )
 
-target_link_libraries(test_chronological_layout PRIVATE
+target_link_libraries(test_chronological_layout PUBLIC
+    graph               # Link against the graph library
     llm_core            # Link against the core library
     Threads::Threads    # Link against Threads
 )
@@ -234,14 +306,12 @@ target_include_directories(test_chronological_layout PRIVATE
 )
 target_compile_options(test_chronological_layout PRIVATE $<$<CONFIG:Release>:-O3>)
 # --- Force Convergence Test ---
+# --- Force Convergence Test ---
 add_executable(force_convergence_test
     tests/force_convergence_test.cpp
-    graph_layout.cpp
-    graph_layout.h
-    gui_interface/graph_types.h
-    gui_interface/gui_interface.h
 )
-target_link_libraries(force_convergence_test PRIVATE
+target_link_libraries(force_convergence_test PUBLIC
+    graph
     llm_core
     Threads::Threads
 )
@@ -270,6 +340,26 @@ add_test(NAME SimpleTest COMMAND simple_test)
 
 # Optional: Add tests
 enable_testing()
+
+# --- New GTests ---
+function(add_gtest target_name)
+    add_executable(${target_name} ${ARGN})
+    target_link_libraries(${target_name} PRIVATE gtest_main)
+    add_test(NAME ${target_name} COMMAND ${target_name})
+endfunction()
+
+add_gtest(db_message_store_test tests/db_message_store_test.cpp)
+target_link_libraries(db_message_store_test PRIVATE persistence)
+target_include_directories(db_message_store_test PRIVATE ${PROJECT_SOURCE_DIR})
+
+add_gtest(layout_force_directed_test tests/layout_force_directed_test.cpp)
+target_link_libraries(layout_force_directed_test PRIVATE graph)
+target_include_directories(layout_force_directed_test PRIVATE ${PROJECT_SOURCE_DIR} extern/imgui ${PROJECT_SOURCE_DIR}/gui_interface)
+
+add_gtest(camera_utils_test tests/camera_utils_test.cpp)
+target_link_libraries(camera_utils_test PRIVATE graph)
+target_include_directories(camera_utils_test PRIVATE ${PROJECT_SOURCE_DIR} extern/imgui ${PROJECT_SOURCE_DIR}/gui_interface)
+
 
 # BasicTest: simple placeholder that always succeeds instantly (no time-outs)
 add_test(NAME BasicTest COMMAND ${CMAKE_COMMAND} -E echo "BasicTest passed")

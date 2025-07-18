@@ -1,0 +1,29 @@
+# This GitHub Actions workflow checks if C/C++ files are correctly formatted.
+# It is designed to run on pull requests and pushes to the main branch.
+
+name: Format
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format clang-format-14
+          # Ensure versioned binary is reachable via the generic name
+          if ! command -v clang-format >/dev/null; then
+            sudo ln -s "$(which clang-format-14)" /usr/local/bin/clang-format
+          fi
+
+      - name: Run check_format.sh
+        run: ./tools/check_format.sh

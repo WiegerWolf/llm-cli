@@ -13,7 +13,7 @@ using ModelId = std::string;
 
 #include "gui_interface/graph_types.h"
 #include "gui_interface/gui_interface.h" // For HistoryMessage
-#include "database.h" // For PersistenceManager
+#include "database.h" // For Database
 #include "graph_layout.h" // For ForceDirectedLayout
 
 // NodeIdType is now defined in id_types.h as std::int64_t to prevent overflow.
@@ -27,11 +27,11 @@ public:
     std::vector<std::shared_ptr<GraphNode>> GetRootNodes();
     std::shared_ptr<GraphNode> GetLastNodeAdded();
 
-    GraphManager(PersistenceManager* db_manager); // Constructor to initialize members
+    GraphManager(Database* db_manager); // Constructor to initialize members
 
-    void PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, PersistenceManager& db_manager);
+    void PopulateGraphFromHistory(const std::vector<HistoryMessage>& history_messages, Database& db_manager);
     // current_selected_node_id is GraphNode::graph_node_id
-    void HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, PersistenceManager& db_manager);
+    void HandleNewHistoryMessage(const HistoryMessage& new_msg, NodeIdType current_selected_graph_node_id, Database& db_manager);
     
     // Create a new node and add it to the graph
     GraphNode* CreateNode(NodeIdType parent_id, MessageType type, const std::string& content);
@@ -49,6 +49,8 @@ public:
     bool IsLayoutRunning() const; // Check if layout animation is currently running
     void RestartLayoutAnimation(); // Restart the layout animation from the beginning
     void SetAnimationSpeed(float speed_multiplier); // Set animation speed multiplier
+    void setAnimationPaused(bool is_paused);
+    bool isAnimationPaused() const;
     
     // Auto-pan functionality
     void TriggerAutoPanToNewestNode(class GraphEditor* graph_editor, const ImVec2& canvas_size);
@@ -74,6 +76,7 @@ private:
     // Layout System
     ForceDirectedLayout force_layout; // Force-directed layout algorithm
     bool use_force_layout = true; // Flag to enable/disable force-directed layout
+    bool animation_paused = false;
     
     // ID Generation
     NodeIdType next_graph_node_id_counter;
@@ -85,7 +88,7 @@ private:
     std::vector<std::shared_ptr<GraphNode>> root_nodes;
     std::shared_ptr<GraphNode> last_node_added_to_graph = nullptr;
 
-    PersistenceManager* m_db_manager;
+    Database* m_db_manager;
     std::map<ModelId, std::string> m_model_name_cache;
     // Placeholder for graph rendering logic, to be implemented in a later step
     // void RenderGraphView(); // This will likely be a free function or part of a different class

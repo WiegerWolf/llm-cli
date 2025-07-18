@@ -13,7 +13,7 @@ using std::string;
 
 int main() {
     CliInterface cli_ui; // Instantiate the CLI UI
-    PersistenceManager db_manager; // Instantiate the DB manager
+    Database db_manager; // Instantiate the DB manager
     try {
         cli_ui.initialize(); // Initialize the UI
 
