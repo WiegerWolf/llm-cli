@@ -3,6 +3,9 @@
 # Set default build type
 BUILD_TYPE=${1:-Release}
 
+# Set default for building GUI
+BUILD_GUI=${2:-ON}
+
 # Load .env if present
 if [ -f .env ]; then
   set -a
@@ -24,5 +27,5 @@ git submodule update --init --recursive
 export CXXFLAGS="${CXXFLAGS} -pthread"
 mkdir -p build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE $CMAKE_OPENROUTER_API_KEY
+cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_GUI=$BUILD_GUI $CMAKE_OPENROUTER_API_KEY
 make
