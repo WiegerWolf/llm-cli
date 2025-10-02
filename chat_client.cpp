@@ -1220,7 +1220,7 @@ bool ChatClient::handleCommand(const std::string& input) {
         : input;
 
     // Route to appropriate handler
-    if (command == "/list-models") {
+    if (command == "/models") {
         // List all available models
         try {
             std::vector<ModelData> models = db.getAllModels();
@@ -1272,7 +1272,7 @@ bool ChatClient::handleCommand(const std::string& input) {
     } else if (command == "/model") {
         // Change active model
         if (space_pos == std::string::npos) {
-            ui.displayError("Usage: /model <model-id>. Use /list-models to see available models.");
+            ui.displayError("Usage: /model <model-id>. Use /models to see available models.");
             return true;
         }
 
@@ -1281,7 +1281,7 @@ bool ChatClient::handleCommand(const std::string& input) {
         // Trim leading whitespace
         size_t start = model_id.find_first_not_of(" \t\n\r");
         if (start == std::string::npos) {
-            ui.displayError("Usage: /model <model-id>. Use /list-models to see available models.");
+            ui.displayError("Usage: /model <model-id>. Use /models to see available models.");
             return true;
         }
         model_id = model_id.substr(start);
@@ -1293,7 +1293,7 @@ bool ChatClient::handleCommand(const std::string& input) {
         }
 
         if (model_id.empty()) {
-            ui.displayError("Usage: /model <model-id>. Use /list-models to see available models.");
+            ui.displayError("Usage: /model <model-id>. Use /models to see available models.");
             return true;
         }
 
@@ -1301,7 +1301,7 @@ bool ChatClient::handleCommand(const std::string& input) {
         try {
             auto model = db.getModelById(model_id);
             if (!model.has_value()) {
-                ui.displayError("Model '" + model_id + "' not found. Use /list-models to see available models.");
+                ui.displayError("Model '" + model_id + "' not found. Use /models to see available models.");
                 return true;
             }
 
@@ -1326,7 +1326,7 @@ bool ChatClient::handleCommand(const std::string& input) {
     } else {
         // Unknown command
         ui.displayOutput("\nUnknown command. Available commands:\n"
-                        "  /list-models - List all available models\n"
+                        "  /models - List all available models\n"
                         "  /model <model-id> - Change the active model\n", "");
         return true;
     }
