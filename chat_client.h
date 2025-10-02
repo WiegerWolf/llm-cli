@@ -76,6 +76,9 @@ private:
     // Displays and saves the "normal" assistant content message.
     void printAndSaveAssistantContent(const nlohmann::json& response_message);
 
+    // Handles slash commands. Returns true if command was handled.
+    bool handleCommand(const std::string& input);
+
 public:
     // Constructor now requires a UserInterface reference
     explicit ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref); // Added db_ref

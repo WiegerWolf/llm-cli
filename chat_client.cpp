@@ -1114,6 +1114,13 @@ void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_mes
 // Processes a single turn of the conversation.
 void ChatClient::processTurn(const std::string& input) {
     try {
+        // Check for slash commands first
+        if (!input.empty() && input[0] == '/') {
+            if (handleCommand(input)) {
+                return; // Command handled, don't process as normal input
+            }
+        }
+
         // 1. Save the user's input message.
         saveUserInput(input);
         // 2. Load the current conversation history.
