@@ -387,10 +387,17 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     payload["messages"] = nlohmann::json::array();
 
     // --- Secure Conversation History Construction (existing logic) ---
+    std::vector<Message> limited_context;
+    if (context.size() > 10) {
+        limited_context.assign(context.end() - 10, context.end());
+    } else {
+        limited_context = context;
+    }
+
     std::unordered_set<std::string> valid_tool_ids;
     nlohmann::json msg_array = nlohmann::json::array();
-    for (size_t i = 0; i < context.size(); ++i) {
-        const Message& msg = context[i];
+    for (size_t i = 0; i < limited_context.size(); ++i) {
+        const Message& msg = limited_context[i];
         if (msg.role == "assistant" && !msg.content.empty() && msg.content.front() == '{') {
             try {
                 auto asst_json = nlohmann::json::parse(msg.content);
@@ -402,10 +409,10 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
                     bool all_results_present = true;
                     for (const auto& id : ids) {
                         bool found_result = false;
-                        for (size_t j = i + 1; j < context.size() && !found_result; ++j) {
-                            if (context[j].role != "tool") continue;
+                        for (size_t j = i + 1; j < limited_context.size() && !found_result; ++j) {
+                            if (limited_context[j].role != "tool") continue;
                             try {
-                                auto tool_json = nlohmann::json::parse(context[j].content);
+                                auto tool_json = nlohmann::json::parse(limited_context[j].content);
                                 found_result = tool_json.contains("tool_call_id") &&
                                                tool_json["tool_call_id"] == id;
                             } catch (...) { /* Ignore */ }
@@ -457,7 +464,7 @@ std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool us
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, json_payload.size());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L); // Increased timeout slightly
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L); // Increased timeout to 2 minutes for slower models
 
     res = curl_easy_perform(curl);
     
