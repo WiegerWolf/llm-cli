@@ -1114,6 +1114,13 @@ void ChatClient::printAndSaveAssistantContent(const nlohmann::json& response_mes
 // Processes a single turn of the conversation.
 void ChatClient::processTurn(const std::string& input) {
     try {
+        // Check for slash commands first
+        if (!input.empty() && input[0] == '/') {
+            if (handleCommand(input)) {
+                return; // Command handled, don't process as normal input
+            }
+        }
+
         // 1. Save the user's input message.
         saveUserInput(input);
         // 2. Load the current conversation history.
@@ -1194,5 +1201,126 @@ ChatClient::~ChatClient() {
             // Or if ui object is guaranteed to be valid:
             // ui.displayError("Unknown error during model_load_future cleanup in destructor.");
         }
+    }
+}
+
+// --- Command Handling Implementation ---
+bool ChatClient::handleCommand(const std::string& input) {
+    // Parse command - get first token (up to first space)
+    size_t space_pos = input.find(' ');
+    std::string command = (space_pos != std::string::npos) 
+        ? input.substr(0, space_pos) 
+        : input;
+
+    // Route to appropriate handler
+    if (command == "/list-models") {
+        // List all available models
+        try {
+            std::vector<ModelData> models = db.getAllModels();
+            
+            if (models.empty()) {
+                ui.displayError("No models available. Models may still be loading.");
+                return true;
+            }
+
+            // Build output string
+            std::string output = "\nAvailable Models";
+            
+            // Add current model info to header
+            try {
+                auto current_model = db.getModelById(this->active_model_id);
+                if (current_model.has_value()) {
+                    output += " (current: " + current_model->name + ")";
+                }
+            } catch (...) {
+                // Ignore errors getting current model name
+            }
+            output += ":\n\n";
+
+            // List all models with status indicator
+            for (const auto& model : models) {
+                // Mark current model with [*]
+                if (model.id == this->active_model_id) {
+                    output += "  [*] ";
+                } else {
+                    output += "      ";
+                }
+                
+                // Format: Name (ID) - Context: XXXX tokens
+                output += model.name + " (" + model.id + ")";
+                if (model.context_length > 0) {
+                    output += " - Context: " + std::to_string(model.context_length) + " tokens";
+                }
+                output += "\n";
+            }
+
+            output += "\nUse /model <model-id> to change the active model.\n";
+            ui.displayOutput(output, "");
+            
+        } catch (const std::exception& e) {
+            ui.displayError("Error listing models: " + std::string(e.what()));
+        }
+        return true;
+
+    } else if (command == "/model") {
+        // Change active model
+        if (space_pos == std::string::npos) {
+            ui.displayError("Usage: /model <model-id>. Use /list-models to see available models.");
+            return true;
+        }
+
+        // Extract and trim model ID
+        std::string model_id = input.substr(space_pos + 1);
+        // Trim leading whitespace
+        size_t start = model_id.find_first_not_of(" \t\n\r");
+        if (start == std::string::npos) {
+            ui.displayError("Usage: /model <model-id>. Use /list-models to see available models.");
+            return true;
+        }
+        model_id = model_id.substr(start);
+        
+        // Trim trailing whitespace
+        size_t end = model_id.find_last_not_of(" \t\n\r");
+        if (end != std::string::npos) {
+            model_id = model_id.substr(0, end + 1);
+        }
+
+        if (model_id.empty()) {
+            ui.displayError("Usage: /model <model-id>. Use /list-models to see available models.");
+            return true;
+        }
+
+        // Validate model exists
+        try {
+            auto model = db.getModelById(model_id);
+            if (!model.has_value()) {
+                ui.displayError("Model '" + model_id + "' not found. Use /list-models to see available models.");
+                return true;
+            }
+
+            // Change the active model
+            this->setActiveModel(model_id);
+            
+            // Persist the selection
+            try {
+                db.saveSetting("selected_model_id", model_id);
+            } catch (const std::exception& e) {
+                ui.displayError("Warning: Could not persist model selection: " + std::string(e.what()));
+            }
+
+            // Display success message
+            ui.displayOutput("Model changed to: " + model->name + " (" + model_id + ")\n", "");
+            
+        } catch (const std::exception& e) {
+            ui.displayError("Error changing model: " + std::string(e.what()));
+        }
+        return true;
+
+    } else {
+        // Unknown command
+        ui.displayOutput("\nUnknown command. Available commands:\n"
+                        "  /list-models - List all available models\n"
+                        "  /model <model-id> - Change the active model\n", "");
+        return true;
     }
 }
