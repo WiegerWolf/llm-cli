@@ -72,6 +72,13 @@ add_library(llm_core STATIC
     chat_client.h
     database.cpp
     database.h
+    # Database module (new modular structure)
+    database/database_core.cpp
+    database/database_core.h
+    database/message_repository.cpp
+    database/message_repository.h
+    database/model_repository.cpp
+    database/model_repository.h
     tools.cpp
     tools.h
     model_manager.cpp
