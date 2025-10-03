@@ -331,6 +331,23 @@ void ModelManager::selectActiveModel(const std::vector<ModelData>& available_mod
 }
 
 void ModelManager::setActiveModel(const std::string& model_id) {
+    // Validate model exists
+    auto model = db.getModelById(model_id);
+    if (!model.has_value()) {
+        ui.displayError("Model '" + model_id + "' not found.");
+        return; // Don't change active_model_id if validation fails
+    }
+    
+    // Set the active model
     this->active_model_id = model_id;
-    ui.displayStatus("Active model set to: " + model_id);
+    
+    // Persist the selection
+    try {
+        db.saveSetting("selected_model_id", model_id);
+    } catch (const std::exception& e) {
+        ui.displayError("Warning: Could not persist model selection: " + std::string(e.what()));
+    }
+    
+    // Display success
+    ui.displayStatus("Active model set to: " + model->name + " (" + model_id + ")");
 }

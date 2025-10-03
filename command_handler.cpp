@@ -106,26 +106,8 @@ void CommandHandler::handleModelsCommand() {
 
 void CommandHandler::handleModelCommand(const std::string& model_id) {
     try {
-        // Validate model exists
-        auto model = db.getModelById(model_id);
-        if (!model.has_value()) {
-            ui.displayError("Model '" + model_id + "' not found. Use /models to see available models.");
-            return;
-        }
-        
-        // Change the active model
+        // ModelManager now handles validation, persistence, and UI feedback
         modelManager.setActiveModel(model_id);
-        
-        // Persist the selection
-        try {
-            db.saveSetting("selected_model_id", model_id);
-        } catch (const std::exception& e) {
-            ui.displayError("Warning: Could not persist model selection: " + std::string(e.what()));
-        }
-        
-        // Display success message
-        ui.displayOutput("Model changed to: " + model->name + " (" + model_id + ")\n", "");
-        
     } catch (const std::exception& e) {
         ui.displayError("Error changing model: " + std::string(e.what()));
     }
