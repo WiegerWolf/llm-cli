@@ -48,7 +48,7 @@ target_include_directories(gumbo PUBLIC ${gumbo_SOURCE_DIR}/src)
 
 # Find required packages
 find_package(CURL REQUIRED)
-find_package(SQLite3 QUIET) # Fallback search implemented below
+find_package(SQLite3 REQUIRED)
 
 # Find Threads package
 find_package(Threads REQUIRED)
@@ -103,7 +103,7 @@ add_library(llm_core STATIC
 target_link_libraries(llm_core PUBLIC
     ${CURL_LIBRARIES}
     nlohmann_json::nlohmann_json
-    ${SQLite3_LIBRARIES}
+    SQLite::SQLite3
     gumbo
     Threads::Threads
 )
