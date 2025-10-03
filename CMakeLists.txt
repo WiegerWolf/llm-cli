@@ -74,6 +74,14 @@ add_library(llm_core STATIC
     database.h
     tools.cpp
     tools.h
+    model_manager.cpp
+    model_manager.h
+    api_client.cpp
+    api_client.h
+    tool_executor.cpp
+    tool_executor.h
+    command_handler.cpp
+    command_handler.h
     tools_impl/search_web_tool.cpp
     tools_impl/visit_url_tool.cpp
     tools_impl/datetime_tool.cpp
