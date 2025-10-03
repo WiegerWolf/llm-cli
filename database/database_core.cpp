@@ -1,4 +1,5 @@
 #include "database_core.h"
+#include "filesystem_utils.h"
 #include <stdexcept>
 #include <iostream>
 #include <cstdlib>
@@ -6,29 +7,6 @@
 #include <filesystem>
 
 namespace database {
-
-namespace {
-// Helper function to get home directory path (cross-platform)
-std::filesystem::path get_home_directory_path() {
-    #ifdef _WIN32
-        const char* userprofile = std::getenv("USERPROFILE");
-        if (userprofile) {
-            return std::filesystem::path(userprofile);
-        }
-        const char* homedrive = std::getenv("HOMEDRIVE");
-        const char* homepath = std::getenv("HOMEPATH");
-        if (homedrive && homepath) {
-            return std::filesystem::path(homedrive) / homepath;
-        }
-    #else // POSIX-like systems
-        const char* home_env = std::getenv("HOME");
-        if (home_env) {
-            return std::filesystem::path(home_env);
-        }
-    #endif
-    return ""; // Return empty path if home directory cannot be determined
-}
-} // anonymous namespace
 
 DatabaseCore::DatabaseCore() : db_(nullptr) {
     std::filesystem::path db_path = getDatabasePath();
@@ -129,7 +107,7 @@ void DatabaseCore::exec(const std::string& sql) {
 }
 
 std::filesystem::path DatabaseCore::getDatabasePath() {
-    std::filesystem::path db_dir_path = get_home_directory_path();
+    std::filesystem::path db_dir_path = utils::get_home_directory_path();
     
     if (!db_dir_path.empty()) {
         std::filesystem::path app_config_dir = db_dir_path / ".llm-cli";
