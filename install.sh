@@ -17,7 +17,7 @@ cd "$BUILD_DIR"
 echo "Configuring project..."
 cmake ..
 
-# Build the project (both llm-cli and llm-gui targets)
+# Build the project
 echo "Building project..."
 cmake --build . --config Release # Build in Release mode for optimization
 
