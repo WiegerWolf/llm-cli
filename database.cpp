@@ -40,10 +40,12 @@ void PersistenceManager::Impl::saveSetting(const std::string& key, const std::st
     
     auto stmt = this->core.prepareStatement(sql);
 
-    if (sqlite3_bind_text(stmt.get(), 1, key.c_str(), -1, SQLITE_STATIC) != SQLITE_OK) {
+    // Use SQLITE_TRANSIENT to ensure SQLite makes a copy of the string data
+    // This avoids dangling pointer issues since c_str() returns a temporary pointer
+    if (sqlite3_bind_text(stmt.get(), 1, key.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
         throw std::runtime_error("Failed to bind key in Impl::saveSetting: " + std::string(sqlite3_errmsg(this->core.getConnection())));
     }
-    if (sqlite3_bind_text(stmt.get(), 2, value.c_str(), -1, SQLITE_STATIC) != SQLITE_OK) {
+    if (sqlite3_bind_text(stmt.get(), 2, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
         throw std::runtime_error("Failed to bind value in Impl::saveSetting: " + std::string(sqlite3_errmsg(this->core.getConnection())));
     }
 
@@ -58,8 +60,9 @@ std::optional<std::string> PersistenceManager::Impl::loadSetting(const std::stri
 
     auto stmt = this->core.prepareStatement(sql);
 
-    if (sqlite3_bind_text(stmt.get(), 1, key.c_str(), -1, SQLITE_STATIC) != SQLITE_OK) {
-        return std::nullopt;
+    // Use SQLITE_TRANSIENT to ensure SQLite makes a copy of the string data
+    if (sqlite3_bind_text(stmt.get(), 1, key.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+        throw std::runtime_error("Failed to bind key in Impl::loadSetting: " + std::string(sqlite3_errmsg(this->core.getConnection())));
     }
 
     int step_result = sqlite3_step(stmt.get());
@@ -69,7 +72,7 @@ std::optional<std::string> PersistenceManager::Impl::loadSetting(const std::stri
             result = reinterpret_cast<const char*>(text);
         }
     } else if (step_result != SQLITE_DONE) {
-        return std::nullopt;
+        throw std::runtime_error("Impl::loadSetting query failed: " + std::string(sqlite3_errmsg(this->core.getConnection())));
     }
     return result;
 }
