@@ -70,11 +70,20 @@ DatabaseCore::DatabaseCore() : db_(nullptr) {
     }
 
     // Initialize schema and run migrations
-    initializeSchema();
-    runMigrations();
-
-    // Enable Write-Ahead Logging (WAL) mode for better concurrency
-    exec("PRAGMA journal_mode=WAL");
+    // Wrap in try-catch to ensure db_ is closed if initialization fails
+    try {
+        initializeSchema();
+        runMigrations();
+        
+        // Enable Write-Ahead Logging (WAL) mode for better concurrency
+        exec("PRAGMA journal_mode=WAL");
+    } catch (...) {
+        // Initialization failed after successful open - must close handle to prevent leak
+        // The destructor won't run if constructor throws, so we clean up manually
+        sqlite3_close(db_);
+        db_ = nullptr;
+        throw;  // Re-throw the original exception
+    }
 }
 
 DatabaseCore::~DatabaseCore() {

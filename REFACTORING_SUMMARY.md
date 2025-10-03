@@ -354,6 +354,63 @@ SQLite::SQLite3                 # Modern imported target
 
 This improvement ensures better developer experience and more robust build configuration.
 
+### Resource Leak Fix in DatabaseCore Constructor ✅
+
+A critical resource leak was identified and fixed in the [`DatabaseCore`](database/database_core.cpp:59-85) constructor:
+
+**Problem Identified:**
+- Constructor opened SQLite connection successfully (line 60)
+- Then called `initializeSchema()`, `runMigrations()`, and `exec()` which can throw exceptions
+- **If any initialization threw**, the destructor would never run (C++ constructor exception rule)
+- Result: SQLite database handle leaked, file descriptors leaked
+
+**Code Analysis:**
+```cpp
+// BEFORE - Resource leak vulnerability
+DatabaseCore::DatabaseCore() : db_(nullptr) {
+    sqlite3_open(path.c_str(), &db_);  // db_ now valid
+    
+    initializeSchema();                // Can throw!
+    runMigrations();                   // Can throw!
+    exec("PRAGMA journal_mode=WAL");   // Can throw!
+    // If any throw occurs, destructor never runs → leak!
+}
+```
+
+**Solution Applied:**
+```cpp
+// AFTER - Proper exception safety
+DatabaseCore::DatabaseCore() : db_(nullptr) {
+    sqlite3_open(path.c_str(), &db_);
+    
+    try {
+        initializeSchema();
+        runMigrations();
+        exec("PRAGMA journal_mode=WAL");
+    } catch (...) {
+        // Initialization failed - manually close handle
+        sqlite3_close(db_);
+        db_ = nullptr;
+        throw;  // Re-throw original exception
+    }
+}
+```
+
+**Impact & Benefits:**
+- ✅ **No resource leaks:** Database handle properly closed on any initialization failure
+- ✅ **Exception safety:** Original exceptions preserved and propagated correctly
+- ✅ **Prevents file descriptor exhaustion:** Multiple failed constructions don't accumulate leaks
+- ✅ **Better error handling:** Clean resource management in error paths
+- ✅ **Build verified:** Compiles and runs successfully
+
+**Severity:** Medium-High
+- Leaked file descriptors on schema/migration failures
+- Database file locks potentially retained
+- Hard to detect (only occurs during initialization errors)
+- Proper fix is essential for production database code
+
+This fix ensures robust resource management following RAII principles and C++ exception safety guarantees.
+
 ## Timeline
 
 **Total Time:** ~6 hours of implementation
