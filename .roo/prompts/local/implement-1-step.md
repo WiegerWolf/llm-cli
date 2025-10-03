@@ -1,1 +1,0 @@
-I'm implementing a big feature from @/docs/currentFeature.md  . i want you to implement @/docs/step-4.md   in my code. your job is to first read the doc, then using coder you need to implement the fix as it's proposed in the plan.
