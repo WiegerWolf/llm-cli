@@ -123,6 +123,8 @@ void ChatClient::processTurn(const std::string& input) {
         // Check for slash commands first
         if (!input.empty() && input[0] == '/') {
             if (commandHandler->handleCommand(input)) {
+                // Sync active_model_id with ModelManager in case a /model command was executed
+                active_model_id = modelManager->getActiveModelId();
                 return;
             }
         }
