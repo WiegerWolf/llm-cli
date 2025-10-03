@@ -2,18 +2,6 @@
 
 A powerful command-line interface for interacting with Large Language Models through OpenRouter, featuring tool support, conversation history, and model management.
 
-## Recent Updates
-
-**Major Code Refactoring (2025-10):** The codebase has undergone a significant refactoring to improve maintainability and code organization. The monolithic `chat_client.cpp` (1333 lines) has been split into focused modules:
-
-- `model_manager` - Model fetching, parsing, and selection
-- `api_client` - API communication and retry logic
-- `tool_executor` - Tool call execution (standard and fallback)
-- `command_handler` - Slash command processing
-- `chat_client` - Main orchestration
-
-See [`REFACTORING.md`](REFACTORING.md) for detailed documentation of the new architecture.
-
 ## Features
 
 - 🤖 Support for multiple LLM models via OpenRouter
@@ -107,8 +95,7 @@ llm-cli/
 │   ├── web_research_tool.cpp
 │   └── deep_research_tool.cpp
 ├── cli_interface.h/cpp        # CLI UI implementation
-├── main_cli.cpp               # Entry point
-└── REFACTORING.md             # Detailed refactoring documentation
+├── main_cli.cpp               # Entry point\
 ```
 
 ## Configuration
@@ -129,8 +116,6 @@ The project follows a modular architecture with clear separation of concerns:
 - **Command Handling**: `CommandHandler` processes user slash commands
 - **Orchestration**: `ChatClient` coordinates the overall conversation flow
 
-See [`REFACTORING.md`](REFACTORING.md) for architectural details.
-
 ### Adding New Features
 
 **New Tool:**
@@ -145,10 +130,6 @@ See [`REFACTORING.md`](REFACTORING.md) for architectural details.
 **New Model Source:**
 1. Extend `ModelManager::fetchModelsFromAPI()`
 2. Update parsing logic as needed
-
-## License
-
-[Your License Here]
 
 ## Contributing
 
