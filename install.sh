@@ -26,4 +26,4 @@ echo "Installing project..."
 sudo cmake --install .
 
 echo "Installation complete."
-echo "Executables 'llm-cli' and 'llm-gui' should be installed to the system path (e.g., /usr/local/bin)."
+echo "Executable 'llm-cli' should be installed to the system path (e.g., /usr/local/bin)."
