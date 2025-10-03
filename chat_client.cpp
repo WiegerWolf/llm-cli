@@ -46,7 +46,7 @@ void ChatClient::run() {
 // Model management delegation
 void ChatClient::setActiveModel(const std::string& model_id) {
     modelManager->setActiveModel(model_id);
-    active_model_id = model_id;
+    active_model_id = modelManager->getActiveModelId();
 }
 
 // Public API call method (for tools)
