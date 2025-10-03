@@ -91,6 +91,13 @@ private:
     std::filesystem::path getDatabasePath();
     
     /**
+     * Ensure parent directory exists for the given path
+     * @param path The file path whose parent directory should exist
+     * @return true if directory exists or was created, false on error
+     */
+    bool ensureDirectoryExists(const std::filesystem::path& path);
+    
+    /**
      * Initialize database schema (create tables if they don't exist)
      */
     void initializeSchema();

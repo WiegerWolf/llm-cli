@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 
 namespace database {
 
@@ -30,31 +31,9 @@ std::filesystem::path get_home_directory_path() {
 } // anonymous namespace
 
 DatabaseCore::DatabaseCore() : db_(nullptr) {
-    // Construct the database path using the cross-platform helper
-    std::filesystem::path db_dir_path = get_home_directory_path();
-    std::string final_db_path_str;
-
-    if (!db_dir_path.empty()) {
-        try {
-            // Ensure the .llm-cli directory exists in the home directory
-            std::filesystem::path app_config_dir = db_dir_path / ".llm-cli";
-            if (!std::filesystem::exists(app_config_dir)) {
-                std::filesystem::create_directories(app_config_dir);
-            }
-            // Define the database file path within this directory
-            std::filesystem::path db_file_path = app_config_dir / "llm_chat_history.db";
-            final_db_path_str = db_file_path.string();
-        } catch (const std::filesystem::filesystem_error& e) {
-            std::cerr << "Filesystem error constructing database path in home directory: " << e.what()
-                      << ". Using current directory as fallback." << std::endl;
-            final_db_path_str = "llm_chat_history.db"; // Fallback to current directory
-        }
-    } else {
-        std::cerr << "Warning: Could not determine home directory. Using current directory for database." << std::endl;
-        final_db_path_str = "llm_chat_history.db"; // Fallback to current directory
-    }
-    
-    std::string path = final_db_path_str;
+    std::filesystem::path db_path = getDatabasePath();
+    ensureDirectoryExists(db_path);
+    std::string path = db_path.string();
 
     // Open the SQLite database connection
     if(sqlite3_open(path.c_str(), &db_) != SQLITE_OK) {
@@ -158,6 +137,20 @@ std::filesystem::path DatabaseCore::getDatabasePath() {
     }
     
     return "llm_chat_history.db";
+}
+
+bool DatabaseCore::ensureDirectoryExists(const std::filesystem::path& path) {
+    try {
+        std::filesystem::path parent = path.parent_path();
+        if (!parent.empty() && !std::filesystem::exists(parent)) {
+            std::filesystem::create_directories(parent);
+        }
+        return true;
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "Warning: Could not create database directory: " << e.what() 
+                  << ". Using fallback location." << std::endl;
+        return false;
+    }
 }
 
 void DatabaseCore::initializeSchema() {
