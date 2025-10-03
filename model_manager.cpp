@@ -25,25 +25,13 @@ ModelManager::ModelManager(UserInterface& ui_ref, PersistenceManager& db_ref)
     // Constructor initializes with default model ID as fallback
 }
 
-ModelManager::~ModelManager() {
-    if (model_load_future.valid()) {
-        try {
-            model_load_future.wait();
-        } catch (const std::exception& e) {
-            // Errors already handled in initialize(), just wait for completion
-        } catch (...) {
-            // Silent cleanup
-        }
-    }
-}
+ModelManager::~ModelManager() = default;
 
 void ModelManager::initialize() {
     ui.setLoadingModelsState(true);
     
-    model_load_future = std::async(std::launch::async, &ModelManager::loadModelsAsync, this);
-    
     try {
-        model_load_future.get();
+        loadModels();
     } catch (const std::exception& e) {
         ui.displayError("Critical error during model initialization: " + std::string(e.what()));
         ui.displayStatus("Fell back to default model: " + this->active_model_id);
@@ -59,9 +47,7 @@ void ModelManager::initialize() {
     }
 }
 
-void ModelManager::loadModelsAsync() {
-    models_loading = true;
-    
+void ModelManager::loadModels() {
     std::string previously_selected_model_id;
     bool is_first_launch = false;
     
@@ -123,8 +109,6 @@ void ModelManager::loadModelsAsync() {
             try { db.saveSetting("selected_model_id", this->active_model_id); } catch (...) {}
         }
     }
-    
-    models_loading = false;
 }
 
 std::string ModelManager::fetchModelsFromAPI() {

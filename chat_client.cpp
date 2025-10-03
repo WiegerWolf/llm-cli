@@ -49,10 +49,6 @@ void ChatClient::setActiveModel(const std::string& model_id) {
     active_model_id = model_id;
 }
 
-bool ChatClient::are_models_loading() const {
-    return modelManager->areModelsLoading();
-}
-
 // Public API call method (for tools)
 std::string ChatClient::makeApiCall(const std::vector<Message>& context, bool use_tools) {
     return apiClient->makeApiCall(context, toolManager, use_tools);

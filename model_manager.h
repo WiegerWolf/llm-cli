@@ -2,8 +2,6 @@
 
 #include <string>
 #include <vector>
-#include <atomic>
-#include <future>
 #include "model_types.h"
 #include "database.h"
 #include "ui_interface.h"
@@ -34,9 +32,6 @@ public:
     // Set the active model (validates existence and persists selection)
     void setActiveModel(const std::string& model_id);
 
-    // Check if models are currently being loaded
-    bool areModelsLoading() const { return models_loading.load(); }
-
 private:
     // References to dependencies
     UserInterface& ui;
@@ -45,12 +40,8 @@ private:
     // Active model state
     std::string active_model_id;
 
-    // Async loading state
-    std::atomic<bool> models_loading{false};
-    std::future<void> model_load_future;
-
     // Private methods for model loading pipeline
-    void loadModelsAsync();
+    void loadModels();
     std::string fetchModelsFromAPI();
     std::vector<ModelData> parseModelsFromAPIResponse(const std::string& api_response);
     void cacheModelsToDB(const std::vector<ModelData>& models);

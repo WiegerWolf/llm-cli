@@ -66,10 +66,9 @@ public:
     // Main application loop
     void run();
     
-    // Model management (delegated to ModelManager)
+    // Model management delegation
     void setActiveModel(const std::string& model_id);
-    bool are_models_loading() const;
-    
-    // Public API call method (needed by tools like web_research)
-    std::string makeApiCall(const std::vector<Message>& context, bool use_tools = false);
+
+    // Public API call method (for tools)
+    std::string makeApiCall(const std::vector<Message>& context, bool use_tools = true);
 };
