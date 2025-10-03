@@ -48,7 +48,7 @@ target_include_directories(gumbo PUBLIC ${gumbo_SOURCE_DIR}/src)
 
 # Find required packages
 find_package(CURL REQUIRED)
-find_package(SQLite3 QUIET) # Fallback search implemented below
+find_package(SQLite3 REQUIRED)
 
 # Find Threads package
 find_package(Threads REQUIRED)
@@ -72,6 +72,16 @@ add_library(llm_core STATIC
     chat_client.h
     database.cpp
     database.h
+    # Database module (new modular structure)
+    database/database_core.cpp
+    database/database_core.h
+    database/message_repository.cpp
+    database/message_repository.h
+    database/model_repository.cpp
+    database/model_repository.h
+    # Utility modules
+    filesystem_utils.cpp
+    filesystem_utils.h
     tools.cpp
     tools.h
     model_manager.cpp
@@ -96,7 +106,7 @@ add_library(llm_core STATIC
 target_link_libraries(llm_core PUBLIC
     ${CURL_LIBRARIES}
     nlohmann_json::nlohmann_json
-    ${SQLite3_LIBRARIES}
+    SQLite::SQLite3
     gumbo
     Threads::Threads
 )
