@@ -25,31 +25,43 @@ public:
      * @param core Reference to DatabaseCore for connection access
      */
     explicit MessageRepository(DatabaseCore& core);
-    
+
+    /**
+     * Set the current session ID for message operations
+     * @param session_id The session ID to use
+     */
+    void setCurrentSession(int session_id);
+
+    /**
+     * Get the current session ID
+     * @return The current session ID
+     */
+    int getCurrentSession() const;
+
     // Message insertion methods
-    
+
     /**
      * Insert a user message into the database
      * @param content The message content
      */
     void insertUserMessage(const std::string& content);
-    
+
     /**
      * Insert an assistant message into the database
      * @param content The message content
      * @param model_id The ID of the model that generated the response
      */
     void insertAssistantMessage(const std::string& content, const std::string& model_id);
-    
+
     /**
      * Insert a tool message into the database
      * @param content The tool response content (must be valid JSON)
      * @throws std::runtime_error if content is not valid tool message JSON
      */
     void insertToolMessage(const std::string& content);
-    
+
     // Message retrieval methods
-    
+
     /**
      * Get recent conversation context for API calls
      * @param max_pairs Maximum number of user-assistant message pairs to retrieve
@@ -78,7 +90,8 @@ public:
 
 private:
     DatabaseCore& core_;  // Reference to database core for connection access
-    
+    int current_session_id_;  // Current session ID for message operations
+
     /**
      * Internal helper to insert a message
      * @param msg The message to insert

@@ -134,12 +134,20 @@ bool DatabaseCore::ensureDirectoryExists(const std::filesystem::path& path) {
 void DatabaseCore::initializeSchema() {
     // Define the database schema
     const char* schema = R"(
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL DEFAULT 'New Chat',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             role TEXT CHECK(role IN ('system','user','assistant', 'tool')),
             content TEXT,
-            model_id TEXT
+            model_id TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
         );
 
         CREATE TABLE IF NOT EXISTS settings (
@@ -154,50 +162,61 @@ void DatabaseCore::initializeSchema() {
             context_length INTEGER,
             pricing_prompt TEXT,
             pricing_completion TEXT,
-            architecture_input_modalities TEXT, 
-            architecture_output_modalities TEXT, 
+            architecture_input_modalities TEXT,
+            architecture_output_modalities TEXT,
             architecture_tokenizer TEXT,
-            top_provider_is_moderated INTEGER, 
-            per_request_limits TEXT, 
-            supported_parameters TEXT, 
-            created_at_api INTEGER, 
+            top_provider_is_moderated INTEGER,
+            per_request_limits TEXT,
+            supported_parameters TEXT,
+            created_at_api INTEGER,
             last_updated_db TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     )";
-    
+
     exec(schema);
 }
 
 void DatabaseCore::runMigrations() {
-    // Migration: Add model_id to messages table if it doesn't exist
-    bool model_id_column_exists = false;
-    sqlite3_stmt* raw_stmt_check_column = nullptr;
-    std::string pragma_sql = "PRAGMA table_info('messages');";
+    // Helper to check if a column exists
+    auto column_exists = [this](const std::string& table, const std::string& column) -> bool {
+        sqlite3_stmt* raw_stmt = nullptr;
+        std::string pragma_sql = "PRAGMA table_info('" + table + "');";
 
-    if (sqlite3_prepare_v2(db_, pragma_sql.c_str(), -1, &raw_stmt_check_column, nullptr) == SQLITE_OK) {
-        unique_stmt_ptr stmt_check_column_guard(raw_stmt_check_column);
+        if (sqlite3_prepare_v2(db_, pragma_sql.c_str(), -1, &raw_stmt, nullptr) == SQLITE_OK) {
+            unique_stmt_ptr stmt_guard(raw_stmt);
 
-        while (sqlite3_step(stmt_check_column_guard.get()) == SQLITE_ROW) {
-            const unsigned char* col_name_text = sqlite3_column_text(stmt_check_column_guard.get(), 1);
-            if (col_name_text) {
-                std::string col_name(reinterpret_cast<const char*>(col_name_text));
-                if (col_name == "model_id") {
-                    model_id_column_exists = true;
-                    break;
+            while (sqlite3_step(stmt_guard.get()) == SQLITE_ROW) {
+                const unsigned char* col_name_text = sqlite3_column_text(stmt_guard.get(), 1);
+                if (col_name_text) {
+                    std::string col_name(reinterpret_cast<const char*>(col_name_text));
+                    if (col_name == column) {
+                        return true;
+                    }
                 }
             }
+        } else {
+            std::string err_msg = "Failed to prepare PRAGMA table_info('" + table + "'): ";
+            err_msg += sqlite3_errmsg(db_);
+            if (raw_stmt) {
+                sqlite3_finalize(raw_stmt);
+            }
+            throw std::runtime_error(err_msg);
         }
-    } else {
-        std::string err_msg = "Failed to prepare PRAGMA table_info('messages'): ";
-        err_msg += sqlite3_errmsg(db_);
-        if (raw_stmt_check_column) {
-             sqlite3_finalize(raw_stmt_check_column);
-        }
-        throw std::runtime_error(err_msg);
+        return false;
+    };
+
+    // Migration: Add model_id to messages table if it doesn't exist
+    if (!column_exists("messages", "model_id")) {
+        exec("ALTER TABLE messages ADD COLUMN model_id TEXT;");
     }
 
-    if (!model_id_column_exists) {
-        exec("ALTER TABLE messages ADD COLUMN model_id TEXT;");
+    // Migration: Add session_id to messages table if it doesn't exist
+    if (!column_exists("messages", "session_id")) {
+        exec("ALTER TABLE messages ADD COLUMN session_id INTEGER REFERENCES sessions(id);");
+
+        // Create a default session for existing messages
+        exec("INSERT INTO sessions (title) SELECT 'Default Chat' WHERE NOT EXISTS (SELECT 1 FROM sessions);");
+        exec("UPDATE messages SET session_id = (SELECT id FROM sessions ORDER BY id LIMIT 1) WHERE session_id IS NULL;");
     }
 }
 

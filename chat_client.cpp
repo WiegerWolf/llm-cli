@@ -12,6 +12,11 @@ ChatClient::ChatClient(UserInterface& ui_ref, PersistenceManager& db_ref)
     apiClient = std::make_unique<ApiClient>(ui, active_model_id);
     toolExecutor = std::make_unique<ToolExecutor>(ui, db, toolManager, *apiClient, *this, active_model_id);
     commandHandler = std::make_unique<CommandHandler>(ui, db, *modelManager);
+
+    // Set up session switch callback
+    commandHandler->setSessionSwitchCallback([this](int session_id) {
+        this->switchToSession(session_id);
+    });
 }
 
 // Destructor
@@ -22,13 +27,18 @@ void ChatClient::initialize_model_manager() {
     modelManager->initialize();
     // Sync active_model_id with ModelManager
     active_model_id = modelManager->getActiveModelId();
+
+    // Initialize session management - get or create default session
+    int session_id = db.getOrCreateDefaultSession();
+    db.setCurrentSession(session_id);
 }
 
 // Main application loop
 void ChatClient::run() {
     db.cleanupOrphanedToolMessages();
-    ui.displayStatus("ChatClient ready. Active model: " + this->active_model_id);
-    
+    int current_session = db.getCurrentSession();
+    ui.displayStatus("ChatClient ready. Active model: " + this->active_model_id + ", Session: " + std::to_string(current_session));
+
     while (true) {
         try {
             auto input_opt = promptUserInput();
@@ -47,6 +57,12 @@ void ChatClient::run() {
 void ChatClient::setActiveModel(const std::string& model_id) {
     modelManager->setActiveModel(model_id);
     active_model_id = modelManager->getActiveModelId();
+}
+
+// Session management
+void ChatClient::switchToSession(int session_id) {
+    db.setCurrentSession(session_id);
+    ui.displayStatus("Switched to session " + std::to_string(session_id));
 }
 
 // Public API call method (for tools)
