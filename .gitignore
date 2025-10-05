@@ -5,3 +5,4 @@ examples/
 .env
 imgui.ini
 Testing/Temporary
+llm_chat_history.db

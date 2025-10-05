@@ -10,7 +10,6 @@ namespace database {
 
 DatabaseCore::DatabaseCore() : db_(nullptr) {
     std::filesystem::path db_path = getDatabasePath();
-    ensureDirectoryExists(db_path);
     std::string path = db_path.string();
 
     // Open the SQLite database connection
@@ -110,19 +109,6 @@ std::filesystem::path DatabaseCore::getDatabasePath() {
     return "llm_chat_history.db";
 }
 
-bool DatabaseCore::ensureDirectoryExists(const std::filesystem::path& path) {
-    try {
-        std::filesystem::path parent = path.parent_path();
-        if (!parent.empty() && !std::filesystem::exists(parent)) {
-            std::filesystem::create_directories(parent);
-        }
-        return true;
-    } catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Warning: Could not create database directory: " << e.what() 
-                  << ". Using fallback location." << std::endl;
-        return false;
-    }
-}
 
 void DatabaseCore::initializeSchema() {
     // Define the database schema
