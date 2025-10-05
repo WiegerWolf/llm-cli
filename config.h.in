@@ -4,4 +4,4 @@
 #define BRAVE_SEARCH_API_KEY "@BRAVE_SEARCH_API_KEY@"
 
 #define OPENROUTER_API_URL_MODELS "https://openrouter.ai/api/v1/models"
-#define DEFAULT_MODEL_ID "deepseek/deepseek-chat-v3-0324:free"
+#define DEFAULT_MODEL_ID "free"
