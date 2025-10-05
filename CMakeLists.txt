@@ -80,8 +80,6 @@ add_library(llm_core STATIC
     database/model_repository.cpp
     database/model_repository.h
     # Utility modules
-    filesystem_utils.cpp
-    filesystem_utils.h
     tools.cpp
     tools.h
     model_manager.cpp

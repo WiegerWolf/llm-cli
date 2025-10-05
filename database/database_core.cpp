@@ -1,5 +1,5 @@
 #include "database_core.h"
-#include "filesystem_utils.h"
+
 #include <stdexcept>
 #include <iostream>
 #include <cstdlib>
@@ -10,7 +10,6 @@ namespace database {
 
 DatabaseCore::DatabaseCore() : db_(nullptr) {
     std::filesystem::path db_path = getDatabasePath();
-    ensureDirectoryExists(db_path);
     std::string path = db_path.string();
 
     // Open the SQLite database connection
@@ -107,29 +106,9 @@ void DatabaseCore::exec(const std::string& sql) {
 }
 
 std::filesystem::path DatabaseCore::getDatabasePath() {
-    std::filesystem::path db_dir_path = utils::get_home_directory_path();
-    
-    if (!db_dir_path.empty()) {
-        std::filesystem::path app_config_dir = db_dir_path / ".llm-cli";
-        return app_config_dir / "llm_chat_history.db";
-    }
-    
     return "llm_chat_history.db";
 }
 
-bool DatabaseCore::ensureDirectoryExists(const std::filesystem::path& path) {
-    try {
-        std::filesystem::path parent = path.parent_path();
-        if (!parent.empty() && !std::filesystem::exists(parent)) {
-            std::filesystem::create_directories(parent);
-        }
-        return true;
-    } catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Warning: Could not create database directory: " << e.what() 
-                  << ". Using fallback location." << std::endl;
-        return false;
-    }
-}
 
 void DatabaseCore::initializeSchema() {
     // Define the database schema
