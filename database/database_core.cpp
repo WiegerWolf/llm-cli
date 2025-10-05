@@ -1,5 +1,5 @@
 #include "database_core.h"
-#include "filesystem_utils.h"
+
 #include <stdexcept>
 #include <iostream>
 #include <cstdlib>
@@ -107,13 +107,6 @@ void DatabaseCore::exec(const std::string& sql) {
 }
 
 std::filesystem::path DatabaseCore::getDatabasePath() {
-    std::filesystem::path db_dir_path = utils::get_home_directory_path();
-    
-    if (!db_dir_path.empty()) {
-        std::filesystem::path app_config_dir = db_dir_path / ".llm-cli";
-        return app_config_dir / "llm_chat_history.db";
-    }
-    
     return "llm_chat_history.db";
 }
 
