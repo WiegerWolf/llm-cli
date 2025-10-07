@@ -134,9 +134,6 @@ void ChatClient::processTurn(const std::string& input) {
         // Make initial streaming API call with tools enabled
         ui.displayStatus("Waiting for response...");
 
-        // Use streaming for the response with RAII guard to ensure cleanup
-        ui.startStreamingOutput(this->active_model_id);
-
         // RAII guard to ensure endStreamingOutput is called exactly once
         struct StreamingGuard {
             UserInterface& ui;
@@ -151,20 +148,25 @@ void ChatClient::processTurn(const std::string& input) {
                 }
             }
         };
-        bool streaming_active = false;
-        StreamingGuard guard(ui, streaming_active);
 
-        auto streaming_result = apiClient->makeStreamingApiCall(
-            context,
-            toolManager,
-            true,  // use_tools = true
-            [this](const std::string& chunk) {
-                // Display each chunk in real-time
-                ui.displayStreamingChunk(chunk);
-            }
-        );
+        // Use streaming for the response with RAII guard to ensure cleanup
+        ApiClient::StreamingResponse streaming_result;
+        {
+            ui.startStreamingOutput(this->active_model_id);
+            bool streaming_active = false;
+            StreamingGuard guard(ui, streaming_active);
 
-        // Guard destructor will call endStreamingOutput automatically
+            streaming_result = apiClient->makeStreamingApiCall(
+                context,
+                toolManager,
+                true,  // use_tools = true
+                [this](const std::string& chunk) {
+                    // Display each chunk in real-time
+                    ui.displayStreamingChunk(chunk);
+                }
+            );
+            // Guard destructor will call endStreamingOutput automatically here
+        }
 
         // Check if tool calls were detected during streaming
         if (streaming_result.has_tool_calls) {
