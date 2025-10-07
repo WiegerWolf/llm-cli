@@ -40,6 +40,17 @@ public:
     virtual void updateModelsList(const std::vector<ModelData>& models) = 0;
     // --- End Methods for Model Loading UI Feedback ---
 
+    // --- Methods for Streaming Support ---
+    // Called when streaming starts (allows UI to prepare for incremental display)
+    virtual void startStreamingOutput(const std::string& model_id) = 0;
+
+    // Called for each chunk of streamed content
+    virtual void displayStreamingChunk(const std::string& chunk) = 0;
+
+    // Called when streaming completes
+    virtual void endStreamingOutput() = 0;
+    // --- End Methods for Streaming Support ---
+
     // Virtual destructor to ensure proper cleanup of derived classes.
     virtual ~UserInterface() = default;
 };
