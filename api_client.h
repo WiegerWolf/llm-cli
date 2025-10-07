@@ -38,6 +38,8 @@ public:
         std::string error_message;
         bool has_tool_calls = false;
         std::string tool_calls_json;  // Accumulated tool_calls as JSON string
+        bool callback_exception = false;
+        std::string callback_exception_message;
     };
 
     // Make a streaming API call with the given context

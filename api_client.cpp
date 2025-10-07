@@ -277,9 +277,23 @@ static size_t StreamingWriteCallback(void* contents, size_t size, size_t nmemb, 
                             std::string content = delta["content"].get<std::string>();
                             ctx->response->accumulated_content += content;
 
-                            // Call the chunk callback
-                            if (ctx->chunk_callback) {
-                                (*ctx->chunk_callback)(content);
+                            // Call the chunk callback (must not let exceptions escape to C code)
+                            if (ctx->chunk_callback && *ctx->chunk_callback) {
+                                try {
+                                    (*ctx->chunk_callback)(content);
+                                } catch (const std::exception& e) {
+                                    // Capture exception and signal error to stop transfer
+                                    ctx->response->callback_exception = true;
+                                    ctx->response->callback_exception_message =
+                                        std::string("Callback exception: ") + e.what();
+                                    return 0; // Signal libcurl to abort transfer
+                                } catch (...) {
+                                    // Capture unknown exception
+                                    ctx->response->callback_exception = true;
+                                    ctx->response->callback_exception_message =
+                                        "Unknown callback exception occurred";
+                                    return 0; // Signal libcurl to abort transfer
+                                }
                             }
                         }
 
@@ -408,6 +422,11 @@ ApiClient::StreamingResponse ApiClient::makeStreamingApiCall(
         // Check if streaming completed with an error
         if (streaming_response.has_error) {
             throw std::runtime_error("Streaming error: " + streaming_response.error_message);
+        }
+
+        // Check if a callback exception occurred
+        if (streaming_response.callback_exception) {
+            throw std::runtime_error("Streaming callback error: " + streaming_response.callback_exception_message);
         }
 
         return streaming_response;
