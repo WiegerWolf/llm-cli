@@ -114,7 +114,7 @@ void CliInterface::displayStreamingChunk(const std::string& chunk) {
 }
 
 void CliInterface::endStreamingOutput() {
-    // Add final newline after streaming completes
-    std::cout << std::endl;
+    // Add two newlines after streaming completes for consistent spacing with non-streaming output
+    std::cout << "\n\n" << std::flush;
 }
 // --- End Implementation for Streaming Support ---
