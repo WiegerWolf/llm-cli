@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <functional>
-#include <nlohmann/json_fwd.hpp>
+#include <nlohmann/json.hpp>
 #include "database.h"
 #include "ui_interface.h"
 
@@ -37,7 +37,7 @@ public:
         bool has_error = false;
         std::string error_message;
         bool has_tool_calls = false;
-        std::string tool_calls_json;  // Accumulated tool_calls as JSON string
+        nlohmann::json accumulated_tool_calls;  // Accumulated tool_calls array with merged deltas
         bool callback_exception = false;
         std::string callback_exception_message;
     };

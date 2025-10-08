@@ -297,13 +297,62 @@ static size_t StreamingWriteCallback(void* contents, size_t size, size_t nmemb, 
                             }
                         }
 
-                        // Handle tool_calls
+                        // Handle tool_calls - accumulate deltas properly
                         if (delta.contains("tool_calls") && !delta["tool_calls"].is_null()) {
                             ctx->response->has_tool_calls = true;
-                            // Store the entire chunk_json for later processing
-                            // We'll need to accumulate these properly
-                            if (ctx->response->tool_calls_json.empty()) {
-                                ctx->response->tool_calls_json = chunk_json.dump();
+
+                            // Initialize accumulated_tool_calls as array if needed
+                            if (!ctx->response->accumulated_tool_calls.is_array()) {
+                                ctx->response->accumulated_tool_calls = nlohmann::json::array();
+                            }
+
+                            // Merge each tool_call delta by index
+                            for (const auto& tool_call_delta : delta["tool_calls"]) {
+                                if (!tool_call_delta.contains("index")) continue;
+
+                                int index = tool_call_delta["index"].get<int>();
+
+                                // Ensure array is large enough
+                                while (ctx->response->accumulated_tool_calls.size() <= static_cast<size_t>(index)) {
+                                    ctx->response->accumulated_tool_calls.push_back(nlohmann::json::object());
+                                }
+
+                                auto& accumulated = ctx->response->accumulated_tool_calls[index];
+
+                                // Merge id (appears once)
+                                if (tool_call_delta.contains("id")) {
+                                    accumulated["id"] = tool_call_delta["id"];
+                                }
+
+                                // Merge type (appears once)
+                                if (tool_call_delta.contains("type")) {
+                                    accumulated["type"] = tool_call_delta["type"];
+                                }
+
+                                // Merge function object
+                                if (tool_call_delta.contains("function")) {
+                                    if (!accumulated.contains("function")) {
+                                        accumulated["function"] = nlohmann::json::object();
+                                    }
+
+                                    const auto& func_delta = tool_call_delta["function"];
+                                    auto& accumulated_func = accumulated["function"];
+
+                                    // Merge function name (appears once)
+                                    if (func_delta.contains("name")) {
+                                        accumulated_func["name"] = func_delta["name"];
+                                    }
+
+                                    // Accumulate function arguments (streamed incrementally)
+                                    if (func_delta.contains("arguments")) {
+                                        if (!accumulated_func.contains("arguments")) {
+                                            accumulated_func["arguments"] = "";
+                                        }
+                                        std::string current_args = accumulated_func["arguments"].get<std::string>();
+                                        std::string delta_args = func_delta["arguments"].get<std::string>();
+                                        accumulated_func["arguments"] = current_args + delta_args;
+                                    }
+                                }
                             }
                         }
                     }
