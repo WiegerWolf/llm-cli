@@ -124,43 +124,88 @@ void ChatClient::processTurn(const std::string& input) {
                 return;
             }
         }
-        
+
         // Save user input
         saveUserInput(input);
-        
+
         // Load context
         auto context = db.getContextHistory();
-        
-        // Make initial API call
+
+        // Make initial streaming API call with tools enabled
         ui.displayStatus("Waiting for response...");
-        std::string api_raw_response = apiClient->makeApiCall(context, toolManager, true);
-        ui.displayStatus("Processing response...");
-        nlohmann::json api_response_json = nlohmann::json::parse(api_raw_response);
-        
-        // Check for API errors and extract response or fallback content
-        std::string fallback_content;
-        nlohmann::json response_message;
-        if (handleApiError(api_response_json, fallback_content, response_message)) {
+
+        // RAII guard to ensure endStreamingOutput is called exactly once
+        struct StreamingGuard {
+            UserInterface& ui;
+            bool& active;
+            StreamingGuard(UserInterface& ui_ref, bool& active_ref) : ui(ui_ref), active(active_ref) {
+                active = true;
+            }
+            ~StreamingGuard() {
+                if (active) {
+                    ui.endStreamingOutput();
+                    active = false;
+                }
+            }
+        };
+
+        // Use streaming for the response with RAII guard to ensure cleanup
+        ApiClient::StreamingResponse streaming_result;
+        {
+            ui.startStreamingOutput(this->active_model_id);
+            bool streaming_active = false;
+            StreamingGuard guard(ui, streaming_active);
+
+            streaming_result = apiClient->makeStreamingApiCall(
+                context,
+                toolManager,
+                true,  // use_tools = true
+                [this](const std::string& chunk) {
+                    // Display each chunk in real-time
+                    ui.displayStreamingChunk(chunk);
+                }
+            );
+            // Guard destructor will call endStreamingOutput automatically here
+        }
+
+        // Check if tool calls were detected during streaming
+        if (streaming_result.has_tool_calls) {
+            // Tool calls detected - construct response_message from streaming result
+            ui.displayStatus("Processing tool calls...");
+
+            // Build the assistant message from streaming result
+            nlohmann::json response_message;
+            response_message["role"] = "assistant";
+
+            // Include content if any was streamed before tool calls
+            if (!streaming_result.accumulated_content.empty()) {
+                response_message["content"] = streaming_result.accumulated_content;
+            } else {
+                response_message["content"] = nullptr;
+            }
+
+            // Include the accumulated tool_calls
+            response_message["tool_calls"] = streaming_result.accumulated_tool_calls;
+
+            // Execute tool calls using the streaming-captured data
+            bool turn_completed_via_standard_tools = toolExecutor->executeStandardToolCalls(response_message, context);
+
+            // Fallback to content if tools didn't execute
+            if (!turn_completed_via_standard_tools && !streaming_result.accumulated_content.empty()) {
+                toolExecutor->executeFallbackFunctionTags(streaming_result.accumulated_content, context);
+            }
+
             ui.displayStatus("Ready.");
             return;
         }
-        
-        // Attempt standard tool calls
-        bool turn_completed_via_standard_tools = toolExecutor->executeStandardToolCalls(response_message, context);
-        
-        // Attempt fallback tool tags if standard tools didn't complete
-        bool turn_completed_via_fallback_tools = false;
-        if (!turn_completed_via_standard_tools && !fallback_content.empty()) {
-            turn_completed_via_fallback_tools = toolExecutor->executeFallbackFunctionTags(fallback_content, context);
+
+        // No tool calls, save the streamed content as the assistant response
+        if (!streaming_result.accumulated_content.empty()) {
+            db.saveAssistantMessage(streaming_result.accumulated_content, this->active_model_id);
         }
-        
-        // If neither path completed, print and save direct response
-        if (!turn_completed_via_standard_tools && !turn_completed_via_fallback_tools) {
-            printAndSaveAssistantContent(response_message);
-        }
-        
+
         ui.displayStatus("Ready.");
-        
+
     } catch (const nlohmann::json::parse_error& e) {
         ui.displayError("Error parsing API response: " + std::string(e.what()));
         ui.displayStatus("Error.");

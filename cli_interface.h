@@ -25,4 +25,10 @@ public:
     virtual void setLoadingModelsState(bool isLoading) override;
     virtual void updateModelsList(const std::vector<ModelData>& models) override;
     // --- End Implementation for Model Loading UI Feedback ---
+
+    // --- Implementation for Streaming Support ---
+    virtual void startStreamingOutput(const std::string& model_id) override;
+    virtual void displayStreamingChunk(const std::string& chunk) override;
+    virtual void endStreamingOutput() override;
+    // --- End Implementation for Streaming Support ---
 };

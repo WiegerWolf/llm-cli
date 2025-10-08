@@ -101,3 +101,20 @@ void CliInterface::updateModelsList(const std::vector<ModelData>& models) {
     // It's assumed to be handled by ChatClient's active_model_id or future commands.
 }
 // --- End Implementation for Model Loading UI Feedback ---
+
+// --- Implementation for Streaming Support ---
+void CliInterface::startStreamingOutput(const std::string& model_id) {
+    // Optionally could display model information, but for minimal UI just prepare for streaming
+    (void)model_id; // Unused in basic CLI implementation
+}
+
+void CliInterface::displayStreamingChunk(const std::string& chunk) {
+    // Display chunk immediately without newline, flush to ensure real-time display
+    std::cout << chunk << std::flush;
+}
+
+void CliInterface::endStreamingOutput() {
+    // Add two newlines after streaming completes for consistent spacing with non-streaming output
+    std::cout << "\n\n" << std::flush;
+}
+// --- End Implementation for Streaming Support ---
