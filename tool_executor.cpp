@@ -108,54 +108,72 @@ bool ToolExecutor::executeStandardToolCalls(const nlohmann::json& response_messa
     // Reload context including tool results
     context = db.getContextHistory();
     
-    // Make final API call to get text response
+    // Make final streaming API call to get text response
     std::string final_content;
     bool final_response_success = false;
-    std::string final_response_str;
-    
+
     for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
+        // Add no-tool instruction on retry attempts
         if (attempt > 0) {
             Message no_tool_msg{"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
             context.push_back(no_tool_msg);
-            final_response_str = apiClient.makeApiCall(context, toolManager, false);
-            context.pop_back();
-        } else {
-            final_response_str = apiClient.makeApiCall(context, toolManager, false);
         }
-        
-        nlohmann::json final_response_json;
+
         try {
-            final_response_json = nlohmann::json::parse(final_response_str);
-        } catch (const nlohmann::json::parse_error& e) {
-            if (attempt == 2) break;
-            continue;
-        }
-        
-        if (final_response_json.contains("error")) {
-            ui.displayError("API Error Received (Final Response): " + final_response_json["error"].dump(2));
-            if (attempt == 2) break;
-            continue;
-        }
-        
-        if (!final_response_json.contains("choices") || final_response_json["choices"].empty() ||
-            !final_response_json["choices"][0].contains("message")) {
-            if (attempt == 2) break;
-            continue;
-        }
-        
-        auto& message = final_response_json["choices"][0]["message"];
-        
-        if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-            if (attempt == 2) break;
-            continue;
-        }
-        
-        if (message.contains("content") && message["content"].is_string()) {
-            final_content = message["content"];
-            final_response_success = true;
-            break;
-        } else {
-            if (attempt == 2) break;
+            // Use streaming for final response
+            ui.startStreamingOutput(this->active_model_id_ref);
+
+            auto streaming_result = apiClient.makeStreamingApiCall(
+                context,
+                toolManager,
+                false,  // use_tools = false (we want text only)
+                [this](const std::string& chunk) {
+                    ui.displayStreamingChunk(chunk);
+                }
+            );
+
+            ui.endStreamingOutput();
+
+            // Remove retry instruction if added
+            if (attempt > 0) {
+                context.pop_back();
+            }
+
+            // Check for errors
+            if (streaming_result.has_error) {
+                ui.displayError("API Error Received (Final Response): " + streaming_result.error_message);
+                if (attempt == 2) break;
+                continue;
+            }
+
+            if (streaming_result.callback_exception) {
+                ui.displayError("Callback Error (Final Response): " + streaming_result.callback_exception_message);
+                if (attempt == 2) break;
+                continue;
+            }
+
+            // Check if model tried to use tools despite us setting use_tools=false
+            if (streaming_result.has_tool_calls) {
+                if (attempt == 2) break;
+                continue;
+            }
+
+            // Success - we have the content
+            if (!streaming_result.accumulated_content.empty()) {
+                final_content = streaming_result.accumulated_content;
+                final_response_success = true;
+                break;
+            }
+
+        } catch (const std::exception& e) {
+            ui.endStreamingOutput();  // Ensure cleanup
+            if (attempt > 0 && context.back().role == "system") {
+                context.pop_back();
+            }
+            if (attempt == 2) {
+                ui.displayError("Failed to get final response: " + std::string(e.what()));
+                break;
+            }
             continue;
         }
     }
@@ -166,7 +184,7 @@ bool ToolExecutor::executeStandardToolCalls(const nlohmann::json& response_messa
     }
     
     db.saveAssistantMessage(final_content, this->active_model_id_ref);
-    ui.displayOutput(final_content + "\n\n", this->active_model_id_ref);
+    // Note: Content already displayed during streaming, no need to display again
     return true;
 }
 
@@ -347,61 +365,82 @@ bool ToolExecutor::executeFallbackFunctionTags(const std::string& content,
             
             context = db.getContextHistory();
             
-            // Make final API call
+            // Make final streaming API call
             std::string final_content;
             bool final_response_success = false;
-            std::string final_response_str;
-            
+
             for (int attempt = 0; attempt < 3 && !final_response_success; attempt++) {
                 if (attempt > 0) {
                     Message no_tool_msg{"system", "IMPORTANT: Do not use any tools or functions in your response. Provide a direct text answer only."};
                     context.push_back(no_tool_msg);
-                    final_response_str = apiClient.makeApiCall(context, toolManager, false);
-                    context.pop_back();
-                } else {
-                    final_response_str = apiClient.makeApiCall(context, toolManager, false);
                 }
-                
-                nlohmann::json final_response_json;
+
                 try {
-                    final_response_json = nlohmann::json::parse(final_response_str);
-                } catch (const nlohmann::json::parse_error& e) {
-                    if (attempt == 2) { ui.displayError("Failed to parse final API response after fallback tool."); break; }
-                    continue;
-                }
-                
-                if (final_response_json.contains("error")) {
-                    ui.displayError("API Error (Fallback Final Response): " + final_response_json["error"].dump(2));
-                    if (attempt == 2) break;
-                    continue;
-                }
-                
-                if (!final_response_json.contains("choices") || final_response_json["choices"].empty() || 
-                    !final_response_json["choices"][0].contains("message")) {
-                    if (attempt == 2) { ui.displayError("Invalid final API response structure after fallback tool."); break; }
-                    continue;
-                }
-                
-                auto& message = final_response_json["choices"][0]["message"];
-                
-                if (message.contains("tool_calls") && !message["tool_calls"].is_null()) {
-                    if (attempt == 2) { ui.displayError("Final response still contained tool_calls after fallback execution."); break; }
-                    continue;
-                }
-                
-                if (message.contains("content") && message["content"].is_string()) {
-                    final_content = message["content"];
-                    final_response_success = true;
-                    break;
-                } else {
-                    if (attempt == 2) { ui.displayError("Final response message missing content after fallback tool."); break; }
+                    ui.startStreamingOutput(this->active_model_id_ref);
+
+                    auto streaming_result = apiClient.makeStreamingApiCall(
+                        context,
+                        toolManager,
+                        false,  // use_tools = false
+                        [this](const std::string& chunk) {
+                            ui.displayStreamingChunk(chunk);
+                        }
+                    );
+
+                    ui.endStreamingOutput();
+
+                    if (attempt > 0) {
+                        context.pop_back();
+                    }
+
+                    if (streaming_result.has_error) {
+                        ui.displayError("API Error (Fallback Final Response): " + streaming_result.error_message);
+                        if (attempt == 2) break;
+                        continue;
+                    }
+
+                    if (streaming_result.callback_exception) {
+                        ui.displayError("Callback Error (Fallback Final Response): " + streaming_result.callback_exception_message);
+                        if (attempt == 2) break;
+                        continue;
+                    }
+
+                    if (streaming_result.has_tool_calls) {
+                        if (attempt == 2) {
+                            ui.displayError("Final response still contained tool_calls after fallback execution.");
+                            break;
+                        }
+                        continue;
+                    }
+
+                    if (!streaming_result.accumulated_content.empty()) {
+                        final_content = streaming_result.accumulated_content;
+                        final_response_success = true;
+                        break;
+                    } else {
+                        if (attempt == 2) {
+                            ui.displayError("Final response did not contain valid text content after fallback tool.");
+                            break;
+                        }
+                        continue;
+                    }
+
+                } catch (const std::exception& e) {
+                    ui.endStreamingOutput();
+                    if (attempt > 0 && !context.empty() && context.back().role == "system") {
+                        context.pop_back();
+                    }
+                    if (attempt == 2) {
+                        ui.displayError("Failed to get final response after fallback tool: " + std::string(e.what()));
+                        break;
+                    }
                     continue;
                 }
             }
             
             if (final_response_success) {
                 db.saveAssistantMessage(final_content, this->active_model_id_ref);
-                ui.displayOutput(final_content + "\n\n", this->active_model_id_ref);
+                // Note: Content already displayed during streaming, no need to display again
                 any_executed = true;
             } else {
                 ui.displayError("Failed to get final response after fallback tool execution for: " + function_name);
