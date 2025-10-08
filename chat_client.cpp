@@ -170,23 +170,29 @@ void ChatClient::processTurn(const std::string& input) {
 
         // Check if tool calls were detected during streaming
         if (streaming_result.has_tool_calls) {
-            // Tool calls detected - need to use non-streaming API to get complete tool call structure
+            // Tool calls detected - construct response_message from streaming result
             ui.displayStatus("Processing tool calls...");
-            std::string api_raw_response = apiClient->makeApiCall(context, toolManager, true);
-            nlohmann::json api_response_json = nlohmann::json::parse(api_raw_response);
 
-            std::string fallback_content;
+            // Build the assistant message from streaming result
             nlohmann::json response_message;
-            if (handleApiError(api_response_json, fallback_content, response_message)) {
-                ui.displayStatus("Ready.");
-                return;
+            response_message["role"] = "assistant";
+
+            // Include content if any was streamed before tool calls
+            if (!streaming_result.accumulated_content.empty()) {
+                response_message["content"] = streaming_result.accumulated_content;
+            } else {
+                response_message["content"] = nullptr;
             }
 
-            // Execute tool calls
+            // Include the accumulated tool_calls
+            response_message["tool_calls"] = streaming_result.accumulated_tool_calls;
+
+            // Execute tool calls using the streaming-captured data
             bool turn_completed_via_standard_tools = toolExecutor->executeStandardToolCalls(response_message, context);
 
-            if (!turn_completed_via_standard_tools && !fallback_content.empty()) {
-                toolExecutor->executeFallbackFunctionTags(fallback_content, context);
+            // Fallback to content if tools didn't execute
+            if (!turn_completed_via_standard_tools && !streaming_result.accumulated_content.empty()) {
+                toolExecutor->executeFallbackFunctionTags(streaming_result.accumulated_content, context);
             }
 
             ui.displayStatus("Ready.");
