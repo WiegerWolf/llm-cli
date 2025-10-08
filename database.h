@@ -6,6 +6,11 @@
 #include "model_types.h"
 struct sqlite3;
 
+// Forward declaration for Session struct
+namespace database {
+    struct Session;
+}
+
 // Message struct represents a single message in the chat history.
 struct Message {
     std::string role;
@@ -45,6 +50,16 @@ public:
     // Settings management
     void saveSetting(const std::string& key, const std::string& value);
     std::optional<std::string> loadSetting(const std::string& key);
+
+    // Session management
+    int createSession(const std::string& title = "New Chat");
+    std::vector<database::Session> getAllSessions();
+    std::optional<database::Session> getSessionById(int session_id);
+    void updateSessionTitle(int session_id, const std::string& title);
+    void deleteSession(int session_id);
+    int getOrCreateDefaultSession();
+    void setCurrentSession(int session_id);
+    int getCurrentSession() const;
 
 private:
     // Forward declaration for the Pimpl idiom

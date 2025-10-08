@@ -2,6 +2,7 @@
 #include "database/database_core.h"
 #include "database/message_repository.h"
 #include "database/model_repository.h"
+#include "database/session_repository.h"
 #include <memory>
 #include <stdexcept>
 #include <optional>
@@ -22,13 +23,15 @@ struct PersistenceManager::Impl {
     database::DatabaseCore core;
     database::MessageRepository messages;
     database::ModelRepository models;
-    
-    Impl() 
+    database::SessionRepository sessions;
+
+    Impl()
         : core()
         , messages(core)
         , models(core)
+        , sessions(core)
     {}
-    
+
     // Settings management remains in Impl (simple operations)
     void saveSetting(const std::string& key, const std::string& value);
     std::optional<std::string> loadSetting(const std::string& key);
@@ -152,4 +155,37 @@ void PersistenceManager::saveSetting(const std::string& key, const std::string& 
 
 std::optional<std::string> PersistenceManager::loadSetting(const std::string& key) {
     return impl->loadSetting(key);
+}
+
+// Session operations - delegate to SessionRepository
+int PersistenceManager::createSession(const std::string& title) {
+    return impl->sessions.createSession(title);
+}
+
+std::vector<database::Session> PersistenceManager::getAllSessions() {
+    return impl->sessions.getAllSessions();
+}
+
+std::optional<database::Session> PersistenceManager::getSessionById(int session_id) {
+    return impl->sessions.getSessionById(session_id);
+}
+
+void PersistenceManager::updateSessionTitle(int session_id, const std::string& title) {
+    impl->sessions.updateSessionTitle(session_id, title);
+}
+
+void PersistenceManager::deleteSession(int session_id) {
+    impl->sessions.deleteSession(session_id);
+}
+
+int PersistenceManager::getOrCreateDefaultSession() {
+    return impl->sessions.getOrCreateDefaultSession();
+}
+
+void PersistenceManager::setCurrentSession(int session_id) {
+    impl->messages.setCurrentSession(session_id);
+}
+
+int PersistenceManager::getCurrentSession() const {
+    return impl->messages.getCurrentSession();
 }

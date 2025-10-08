@@ -5,7 +5,15 @@
 namespace database {
 
 MessageRepository::MessageRepository(DatabaseCore& core)
-    : core_(core) {
+    : core_(core), current_session_id_(1) {
+}
+
+void MessageRepository::setCurrentSession(int session_id) {
+    current_session_id_ = session_id;
+}
+
+int MessageRepository::getCurrentSession() const {
+    return current_session_id_;
 }
 
 void MessageRepository::insertUserMessage(const std::string& content) {
@@ -36,11 +44,12 @@ void MessageRepository::insertToolMessage(const std::string& content) {
 }
 
 std::vector<Message> MessageRepository::getContextHistory(size_t max_pairs) {
-    // First, get the most recent system message
-    const std::string system_sql = "SELECT id, role, content, timestamp, model_id FROM messages WHERE role='system' ORDER BY id DESC LIMIT 1";
-    
+    // First, get the most recent system message for this session
+    const std::string system_sql = "SELECT id, role, content, timestamp, model_id FROM messages WHERE role='system' AND session_id=? ORDER BY id DESC LIMIT 1";
+
     auto system_stmt = core_.prepareStatement(system_sql);
-    
+    sqlite3_bind_int(system_stmt.get(), 1, current_session_id_);
+
     std::vector<Message> history;
     if (sqlite3_step(system_stmt.get()) == SQLITE_ROW) {
         Message system_msg;
@@ -49,7 +58,7 @@ std::vector<Message> MessageRepository::getContextHistory(size_t max_pairs) {
         system_msg.content = reinterpret_cast<const char*>(sqlite3_column_text(system_stmt.get(), 2));
         const unsigned char* ts = sqlite3_column_text(system_stmt.get(), 3);
         system_msg.timestamp = ts ? reinterpret_cast<const char*>(ts) : "";
-        
+
         if (sqlite3_column_type(system_stmt.get(), 4) != SQLITE_NULL) {
             system_msg.model_id = reinterpret_cast<const char*>(sqlite3_column_text(system_stmt.get(), 4));
         } else {
@@ -57,12 +66,12 @@ std::vector<Message> MessageRepository::getContextHistory(size_t max_pairs) {
         }
         history.push_back(system_msg);
     }
-    
-    // Get recent user/assistant/tool messages
+
+    // Get recent user/assistant/tool messages for this session
     const std::string msgs_sql = R"(
         WITH recent_msgs AS (
             SELECT id, role, content, timestamp, model_id FROM messages
-            WHERE role IN ('user', 'assistant', 'tool')
+            WHERE role IN ('user', 'assistant', 'tool') AND session_id=?
             ORDER BY id DESC
             LIMIT ?
         )
@@ -70,8 +79,9 @@ std::vector<Message> MessageRepository::getContextHistory(size_t max_pairs) {
     )";
 
     auto msgs_stmt = core_.prepareStatement(msgs_sql);
-    sqlite3_bind_int(msgs_stmt.get(), 1, static_cast<int>(max_pairs * 2));
-    
+    sqlite3_bind_int(msgs_stmt.get(), 1, current_session_id_);
+    sqlite3_bind_int(msgs_stmt.get(), 2, static_cast<int>(max_pairs * 2));
+
     std::vector<Message> recent_messages;
     while(sqlite3_step(msgs_stmt.get()) == SQLITE_ROW) {
         Message msg;
@@ -80,7 +90,7 @@ std::vector<Message> MessageRepository::getContextHistory(size_t max_pairs) {
         msg.content = reinterpret_cast<const char*>(sqlite3_column_text(msgs_stmt.get(), 2));
         const unsigned char* ts = sqlite3_column_text(msgs_stmt.get(), 3);
         msg.timestamp = ts ? reinterpret_cast<const char*>(ts) : "";
-        
+
         if (sqlite3_column_type(msgs_stmt.get(), 4) != SQLITE_NULL) {
             msg.model_id = reinterpret_cast<const char*>(sqlite3_column_text(msgs_stmt.get(), 4));
         } else {
@@ -88,9 +98,9 @@ std::vector<Message> MessageRepository::getContextHistory(size_t max_pairs) {
         }
         recent_messages.push_back(msg);
     }
-    
+
     history.insert(history.end(), recent_messages.begin(), recent_messages.end());
-    
+
     // If no messages exist, add a default system message
     if (history.empty()) {
         Message default_system_msg;
@@ -101,7 +111,7 @@ std::vector<Message> MessageRepository::getContextHistory(size_t max_pairs) {
         default_system_msg.model_id = std::nullopt;
         history.push_back(default_system_msg);
     }
-    
+
     return history;
 }
 
@@ -168,18 +178,20 @@ void MessageRepository::cleanupOrphanedToolMessages() {
 }
 
 void MessageRepository::insertMessage(const Message& msg) {
-    const char* sql = "INSERT INTO messages (role, content, model_id) VALUES (?, ?, ?)";
-    
+    const char* sql = "INSERT INTO messages (role, content, model_id, session_id) VALUES (?, ?, ?, ?)";
+
     auto stmt = core_.prepareStatement(sql);
-    
+
     sqlite3_bind_text(stmt.get(), 1, msg.role.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt.get(), 2, msg.content.c_str(), -1, SQLITE_STATIC);
-    
+
     if (msg.model_id.has_value()) {
         sqlite3_bind_text(stmt.get(), 3, msg.model_id.value().c_str(), -1, SQLITE_STATIC);
     } else {
         sqlite3_bind_null(stmt.get(), 3);
     }
+
+    sqlite3_bind_int(stmt.get(), 4, current_session_id_);
 
     if(sqlite3_step(stmt.get()) != SQLITE_DONE) {
         throw std::runtime_error("Insert failed: " + std::string(sqlite3_errmsg(core_.getConnection())));

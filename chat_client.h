@@ -69,6 +69,9 @@ public:
     // Model management delegation
     void setActiveModel(const std::string& model_id);
 
+    // Session management
+    void switchToSession(int session_id);
+
     // Public API call method (for tools)
     std::string makeApiCall(const std::vector<Message>& context, bool use_tools = true);
 };
