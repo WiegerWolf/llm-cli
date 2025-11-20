@@ -2,6 +2,7 @@
 build/
 *.log
 examples/
+session/
 .env
 imgui.ini
 Testing/Temporary
